@@ -21,6 +21,7 @@ from core.exceptions import (
     AccountSuspendedError,
     EmailTakenError,
     ExpiredCodeError,
+    InvalidBusinessProfileError,
     InvalidCodeError,
     InvalidCredentialsError,
     NotFoundError,
@@ -55,6 +56,12 @@ class SessionProfile:
     email: str
     phone: str
     full_name: str
+    account_type: str
+    tax_code: str | None
+    company_name: str | None
+    legal_rep_name: str | None
+    legal_rep_id: str | None
+    legal_rep_position: str | None
     email_verified: bool
     created_at: datetime
 
@@ -95,6 +102,12 @@ class AuthService:
             email=user.email,
             phone=user.phone,
             full_name=user.full_name,
+            account_type=getattr(user, "account_type", "individual") or "individual",
+            tax_code=getattr(user, "tax_code", None),
+            company_name=getattr(user, "company_name", None),
+            legal_rep_name=getattr(user, "legal_rep_name", None),
+            legal_rep_id=getattr(user, "legal_rep_id", None),
+            legal_rep_position=getattr(user, "legal_rep_position", None),
             email_verified=user.email_verified_at is not None,
             created_at=user.created_at,
         )
@@ -116,16 +129,43 @@ class AuthService:
         return TokenPair(access_token=access, refresh_token=refresh, expires_in=ttl)
 
     def register(
-        self, email: str, phone: str, password: str, full_name: str
+        self,
+        email: str,
+        phone: str,
+        password: str,
+        full_name: str,
+        account_type: str = "individual",
+        tax_code: str | None = None,
+        company_name: str | None = None,
+        legal_rep_name: str | None = None,
+        legal_rep_id: str | None = None,
+        legal_rep_position: str | None = None,
     ) -> SessionProfile:
-        """Create an account. Verification mail is deferred for now."""
+        """Create an account. Business tier requires legal identity."""
         if self._users.get_by_email(email) is not None:
             raise EmailTakenError("Email is already registered.")
         if self._users.get_by_phone(phone) is not None:
             raise PhoneTakenError("Phone number is already registered.")
+        if account_type not in ("individual", "business"):
+            raise InvalidBusinessProfileError("account_type is invalid.")
+        if account_type == "business" and not (
+            tax_code and company_name and legal_rep_name and legal_rep_id
+        ):
+            raise InvalidBusinessProfileError("Business accounts require tax and legal identity.")
         now = utcnow()
         user = self._users.create(
-            generate_user_id(), email, phone, self._hasher.hash(password), full_name, now
+            generate_user_id(),
+            email,
+            phone,
+            self._hasher.hash(password),
+            full_name,
+            now,
+            account_type,
+            tax_code,
+            company_name,
+            legal_rep_name,
+            legal_rep_id,
+            legal_rep_position,
         )
         return self._profile_of(user.id)
 

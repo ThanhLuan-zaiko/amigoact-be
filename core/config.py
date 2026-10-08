@@ -34,6 +34,9 @@ class Settings(BaseSettings):
     mail_from: str = "no-reply@amigoact.local"
     frontend_urls: str = "http://localhost:5173"
     env: str = "dev"
+    media_root: str = "./media"
+    media_max_image_mb: int = 10
+    media_max_video_mb: int = 100
 
     @property
     def frontend_urls_list(self) -> list[str]:

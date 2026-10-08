@@ -4,15 +4,17 @@ from __future__ import annotations
 
 import re
 from datetime import datetime
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 _PASSWORD_RULE = "8+ chars with upper, lower, digit and special character."
 _PHONE_PATTERN = re.compile(r"^0(?:3|5|7|8|9)\d{8}$")
 _EMAIL_PATTERN = re.compile(r"^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$")
 _SPECIAL_PATTERN = re.compile(r"[^A-Za-z0-9]")
+_TAX_PATTERN = re.compile(r"^\d{10}(-\d{3})?$")
+_CCCD_PATTERN = re.compile(r"^\d{12}$")
 
 
 def _reject_fake_phone(digits: str) -> bool:
@@ -55,17 +57,50 @@ def validate_email(value: str) -> str:
     return address
 
 
+def validate_tax_code(value: str) -> str:
+    """Vietnam MST: 10 digits, branch adds -XXX suffix."""
+    code = value.strip()
+    if not _TAX_PATTERN.match(code):
+        raise ValueError("Tax code must be 10 digits or 10 digits plus -XXX.")
+    digits = code.replace("-", "")
+    if len(set(digits)) == 1:
+        raise ValueError("Tax code looks invalid.")
+    return code
+
+
+def validate_cccd(value: str) -> str:
+    """Vietnam CCCD: 12 digits, rejects trivial fakes."""
+    code = value.strip()
+    if not _CCCD_PATTERN.match(code):
+        raise ValueError("National ID must be 12 digits.")
+    if len(set(code)) == 1:
+        raise ValueError("National ID looks invalid.")
+    return code
+
+
 class RegisterRequest(BaseModel):
-    """Account creation payload. Every field is required."""
+    """Account creation payload with individual/business tiers."""
 
     email: str
     phone: str
     password: str
     full_name: Annotated[str, Field(min_length=2, max_length=100)]
+    account_type: Literal["individual", "business"] = "individual"
+    tax_code: str | None = None
+    company_name: Annotated[str, Field(min_length=2, max_length=200)] | None = None
+    legal_rep_name: Annotated[str, Field(min_length=2, max_length=100)] | None = None
+    legal_rep_id: str | None = None
+    legal_rep_position: Annotated[str, Field(min_length=2, max_length=100)] | None = None
 
     _email = field_validator("email", mode="before")(validate_email)  # noqa: SLF001
     _phone = field_validator("phone", mode="before")(validate_phone)  # noqa: SLF001
     _password = field_validator("password", mode="before")(validate_password)  # noqa: SLF001
+    _tax = field_validator("tax_code", mode="before")(  # noqa: SLF001
+        lambda v: validate_tax_code(v) if v not in (None, "") else v
+    )
+    _cccd = field_validator("legal_rep_id", mode="before")(  # noqa: SLF001
+        lambda v: validate_cccd(v) if v not in (None, "") else v
+    )
 
     @field_validator("full_name", mode="before")
     @classmethod
@@ -73,6 +108,23 @@ class RegisterRequest(BaseModel):
         if isinstance(value, str):
             return value.strip()
         return value
+
+    @model_validator(mode="after")
+    def _require_business_fields(self) -> RegisterRequest:
+        if self.account_type == "business":
+            missing = [
+                name
+                for name in (
+                    "tax_code",
+                    "company_name",
+                    "legal_rep_name",
+                    "legal_rep_id",
+                )
+                if not getattr(self, name)
+            ]
+            if missing:
+                raise ValueError(f"Business accounts require: {', '.join(missing)}.")
+        return self
 
 
 class LoginRequest(BaseModel):
@@ -153,6 +205,12 @@ class UserProfile(BaseModel):
     email: str
     phone: str
     full_name: str
+    account_type: str = "individual"
+    tax_code: str | None = None
+    company_name: str | None = None
+    legal_rep_name: str | None = None
+    legal_rep_id: str | None = None
+    legal_rep_position: str | None = None
     email_verified: bool
     created_at: datetime
 

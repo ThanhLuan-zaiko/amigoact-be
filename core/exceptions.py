@@ -37,6 +37,36 @@ class SamePasswordError(DomainError):
     status = 400
 
 
+class InvalidBusinessProfileError(DomainError):
+    code = "INVALID_BUSINESS_PROFILE"
+    status = 400
+
+
+class SlugTakenError(DomainError):
+    code = "SLUG_TAKEN"
+    status = 409
+
+
+class OrgNameTakenError(DomainError):
+    code = "NAME_TAKEN"
+    status = 409
+
+
+class OrgDeletedError(DomainError):
+    code = "ORG_DELETED"
+    status = 410
+
+
+class UnsupportedMediaError(DomainError):
+    code = "UNSUPPORTED_MEDIA"
+    status = 415
+
+
+class MediaTooLargeError(DomainError):
+    code = "MEDIA_TOO_LARGE"
+    status = 413
+
+
 class EmailNotVerifiedError(DomainError):
     code = "EMAIL_NOT_VERIFIED"
     status = 403

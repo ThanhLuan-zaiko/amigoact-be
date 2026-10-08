@@ -84,6 +84,9 @@ Mọi cấu hình nằm trong `core/config.py` (dùng `pydantic-settings`), đ�
 | `SMTP_HOST` / `SMTP_PORT` / `SMTP_USERNAME` / `SMTP_PASSWORD` / `MAIL_FROM` | Gửi email mã xác minh (bỏ trống `SMTP_HOST` thì không gửi, xem endpoint dev bên dưới) | `""` / `587` / `""` / `""` / `no-reply@amigoact.local` |
 | `FRONTEND_URLS` | Danh sách origin frontend cho CORS (phân tách dấu phẩy, bắt buộc liệt kê rõ vì cookie cần `credentials`) | `http://localhost:5173` |
 | `ENV` | Môi trường | `dev` / `test` / `prod` |
+| `MEDIA_ROOT` | Thư mục gốc chứa tệp media org (`<root>/orgs/<org_id>/...`, đã gitignore, không commit) | `./media` |
+| `MEDIA_MAX_IMAGE_MB` | Dung lượng ảnh tối đa (JPG, PNG, WebP, GIF) | `10` |
+| `MEDIA_MAX_VIDEO_MB` | Dung lượng video tối đa (MP4, WebM, MOV) | `100` |
 
 Không hard-code host, port, secret trong mã nguồn. Tài liệu biến mới phải cập nhật tại đây.
 

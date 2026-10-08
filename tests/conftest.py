@@ -28,6 +28,12 @@ TABLES = [
     "email_verifications",
     "password_resets",
     "auth_rate_limits",
+    "organizations",
+    "organizations_by_slug",
+    "organization_members",
+    "members_by_user",
+    "media_assets",
+    "media_by_owner",
 ]
 
 
@@ -65,6 +71,7 @@ def test_db() -> str:
     from cassandra.io.asyncioreactor import AsyncioConnection
 
     import auth.model as models
+    import orgs.model as org_models
 
     cluster = Cluster(
         ["127.0.0.1"],
@@ -92,6 +99,12 @@ def test_db() -> str:
         models.RefreshTokenByFamily,
         models.EmailVerification,
         models.PasswordReset,
+        org_models.Organization,
+        org_models.OrganizationsBySlug,
+        org_models.OrganizationMember,
+        org_models.MemberByUser,
+        org_models.MediaAsset,
+        org_models.MediaByOwner,
     ]
     saved = {model: model.__keyspace__ for model in targets}
     try:

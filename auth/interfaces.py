@@ -26,6 +26,12 @@ class UserRepository(ABC):
         password_hash: str,
         full_name: str,
         now: datetime,
+        account_type: str = "individual",
+        tax_code: str | None = None,
+        company_name: str | None = None,
+        legal_rep_name: str | None = None,
+        legal_rep_id: str | None = None,
+        legal_rep_position: str | None = None,
     ) -> User:
         """Insert the user row after claiming both unique indexes."""
 

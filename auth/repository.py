@@ -43,6 +43,12 @@ class CqlUserRepository(UserRepository):
         password_hash: str,
         full_name: str,
         now: datetime,
+        account_type: str = "individual",
+        tax_code: str | None = None,
+        company_name: str | None = None,
+        legal_rep_name: str | None = None,
+        legal_rep_id: str | None = None,
+        legal_rep_position: str | None = None,
     ) -> User:
         # Raw CQL here because the flow needs was_applied from
         # INSERT ... IF NOT EXISTS, which cqlengine does not surface.
@@ -73,6 +79,12 @@ class CqlUserRepository(UserRepository):
             phone=phone,
             password_hash=password_hash,
             full_name=full_name,
+            account_type=account_type,
+            tax_code=tax_code,
+            company_name=company_name,
+            legal_rep_name=legal_rep_name,
+            legal_rep_id=legal_rep_id,
+            legal_rep_position=legal_rep_position,
             status="active",
             created_at=now,
             updated_at=now,

@@ -16,6 +16,7 @@ from core.security import AuthTokenError, decode_access_token
 
 if TYPE_CHECKING:
     from auth.service import AuthService
+    from orgs.service import OrgService
 
 _bearer = HTTPBearer(auto_error=False)
 
@@ -60,6 +61,30 @@ def get_auth_service(
         mailer=mailer,
         settings=settings,
     )
+
+
+def get_org_service(
+    settings: Settings = Depends(get_settings),
+) -> OrgService:
+    """Build one OrgService per request from the org repository."""
+    from core.media import LocalMediaStore
+    from orgs.repository import CqlMediaRepository, CqlOrgRepository
+    from orgs.service import OrgService
+
+    return OrgService(
+        orgs=CqlOrgRepository(settings.scylla_keyspace),
+        media=CqlMediaRepository(),
+        store=get_media_store(settings),
+        max_image_bytes=settings.media_max_image_mb * 1024 * 1024,
+        max_video_bytes=settings.media_max_video_mb * 1024 * 1024,
+    )
+
+
+def get_media_store(settings: Settings = Depends(get_settings)) -> LocalMediaStore:
+    """Single local-disk backend rooted at MEDIA_ROOT (cloud later)."""
+    from core.media import LocalMediaStore
+
+    return LocalMediaStore(settings.media_root)
 
 
 def get_current_user(

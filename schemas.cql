@@ -44,6 +44,12 @@ CREATE TABLE IF NOT EXISTS users (
     phone text,
     password_hash text,
     full_name text,
+    account_type text, // individual | business
+    tax_code text,
+    company_name text,
+    legal_rep_name text,
+    legal_rep_id text,
+    legal_rep_position text,
     email_verified_at timestamp,
     status text, // active | suspended | deleted
     created_at timestamp,
@@ -124,8 +130,16 @@ CREATE TABLE IF NOT EXISTS organizations (
     id uuid PRIMARY KEY,
     name text,
     slug text,
-    org_type text, // university | club | company | ngo
+    description text,
+    org_type text, // organization | club | group | business
     status text, // active | suspended
+    owner_id uuid,
+    tax_code text,
+    legal_rep_name text,
+    legal_rep_id text,
+    legal_rep_position text,
+    legal_status text, // none | pending | verified
+    deleted_at timestamp, // null = alive; set = soft-deleted, restorable
     created_at timestamp,
     updated_at timestamp
 );

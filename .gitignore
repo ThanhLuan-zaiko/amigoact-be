@@ -24,6 +24,9 @@ hypothesis/
 .env.*
 !.env.example
 
+# Local org media uploads (path comes from MEDIA_ROOT; never commit binaries)
+media/
+
 # Editor / OS junk
 .vscode/*
 !.vscode/extensions.json

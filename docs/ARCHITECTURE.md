@@ -53,7 +53,7 @@ Ví dụ bảng:
 
 - Access: JWT 5–15 phút, header `Bearer`, claims `sub/iat/exp/jti/type=access/scopes`.
 - Refresh: opaque 256-bit, cookie `HttpOnly; Secure; SameSite=Lax`, DB chỉ lưu SHA-256, so sánh bằng `hmac.compare_digest`, xoay vòng mỗi lần dùng, phát hiện tái sử dụng thì thu hồi cả họ token.
-- Endpoint: `POST /auth/register` (`201`), `POST /auth/verify-email`, `POST /auth/resend-verification` (`202`), `POST /auth/login`, `POST /auth/refresh`, `POST /auth/logout`/`logout-all` (`204`), `POST /auth/forgot-password` (`202`), `POST /auth/reset-password`, `POST /auth/change-password`, `GET /auth/me`. Riêng `dev` có thêm `POST /auth/dev/challenge-code`. Cửa chặn email chưa xác minh ở login (`EMAIL_NOT_VERIFIED`) đang tạm gỡ, bật lại sau.
+- Endpoint: `POST /auth/register` (`201`, thêm `account_type`: `individual` chỉ cần 4 trường cơ bản, `business` bắt buộc `tax_code`/`company_name`/`legal_rep_*`), `POST /auth/verify-email`, `POST /auth/resend-verification` (`202`), `POST /auth/login`, `POST /auth/refresh`, `POST /auth/logout`/`logout-all` (`204`), `POST /auth/forgot-password` (`202`), `POST /auth/reset-password`, `POST /auth/change-password`, `GET /auth/me`. Riêng `dev` có thêm `POST /auth/dev/challenge-code`. Cửa chặn email chưa xác minh ở login (`EMAIL_NOT_VERIFIED`) đang tạm gỡ, bật lại sau.
 - Xác minh email và reset mật khẩu dùng mã số 6 chữ số đơn lẻ (lưu SHA-256 ở `email_verifications`/`password_resets`), khác bảng refresh.
 - Phân quyền thực hiện ở service theo bản ghi server, không tin claims một cách mù quáng.
 
@@ -80,4 +80,5 @@ Client -> router.py (HTTP/Depends)
 Lỗi domain -> core/exceptions.py -> HTTP envelope
 Auth: get_current_user (JWT) -> load user -> kiểm tra quyền ở service
 Refresh: cookie opaque -> hash SHA-256 -> đối chiếu DB -> xoay vòng -> cấp JWT mới
+Orgs + media: xem `docs/ORGS.md` (CRUD, xóa mềm/cứng, `MediaStore` local qua `MEDIA_ROOT`, mở rộng cloud bằng port mới)
 ```

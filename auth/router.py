@@ -40,6 +40,12 @@ def _profile_schema(profile: SessionProfile) -> UserProfile:
         email=profile.email,
         phone=profile.phone,
         full_name=profile.full_name,
+        account_type=profile.account_type,
+        tax_code=profile.tax_code,
+        company_name=profile.company_name,
+        legal_rep_name=profile.legal_rep_name,
+        legal_rep_id=profile.legal_rep_id,
+        legal_rep_position=profile.legal_rep_position,
         email_verified=profile.email_verified,
         created_at=profile.created_at,
     )
@@ -73,9 +79,20 @@ def register(
     body: RegisterRequest,
     service: AuthService = Depends(get_auth_service),
 ) -> UserProfile:
-    """Create an unverified account and send its first code."""
+    """Create an individual or business account with legal identity."""
     return _profile_schema(
-        service.register(body.email, body.phone, body.password, body.full_name)
+        service.register(
+            body.email,
+            body.phone,
+            body.password,
+            body.full_name,
+            body.account_type,
+            body.tax_code,
+            body.company_name,
+            body.legal_rep_name,
+            body.legal_rep_id,
+            body.legal_rep_position,
+        )
     )
 
 

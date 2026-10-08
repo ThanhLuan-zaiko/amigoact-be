@@ -44,10 +44,13 @@ class FakeUsers(UserRepository):
         self.by_email: dict[str, Any] = {}
         self.by_phone: dict[str, Any] = {}
 
-    def create(self, user_id, email, phone, password_hash, full_name, now):  # noqa: ANN001, ANN202
+    def create(self, user_id, email, phone, password_hash, full_name, now, account_type="individual", tax_code=None, company_name=None, legal_rep_name=None, legal_rep_id=None, legal_rep_position=None):  # noqa: ANN001, ANN202
         user = SimpleNamespace(
             id=user_id, email=email, phone=phone, password_hash=password_hash,
-            full_name=full_name, email_verified_at=None, status="active",
+            full_name=full_name, account_type=account_type, tax_code=tax_code,
+            company_name=company_name, legal_rep_name=legal_rep_name,
+            legal_rep_id=legal_rep_id, legal_rep_position=legal_rep_position,
+            email_verified_at=None, status="active",
             created_at=now, updated_at=now,
         )
         self.by_id[user_id] = user
