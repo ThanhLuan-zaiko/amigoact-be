@@ -204,16 +204,10 @@ class User(models.Model):
    - Transport: `HttpOnly; Secure; SameSite=Lax` cookie (and `Path=/auth/refresh` where possible). Never in URL or `localStorage` by design.
    - Storage: SHA-256 hash only in ScyllaDB (e.g. `auth_refresh_tokens` table with `token_hash`, `user_id`, `expires_at`, `revoked_at`, `rotated_from_jti`). Compare hashes with `hmac.compare_digest`.
    - Lifetime: e.g. 7–30 days, absolute expiry + rotation on every use. Detect reuse and revoke the whole token family on suspected theft.
-3. Required endpoints/flows:
-   - `POST /auth/register` (`201`, creates an account; the verification-mail gate is deferred, so no code is issued here yet).
-   - `POST /auth/verify-email` (consumes the code, marks `users.email_verified_at`; kept functional for the deferred gate).
-   - `POST /auth/resend-verification` (rate-limited reissue; never reveals whether the email exists).
-   - `POST /auth/login` (currently accepts unverified emails; rejecting them with `EMAIL_NOT_VERIFIED`, `403`, returns with the gate).
-   - `POST /auth/refresh`, `POST /auth/logout`, `POST /auth/logout-all`.
-   - `POST /auth/forgot-password` (always `202`, single-use reset code, never reveals account existence).
-   - `POST /auth/reset-password` (consumes the reset code, rotates the whole refresh family).
-   - `POST /auth/change-password` (authenticated, requires the current password).
-   - `GET /auth/me` (current user profile for session state).
+3. Contract ownership (no endpoint catalog here):
+   - This file does NOT enumerate endpoints. The contract lives in code (`<feature>/router.py` + `<feature>/schemas.py`) and is surfaced as OpenAPI at `/docs`. A duplicated list here would rot; only the behavior rules below are locked.
+   - Contract parity, both directions: every frontend feature MUST have backend support, and every backend capability the product relies on MUST be surfaced in the frontend. Shipping one side without the other fails the Definition of Done. New or changed error `code` values MUST be handled in the frontend copy table in the same change.
+   - Locked auth behaviors: registration creates the account without issuing a code yet (verification-mail gate deferred); login currently accepts unverified emails (`EMAIL_NOT_VERIFIED` + `403` returns with the gate); change-password rejects a reused password (`SAME_AS_CURRENT`, `400`).
    - Dev-only `POST /auth/dev/challenge-code` is allowed solely when `ENV=dev`: it issues a fresh verification/reset code for local development without SMTP and returns the plaintext code. It MUST 404 in any other environment and MUST never be called from production builds.
 4. Authorization:
    - Authentication != authorization. Every resource access checks ownership/role explicitly in service layer.
@@ -304,7 +298,7 @@ A task is done only when:
 4. ScyllaDB access goes through `cqlengine` Models + repositories; UUIDv7 PKs; Argon2id hashing; hybrid auth flows intact.
 5. `unit + integration + regression` tests added/updated and `uv run pytest -q` is green.
 6. SOLID review passes: thin routers, interface-injected services/repositories, no god classes.
-7. Docs updated: env vars, endpoints, and table/query rationale where changed.
+7. Docs updated: env vars, API contract (router/schemas/OpenAPI), and table/query rationale where changed.
 
 ## 14. Documentation and Code Language
 

@@ -190,6 +190,14 @@ async def test_change_password(client: AsyncClient) -> None:
     )
     assert bad.status_code == 401
 
+    same = await client.post(
+        "/auth/change-password",
+        json={"current_password": PASSWORD, "new_password": PASSWORD},
+        headers=headers,
+    )
+    assert same.status_code == 400
+    assert same.json()["code"] == "SAME_AS_CURRENT"
+
     good = await client.post(
         "/auth/change-password",
         json={"current_password": PASSWORD, "new_password": NEW_PASSWORD},

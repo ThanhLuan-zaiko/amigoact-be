@@ -32,6 +32,11 @@ class InvalidCredentialsError(DomainError):
     status = 401
 
 
+class SamePasswordError(DomainError):
+    code = "SAME_AS_CURRENT"
+    status = 400
+
+
 class EmailNotVerifiedError(DomainError):
     code = "EMAIL_NOT_VERIFIED"
     status = 403

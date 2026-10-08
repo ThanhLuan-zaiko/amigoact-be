@@ -142,6 +142,21 @@ async def test_dev_challenge_forbidden_outside_dev(
     assert response.json()["code"] == "NOT_FOUND"
 
 
+async def test_change_password_rejects_reused_password(
+    client: AsyncClient,
+) -> None:
+    """Reusing the current password fails closed with SAME_AS_CURRENT."""
+    access = await _register_verify_login(client, "samepass@example.com", "0398765432")
+    response = await client.post(
+        "/auth/change-password",
+        json={"current_password": PASSWORD, "new_password": PASSWORD},
+        headers={"Authorization": f"Bearer {access}"},
+    )
+    assert response.status_code == 400
+    assert set(response.json().keys()) == {"code", "message"}
+    assert response.json()["code"] == "SAME_AS_CURRENT"
+
+
 async def test_unknown_refresh_token_is_plain_401(client: AsyncClient) -> None:
     """Unknown refresh digests fail closed without touching live sessions."""
     await _register_verify_login(client, "burn@example.com", "0898765432")

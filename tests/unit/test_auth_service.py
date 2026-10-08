@@ -27,6 +27,7 @@ from core.exceptions import (
     InvalidCodeError,
     InvalidCredentialsError,
     PhoneTakenError,
+    SamePasswordError,
     TooManyRequestsError,
 )
 from core.security import decode_access_token
@@ -296,6 +297,18 @@ def test_uuid7_primary_keys() -> None:
     from uuid import UUID
 
     assert UUID(str(uuid_utils.uuid7())).version == 7
+
+
+def test_change_password_rejects_same_password() -> None:
+    service, parts = _service()
+    pair = _verified_pair(service, parts)
+    user = parts["users"].get_by_email(EMAIL)
+    from core.security import hash_token as digest
+
+    with pytest.raises(SamePasswordError):
+        service.change_password(
+            user.id, PASSWORD, PASSWORD, digest(pair.refresh_token)
+        )
 
 
 def test_change_password_spares_current_session() -> None:

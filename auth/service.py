@@ -25,6 +25,7 @@ from core.exceptions import (
     InvalidCredentialsError,
     NotFoundError,
     PhoneTakenError,
+    SamePasswordError,
     TooManyRequestsError,
 )
 from core.ids import uuid7
@@ -268,6 +269,10 @@ class AuthService:
             raise NotFoundError("User not found.")
         if not self._hasher.verify(user.password_hash, current_password):
             raise InvalidCredentialsError("Current password is incorrect.")
+        if self._hasher.verify(user.password_hash, new_password):
+            raise SamePasswordError(
+                "New password must differ from the current password."
+            )
         now = utcnow()
         self._users.set_password_hash(user.id, self._hasher.hash(new_password), now)
         self._refresh_tokens.revoke_all_for_user(
