@@ -184,7 +184,10 @@ class User(models.Model):
    - Store only `ph.hash(password)` in `password_hash`. Never store or log plaintext passwords.
    - Verify with `ph.verify(stored_hash, candidate)`; handle `VerifyMismatchError` as invalid credentials with a generic message.
    - If `ph.check_needs_rehash(stored_hash)` is true on successful login, rehash and persist via repository.
-   - Enforce password policy in Pydantic schemas (min length >= 12, reject top breached/common passwords), not in the hasher.
+   - Enforce credential policy in Pydantic schemas (not in the hasher):
+     - Password: minimum 8 characters with at least one uppercase letter, one lowercase letter, one digit, and one special character.
+     - Phone (Vietnam): required, matches `^0(3|5|7|8|9)\d{8}$`, and rejects obviously fake numbers (all identical digits, strictly sequential ascending/descending runs).
+     - Email and phone must both be unique (`EMAIL_TAKEN`, `PHONE_TAKEN` with `409`).
    - All hashing utils require unit tests: correct verify, wrong-password rejection, rehash path, timing-safe behavior.
 
 ## 8. Authentication: Hybrid
@@ -202,8 +205,16 @@ class User(models.Model):
    - Storage: SHA-256 hash only in ScyllaDB (e.g. `auth_refresh_tokens` table with `token_hash`, `user_id`, `expires_at`, `revoked_at`, `rotated_from_jti`). Compare hashes with `hmac.compare_digest`.
    - Lifetime: e.g. 7–30 days, absolute expiry + rotation on every use. Detect reuse and revoke the whole token family on suspected theft.
 3. Required endpoints/flows:
-   - `POST /auth/login`, `POST /auth/refresh`, `POST /auth/logout`, `POST /auth/logout-all`.
-   - Password reset and email verification use separate single-use opaque tokens with expiry and hashing, not the refresh table.
+   - `POST /auth/register` (`201`, creates an account; the verification-mail gate is deferred, so no code is issued here yet).
+   - `POST /auth/verify-email` (consumes the code, marks `users.email_verified_at`; kept functional for the deferred gate).
+   - `POST /auth/resend-verification` (rate-limited reissue; never reveals whether the email exists).
+   - `POST /auth/login` (currently accepts unverified emails; rejecting them with `EMAIL_NOT_VERIFIED`, `403`, returns with the gate).
+   - `POST /auth/refresh`, `POST /auth/logout`, `POST /auth/logout-all`.
+   - `POST /auth/forgot-password` (always `202`, single-use reset code, never reveals account existence).
+   - `POST /auth/reset-password` (consumes the reset code, rotates the whole refresh family).
+   - `POST /auth/change-password` (authenticated, requires the current password).
+   - `GET /auth/me` (current user profile for session state).
+   - Dev-only `POST /auth/dev/challenge-code` is allowed solely when `ENV=dev`: it issues a fresh verification/reset code for local development without SMTP and returns the plaintext code. It MUST 404 in any other environment and MUST never be called from production builds.
 4. Authorization:
    - Authentication != authorization. Every resource access checks ownership/role explicitly in service layer.
    - Roles/scopes come from server-side user record, not blindly trusted claims, except short-lived cached roles with tests.

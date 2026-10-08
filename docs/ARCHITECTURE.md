@@ -46,15 +46,15 @@ Ví dụ bảng:
 
 ## 5. UUIDv7 và Argon2id
 
-- UUIDv7 tạo ở application (`uuid_utils.uuid7()`), serialize JSON dạng chuỗi thường. Cấm `uuid4` cho PK, cấm số tự tăng.
-- Argon2id tập trung ở `core/hashing.py` (`time_cost=3`, `memory_cost=65536`, `parallelism=4`, `hash_len=32`, `salt_len=16`). Lưu hash, verify bằng `ph.verify`, tự rehash khi cần. Policy mật khẩu (dài ≥ 12, chặn mật khẩu phổ biến) nằm ở schema.
+- UUIDv7 tạo ở application (`core/ids.py` bọc `uuid_utils.uuid7()` rồi chuẩn hóa sang `uuid.UUID` vì driver chỉ nhận stdlib), serialize JSON dạng chuỗi thường. Cấm `uuid4` cho PK, cấm số tự tăng.
+- Argon2id tập trung ở `core/hashing.py` (`time_cost=3`, `memory_cost=65536`, `parallelism=4`, `hash_len=32`, `salt_len=16`). Lưu hash, verify bằng `ph.verify`, tự rehash khi cần. Policy tài khoản nằm ở schema: mật khẩu ≥ 8 ký tự gồm hoa, thường, số, ký tự đặc biệt; phone di động Việt Nam `^0(3|5|7|8|9)\d{8}$` và chặn số giả (toàn số giống nhau, chuỗi liên tiếp); `email` và `phone` đều duy nhất.
 
 ## 6. Xác thực hybrid
 
 - Access: JWT 5–15 phút, header `Bearer`, claims `sub/iat/exp/jti/type=access/scopes`.
 - Refresh: opaque 256-bit, cookie `HttpOnly; Secure; SameSite=Lax`, DB chỉ lưu SHA-256, so sánh bằng `hmac.compare_digest`, xoay vòng mỗi lần dùng, phát hiện tái sử dụng thì thu hồi cả họ token.
-- Endpoint bắt buộc: `POST /auth/login`, `POST /auth/refresh`, `POST /auth/logout`, `POST /auth/logout-all`.
-- Reset mật khẩu/xác minh email dùng token opaque đơn lẻ khác bảng refresh.
+- Endpoint: `POST /auth/register` (`201`), `POST /auth/verify-email`, `POST /auth/resend-verification` (`202`), `POST /auth/login`, `POST /auth/refresh`, `POST /auth/logout`/`logout-all` (`204`), `POST /auth/forgot-password` (`202`), `POST /auth/reset-password`, `POST /auth/change-password`, `GET /auth/me`. Riêng `dev` có thêm `POST /auth/dev/challenge-code`. Cửa chặn email chưa xác minh ở login (`EMAIL_NOT_VERIFIED`) đang tạm gỡ, bật lại sau.
+- Xác minh email và reset mật khẩu dùng mã số 6 chữ số đơn lẻ (lưu SHA-256 ở `email_verifications`/`password_resets`), khác bảng refresh.
 - Phân quyền thực hiện ở service theo bản ghi server, không tin claims một cách mù quáng.
 
 ## 7. Lỗi, phân trang, API

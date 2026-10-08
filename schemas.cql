@@ -23,7 +23,7 @@
 //   Ephemeral coordination that is typically kept in RAM is persisted instead:
 //   `idempotency_keys` (safe retries), `auth_rate_limits` (durable buckets),
 //   `job_leases` (single-worker background jobs).
-// - 73 tables total: 6 auth + 8 org + 9 rbac + 3 student + 9 activity
+// - 76 tables total: 9 auth + 8 org + 9 rbac + 3 student + 9 activity
 //   + 6 registration + 8 attendance + 4 hours + 4 certificate + 4 media
 //   + 3 notification + 4 report + 2 review + 3 durability.
 // =============================================================================
@@ -44,6 +44,7 @@ CREATE TABLE IF NOT EXISTS users (
     phone text,
     password_hash text,
     full_name text,
+    email_verified_at timestamp,
     status text, // active | suspended | deleted
     created_at timestamp,
     updated_at timestamp
@@ -51,6 +52,11 @@ CREATE TABLE IF NOT EXISTS users (
 
 CREATE TABLE IF NOT EXISTS users_by_email (
     email text PRIMARY KEY,
+    user_id uuid
+);
+
+CREATE TABLE IF NOT EXISTS users_by_phone (
+    phone text PRIMARY KEY,
     user_id uuid
 );
 
@@ -62,6 +68,24 @@ CREATE TABLE IF NOT EXISTS auth_refresh_tokens (
     revoked_at timestamp,
     rotated_from text,
     created_at timestamp
+);
+
+CREATE TABLE IF NOT EXISTS refresh_tokens_by_user (
+    user_id uuid,
+    token_hash text,
+    family_id uuid,
+    expires_at timestamp,
+    revoked_at timestamp,
+    PRIMARY KEY ((user_id), token_hash)
+);
+
+CREATE TABLE IF NOT EXISTS refresh_tokens_by_family (
+    family_id uuid,
+    token_hash text,
+    user_id uuid,
+    expires_at timestamp,
+    revoked_at timestamp,
+    PRIMARY KEY ((family_id), token_hash)
 );
 
 CREATE TABLE IF NOT EXISTS auth_sessions (

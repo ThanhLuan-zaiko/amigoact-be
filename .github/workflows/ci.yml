@@ -249,7 +249,12 @@ jobs:
           python3 - <<'EOF'
           import json, os, sys
           needs = json.loads(os.environ["NEEDS_JSON"])
-          failed = {k: v for k, v in needs.items() if v != "success"}
+          def result_of(entry):
+              if isinstance(entry, dict):
+                  return entry.get("result", "unknown")
+              return entry
+          failed = {k: result_of(v) for k, v in needs.items()
+                    if result_of(v) != "success"}
           if failed:
               print("Failing/skipped gates:")
               for k, v in failed.items():

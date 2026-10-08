@@ -18,6 +18,45 @@ class ScyllaStatus:
     error: str = ""
 
 
+def _ensure_reactor_compat() -> None:
+    """Seed the expected asyncore reactor with the asyncio implementation.
+
+    The driver probes gevent/eventlet/libev/asyncore at import time and
+    raises DependencyException when none load. Python 3.12 removed the
+    stdlib asyncore module, so map the expected attribute to the bundled
+    AsyncioConnection before cassandra.cluster is imported anywhere.
+    """
+    try:
+        from cassandra.io import asyncorereactor  # noqa: F401
+
+        return
+    except Exception:
+        pass
+    try:
+        from cassandra.io.asyncioreactor import AsyncioConnection
+    except Exception:
+        return
+    alias = types.ModuleType("cassandra.io.asyncorereactor")
+    alias.AsyncoreConnection = AsyncioConnection
+    sys.modules["cassandra.io.asyncorereactor"] = alias
+
+
+_ensure_reactor_compat()
+
+
+def connect(hosts: list[str], keyspace: str, local_dc: str = "") -> None:
+    """Register the single cqlengine connection for repository access."""
+    from cassandra.cqlengine import connection
+    from cassandra.policies import DCAwareRoundRobinPolicy
+
+    options: dict[str, object] = {"protocol_version": 4}
+    if local_dc:
+        options["load_balancing_policy"] = DCAwareRoundRobinPolicy(
+            local_dc=local_dc
+        )
+    connection.setup(hosts, keyspace, **options)
+
+
 def _load_cluster_class() -> object | None:
     """Import Cluster, aliasing the asyncio reactor when C extensions miss."""
     try:

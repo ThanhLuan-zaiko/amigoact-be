@@ -8,10 +8,12 @@ from contextlib import asynccontextmanager
 from typing import Any
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.routing import APIRoute
 
 from core.config import get_settings
-from core.database import check_scylla_connection
+from core.database import check_scylla_connection, connect
+from core.exceptions import DomainError, domain_error_handler
 
 logger = logging.getLogger("amigoact")
 
@@ -70,11 +72,31 @@ async def lifespan(app: FastAPI):
         )
     for line in _describe_routes(app):
         logger.info("Route: %s", line)
+    try:
+        connect(
+            settings.scylla_hosts_list,
+            settings.scylla_keyspace,
+            settings.scylla_datacenter,
+        )
+    except Exception as exc:
+        logger.error("cqlengine connection setup failed: %s", exc)
     yield
     logger.info("Shutdown complete.")
 
 
 app: FastAPI = FastAPI(title="AmigoACT API", lifespan=lifespan)
+app.add_exception_handler(DomainError, domain_error_handler)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=get_settings().frontend_urls_list,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+from auth.router import router as auth_router  # noqa: E402
+
+app.include_router(auth_router)
 
 
 @app.get("/")
