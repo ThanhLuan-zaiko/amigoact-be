@@ -9,11 +9,12 @@ from typing import Any
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.routing import APIRoute
+from fastapi.routing import APIRoute, APIWebSocketRoute
 
 from core.config import get_settings
 from core.database import check_scylla_connection, connect
 from core.exceptions import DomainError, domain_error_handler
+from core.realtime import ConnectionManager
 
 logger = logging.getLogger("amigoact")
 
@@ -24,9 +25,14 @@ def _describe_routes(app: FastAPI) -> list[str]:
     """Return sorted 'METHOD /path' lines for every registered route."""
     lines: set[str] = set()
     for route in app.routes:
-        if isinstance(route, APIRoute):
-            methods = ",".join(sorted(route.methods))
-            lines.add(f"{methods} {route.path}")
+        # Included routers mount lazily; descend to their original routes.
+        children = getattr(getattr(route, "original_router", None), "routes", [route])
+        for child in children:
+            if isinstance(child, APIRoute):
+                methods = ",".join(sorted(child.methods))
+                lines.add(f"{methods} {child.path}")
+            elif isinstance(child, APIWebSocketRoute):
+                lines.add(f"WS {child.path}")
     return sorted(lines)
 
 
@@ -80,6 +86,7 @@ async def lifespan(app: FastAPI):
         )
     except Exception as exc:
         logger.error("cqlengine connection setup failed: %s", exc)
+    app.state.ws_manager = ConnectionManager()
     yield
     logger.info("Shutdown complete.")
 
@@ -96,9 +103,11 @@ app.add_middleware(
 
 from auth.router import router as auth_router  # noqa: E402
 from orgs.router import router as orgs_router  # noqa: E402
+from realtime.router import router as realtime_router  # noqa: E402
 
 app.include_router(auth_router)
 app.include_router(orgs_router)
+app.include_router(realtime_router)
 
 
 @app.get("/")

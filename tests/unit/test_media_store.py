@@ -8,7 +8,7 @@ from uuid import UUID
 import pytest
 import uuid_utils
 
-from core.media import LocalMediaStore, extension_for, media_kind
+from core.media import LocalMediaStore, extension_for, media_kind, normalize_image
 
 
 def _uid() -> UUID:
@@ -52,3 +52,41 @@ def test_resolve_rejects_escape(tmp_path: Path) -> None:
         store.resolve("../outside.txt")
     with pytest.raises(ValueError):
         store.resolve("orgs/../../evil.txt")
+
+
+def _encode(fmt: str, mode: str = "RGB") -> bytes:
+    from io import BytesIO
+
+    from PIL import Image
+
+    if fmt == "HEIF":
+        import pillow_heif
+
+        pillow_heif.register_heif_opener()
+    buf = BytesIO()
+    Image.new(mode, (8, 8), (200, 30, 30, 128) if "A" in mode else (200, 30, 30)).save(
+        buf, format=fmt
+    )
+    return buf.getvalue()
+
+
+def test_normalize_image_passthrough_and_transcode() -> None:
+    jpeg = _encode("JPEG")
+    assert normalize_image(jpeg, "image/jpeg") == ("image/jpeg", jpeg)
+
+    mime, out = normalize_image(_encode("TIFF"), "image/tiff")
+    assert mime == "image/jpeg"
+    assert out.startswith(b"\xff\xd8")
+
+    mime, out = normalize_image(_encode("TIFF", "RGBA"), "image/tiff")
+    assert mime == "image/png"
+    assert out.startswith(b"\x89PNG")
+
+
+def test_normalize_image_heic_and_undecodable() -> None:
+    mime, out = normalize_image(_encode("HEIF"), "image/heic")
+    assert mime == "image/jpeg"
+    assert out.startswith(b"\xff\xd8")
+
+    junk = b"not-an-image"
+    assert normalize_image(junk, "image/heic") == ("image/heic", junk)

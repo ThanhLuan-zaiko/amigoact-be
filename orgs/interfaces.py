@@ -81,6 +81,7 @@ class MediaRepository(ABC):
         mime: str,
         size_bytes: int,
         now: datetime,
+        role: str = "gallery",
     ) -> MediaAsset:
         """Insert the metadata row plus the owner feed row."""
 
@@ -91,6 +92,10 @@ class MediaRepository(ABC):
     @abstractmethod
     def get_asset(self, asset_id: UUID) -> MediaAsset | None:
         """Load one asset by primary key."""
+
+    @abstractmethod
+    def set_role(self, asset_id: UUID, role: str) -> MediaAsset | None:
+        """Update the gallery/cover/logo role, return the fresh row."""
 
     @abstractmethod
     def delete_asset(self, asset_id: UUID) -> MediaAsset | None:

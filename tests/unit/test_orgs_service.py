@@ -9,8 +9,15 @@ from uuid import UUID
 
 import pytest
 
-from core.exceptions import InvalidBusinessProfileError, SlugTakenError
-from orgs.interfaces import OrgRepository
+from core.exceptions import (
+    ForbiddenError,
+    InvalidBusinessProfileError,
+    InvalidMediaRoleError,
+    NotFoundError,
+    SlugTakenError,
+)
+from core.media import MediaStore
+from orgs.interfaces import MediaRepository, OrgRepository
 from orgs.service import OrgService
 
 
@@ -84,6 +91,63 @@ class FakeOrgs(OrgRepository):
         self.slugs.pop(org.slug, None)
         self.members.pop(org_id, None)
         return True
+
+
+class FakeMedia(MediaRepository):
+    def __init__(self) -> None:
+        self.assets: dict[UUID, Any] = {}
+
+    def create_asset(self, asset_id, org_id, file_url, mime, size_bytes, now, role="gallery"):  # noqa: ANN001, ANN202
+        row = SimpleNamespace(
+            asset_id=asset_id, owner_id=org_id, file_url=file_url,
+            mime=mime, size_bytes=size_bytes, role=role, created_at=now,
+        )
+        self.assets[asset_id] = row
+        return row
+
+    def list_by_org(self, org_id):  # noqa: ANN001, ANN202
+        return [a for a in self.assets.values() if a.owner_id == org_id]
+
+    def get_asset(self, asset_id):  # noqa: ANN001, ANN202
+        return self.assets.get(asset_id)
+
+    def set_role(self, asset_id, role):  # noqa: ANN001, ANN202
+        row = self.assets.get(asset_id)
+        if row is None:
+            return None
+        row.role = role
+        return row
+
+    def delete_asset(self, asset_id):  # noqa: ANN001, ANN202
+        return self.assets.pop(asset_id, None)
+
+    def known_org_ids(self):  # noqa: ANN001, ANN202
+        return {str(a.owner_id) for a in self.assets.values()}
+
+
+class FakeStore(MediaStore):
+    def save(self, org_id, media_id, filename, content):  # noqa: ANN001, ANN202
+        return f"orgs/{org_id}/{media_id}"
+
+    def save_typed(self, org_id, media_id, mime, filename, content):  # noqa: ANN001, ANN202
+        return f"orgs/{org_id}/{media_id}"
+
+    def resolve(self, relative_path):  # noqa: ANN001, ANN202
+        raise ValueError("no disk")
+
+    def delete_file(self, relative_path):  # noqa: ANN001, ANN202
+        return False
+
+    def delete_org_dir(self, org_id):  # noqa: ANN001, ANN202
+        return False
+
+    def sweep_orphans(self, known_org_ids):  # noqa: ANN001, ANN202
+        return 0
+
+
+def _media_service() -> tuple[OrgService, FakeOrgs, FakeMedia]:
+    orgs, media = FakeOrgs(), FakeMedia()
+    return OrgService(orgs, media, FakeStore()), orgs, media
 
 
 def _owner() -> UUID:
@@ -165,3 +229,102 @@ def test_restore_live_org_rejected() -> None:
     created = service.create_org(owner, "Club A", "club-a", "", "club")
     with pytest.raises(InvalidBusinessProfileError):
         service.restore_org(created.id, owner)
+
+
+def test_upload_media_defaults_to_gallery() -> None:
+    service, _, _ = _media_service()
+    owner = _owner()
+    org = service.create_org(owner, "Club A", "club-a", "", "club")
+    snap = service.upload_media(org.id, owner, "a.png", "image/png", b"1" * 10)
+    assert snap.kind == "image"
+    assert snap.role == "gallery"
+
+
+def test_upload_cover_demotes_previous_cover() -> None:
+    service, _, media = _media_service()
+    owner = _owner()
+    org = service.create_org(owner, "Club A", "club-a", "", "club")
+    first = service.upload_media(
+        org.id, owner, "a.png", "image/png", b"1" * 10, "cover"
+    )
+    second = service.upload_media(
+        org.id, owner, "b.png", "image/png", b"1" * 10, "cover"
+    )
+    roles = {a.asset_id: a.role for a in media.list_by_org(org.id)}
+    assert roles[first.id] == "gallery"
+    assert roles[second.id] == "cover"
+
+
+def test_brand_roles_are_image_only_and_owner_only() -> None:
+    service, orgs, _ = _media_service()
+    owner, member = _owner(), _owner()
+    org = service.create_org(owner, "Club A", "club-a", "", "club")
+    orgs.members[org.id].add(member)
+    with pytest.raises(InvalidMediaRoleError):
+        service.upload_media(
+            org.id, owner, "v.mp4", "video/mp4", b"1" * 10, "cover"
+        )
+    with pytest.raises(InvalidMediaRoleError):
+        service.upload_media(
+            org.id, owner, "a.png", "image/png", b"1" * 10, "weird"
+        )
+    with pytest.raises(ForbiddenError):
+        service.upload_media(
+            org.id, member, "a.png", "image/png", b"1" * 10, "logo"
+        )
+    member_gallery = service.upload_media(
+        org.id, member, "a.png", "image/png", b"1" * 10
+    )
+    assert member_gallery.role == "gallery"
+
+
+def test_set_media_role_owner_only_with_demotion() -> None:
+    service, _, media = _media_service()
+    owner, stranger = _owner(), _owner()
+    org = service.create_org(owner, "Club A", "club-a", "", "club")
+    one = service.upload_media(org.id, owner, "a.png", "image/png", b"1" * 10)
+    two = service.upload_media(org.id, owner, "b.png", "image/png", b"1" * 10)
+
+    with pytest.raises(ForbiddenError):
+        service.set_media_role(org.id, stranger, one.id, "logo")
+    with pytest.raises(NotFoundError):
+        service.set_media_role(org.id, owner, _owner(), "logo")
+
+    assert service.set_media_role(org.id, owner, one.id, "logo").role == "logo"
+    assert service.set_media_role(org.id, owner, two.id, "logo").role == "logo"
+    assert media.get_asset(one.id).role == "gallery"
+    assert media.get_asset(two.id).role == "logo"
+    assert service.set_media_role(org.id, owner, two.id, "gallery").role == "gallery"
+
+
+def test_set_media_role_on_video_rejected() -> None:
+    service, _, _ = _media_service()
+    owner = _owner()
+    org = service.create_org(owner, "Club A", "club-a", "", "club")
+    clip = service.upload_media(org.id, owner, "v.mp4", "video/mp4", b"1" * 10)
+    with pytest.raises(InvalidMediaRoleError):
+        service.set_media_role(org.id, owner, clip.id, "cover")
+
+
+def test_list_media_surfaces_role() -> None:
+    service, _, _ = _media_service()
+    owner = _owner()
+    org = service.create_org(owner, "Club A", "club-a", "", "club")
+    service.upload_media(org.id, owner, "a.png", "image/png", b"1" * 10, "cover")
+    listed = service.list_media(org.id, owner)
+    assert listed[0].role == "cover"
+
+
+def test_delete_all_media_owner_only() -> None:
+    service, _, media = _media_service()
+    owner, stranger = _owner(), _owner()
+    org = service.create_org(owner, "Club A", "club-a", "", "club")
+    service.upload_media(org.id, owner, "a.png", "image/png", b"1" * 10)
+    service.upload_media(org.id, owner, "b.png", "image/png", b"1" * 10)
+
+    with pytest.raises(ForbiddenError):
+        service.delete_all_media(org.id, stranger)
+
+    assert service.delete_all_media(org.id, owner) == 2
+    assert media.list_by_org(org.id) == []
+    assert service.delete_all_media(org.id, owner) == 0

@@ -87,8 +87,19 @@ Mọi cấu hình nằm trong `core/config.py` (dùng `pydantic-settings`), đ�
 | `MEDIA_ROOT` | Thư mục gốc chứa tệp media org (`<root>/orgs/<org_id>/...`, đã gitignore, không commit) | `./media` |
 | `MEDIA_MAX_IMAGE_MB` | Dung lượng ảnh tối đa (JPG, PNG, WebP, GIF) | `10` |
 | `MEDIA_MAX_VIDEO_MB` | Dung lượng video tối đa (MP4, WebM, MOV) | `100` |
+| `WS_TICKET_TTL_SECONDS` | Tuổi thọ ticket WebSocket một lần (`POST /ws/tickets`) | `60` |
+| `WS_HEARTBEAT_SECONDS` | Chu kỳ server gửi `ping.v1` qua socket | `25` |
+| `WS_PONG_TIMEOUT_SECONDS` | Thời gian chờ `pong.v1` của client trước khi đóng `4408` | `10` |
 
 Không hard-code host, port, secret trong mã nguồn. Tài liệu biến mới phải cập nhật tại đây.
+
+## Realtime (`realtime/`)
+
+WebSocket xác thực bằng ticket một lần: `POST /ws/tickets` (Bearer JWT) rồi
+mở `GET /ws?ticket=<one-time-ticket>`. Envelope JSON `{"type","data"}`,
+heartbeat `ping.v1`/`pong.v1`, close code `4401`/`4403`/`4400`/`4408`.
+Kênh: `notifications:{user_id}`, `attendance:{activity_id}`,
+`activities:{org_id}`. Chi tiết: `docs/REALTIME.md`.
 
 ## Xác thực (`auth/`)
 

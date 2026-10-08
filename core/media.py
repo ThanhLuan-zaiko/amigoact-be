@@ -16,6 +16,21 @@ IMAGE_MIMES = {
     "image/png": ".png",
     "image/webp": ".webp",
     "image/gif": ".gif",
+    "image/avif": ".avif",
+    "image/bmp": ".bmp",
+    "image/tiff": ".tiff",
+    "image/heic": ".heic",
+    "image/heif": ".heif",
+}
+
+# Browsers decode these natively; anything else in IMAGE_MIMES gets
+# transcoded on upload so galleries render everywhere.
+_WEB_SAFE_IMAGES = {
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+    "image/gif",
+    "image/avif",
 }
 
 VIDEO_MIMES = {
@@ -48,6 +63,34 @@ def extension_for(mime: str, filename: str) -> str | None:
     if suffix in MEDIA_MIMES.values():
         return suffix
     return None
+
+
+def normalize_image(content: bytes, mime: str) -> tuple[str, bytes]:
+    """Transcode non-web-safe images (HEIC, TIFF, BMP...) to jpeg/png bytes.
+
+    Browser-safe formats pass through untouched (keeps GIF animation,
+    avoids recompressing jpeg). Decode failure returns the input so the
+    upload still succeeds and stores the original bytes."""
+    clean = mime.split(";")[0].strip().lower()
+    if clean in _WEB_SAFE_IMAGES:
+        return clean, content
+    try:
+        from io import BytesIO
+
+        import pillow_heif
+        from PIL import Image, ImageOps
+
+        pillow_heif.register_heif_opener()
+        img = ImageOps.exif_transpose(Image.open(BytesIO(content)))
+        has_alpha = img.mode in ("RGBA", "LA", "PA") or "transparency" in img.info
+        out = BytesIO()
+        if has_alpha:
+            img.save(out, "PNG")
+            return "image/png", out.getvalue()
+        img.convert("RGB").save(out, "JPEG", quality=90)
+        return "image/jpeg", out.getvalue()
+    except Exception:
+        return clean, content
 
 
 class MediaStore(ABC):

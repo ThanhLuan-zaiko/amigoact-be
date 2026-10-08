@@ -144,6 +144,7 @@ class CqlMediaRepository(MediaRepository):
         mime: str,
         size_bytes: int,
         now: datetime,
+        role: str = "gallery",
     ) -> MediaAsset:
         row = MediaAsset.create(
             asset_id=asset_id,
@@ -152,6 +153,7 @@ class CqlMediaRepository(MediaRepository):
             file_url=file_url,
             mime=mime,
             size_bytes=size_bytes,
+            role=role,
             created_at=now,
         )
         MediaByOwner.create(
@@ -174,6 +176,12 @@ class CqlMediaRepository(MediaRepository):
 
     def get_asset(self, asset_id: UUID) -> MediaAsset | None:
         return MediaAsset.objects(asset_id=asset_id).first()
+
+    def set_role(self, asset_id: UUID, role: str) -> MediaAsset | None:
+        if self.get_asset(asset_id) is None:
+            return None
+        MediaAsset.objects(asset_id=asset_id).update(role=role)
+        return self.get_asset(asset_id)
 
     def delete_asset(self, asset_id: UUID) -> MediaAsset | None:
         row = self.get_asset(asset_id)

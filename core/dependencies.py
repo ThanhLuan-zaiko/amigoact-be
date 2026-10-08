@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 from uuid import UUID
 
-from fastapi import Depends
+from fastapi import Depends, WebSocket
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from core.config import Settings, get_settings
@@ -16,7 +16,9 @@ from core.security import AuthTokenError, decode_access_token
 
 if TYPE_CHECKING:
     from auth.service import AuthService
+    from core.realtime import ConnectionManager
     from orgs.service import OrgService
+    from realtime.service import RealtimeService
 
 _bearer = HTTPBearer(auto_error=False)
 
@@ -85,6 +87,44 @@ def get_media_store(settings: Settings = Depends(get_settings)) -> LocalMediaSto
     from core.media import LocalMediaStore
 
     return LocalMediaStore(settings.media_root)
+
+
+def get_connection_manager(websocket: WebSocket) -> ConnectionManager:
+    """App-scoped ephemeral socket registry, created lazily once."""
+    from core.realtime import ConnectionManager
+
+    manager = getattr(websocket.app.state, "ws_manager", None)
+    if manager is None:
+        manager = ConnectionManager()
+        websocket.app.state.ws_manager = manager
+    return manager
+
+
+def get_realtime_service(
+    settings: Settings = Depends(get_settings),
+) -> RealtimeService:
+    """Build one RealtimeService per ticket/socket request."""
+    from orgs.repository import CqlOrgRepository
+    from realtime.interfaces import OrgMembership
+    from realtime.repository import CqlWsTicketStore
+    from realtime.service import RealtimeService
+
+    class _OrgMembership(OrgMembership):
+        """Channel ACL reads delegate to the orgs membership table."""
+
+        def __init__(self, orgs: CqlOrgRepository) -> None:
+            self._orgs = orgs
+
+        def is_member(self, org_id: UUID, user_id: UUID) -> bool:
+            return self._orgs.is_member(org_id, user_id)
+
+    orgs = CqlOrgRepository(settings.scylla_keyspace)
+    return RealtimeService(
+        tickets=CqlWsTicketStore(settings.scylla_keyspace),
+        membership=_OrgMembership(orgs),
+        attendance=None,
+        ticket_ttl_seconds=settings.ws_ticket_ttl_seconds,
+    )
 
 
 def get_current_user(

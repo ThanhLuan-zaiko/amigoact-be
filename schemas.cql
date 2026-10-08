@@ -696,6 +696,7 @@ CREATE TABLE IF NOT EXISTS media_assets (
     width int,
     height int,
     size_bytes bigint,
+    role text, // gallery | cover | logo (one cover and one logo per owner)
     created_at timestamp
 );
 
@@ -861,3 +862,18 @@ CREATE TABLE IF NOT EXISTS job_leases (
     acquired_at timestamp,
     expires_at timestamp // acquire with LWT: IF status = 'free' OR expired
 );
+
+// -----------------------------------------------------------------------------
+// 15. REALTIME — WEBSOCKET HANDSHAKE TICKETS (1 table)
+// One-time tickets bridge REST auth and the WS handshake (AGENTS.md §16):
+// browsers cannot set Authorization on the WS upgrade, so clients call
+// POST /ws/tickets then open /ws?ticket=<token>. Only the SHA-256 hash is
+// stored; rows self-expire via TTL and are consumed with DELETE IF EXISTS.
+// -----------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS ws_tickets (
+    ticket_hash text PRIMARY KEY,
+    user_id uuid,
+    expires_at timestamp,
+    created_at timestamp
+) WITH default_time_to_live = 300;

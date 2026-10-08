@@ -8,11 +8,17 @@ import os
 
 os.environ.setdefault("CQLENG_ALLOW_SCHEMA_MANAGEMENT", "1")
 
+import tempfile
+
 import pytest
 from httpx import ASGITransport, AsyncClient
 
 import core.database  # noqa: F401  (reactor compat shim must run first)
 from core.config import Settings, get_settings
+
+# Isolated media root: the test keyspace knows nothing about dev orgs, so
+# sharing ./media would let sweep_orphans wipe real dev uploads.
+os.environ["MEDIA_ROOT"] = tempfile.mkdtemp(prefix="amigoact-test-media-")
 
 
 TEST_KEYSPACE = "amigoact_test"
@@ -34,6 +40,7 @@ TABLES = [
     "members_by_user",
     "media_assets",
     "media_by_owner",
+    "ws_tickets",
 ]
 
 
@@ -72,6 +79,7 @@ def test_db() -> str:
 
     import auth.model as models
     import orgs.model as org_models
+    import realtime.model as realtime_models
 
     cluster = Cluster(
         ["127.0.0.1"],
@@ -105,6 +113,7 @@ def test_db() -> str:
         org_models.MemberByUser,
         org_models.MediaAsset,
         org_models.MediaByOwner,
+        realtime_models.WsTicket,
     ]
     saved = {model: model.__keyspace__ for model in targets}
     try:

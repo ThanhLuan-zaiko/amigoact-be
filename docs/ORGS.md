@@ -44,14 +44,23 @@ rác và khôi phục. Org không tồn tại trả `404`.
 
 | Thao tác | Endpoint | Ghi chú |
 |---|---|---|
-| Upload (thành viên) | `POST /orgs/{id}/media` (`multipart`, field `file`) | `201`, sai định dạng `415 UNSUPPORTED_MEDIA`, quá cỡ `413 MEDIA_TOO_LARGE` |
+| Upload (thành viên) | `POST /orgs/{id}/media` (`multipart`, field `file` + `role`) | `201`, sai định dạng `415 UNSUPPORTED_MEDIA`, quá cỡ `413 MEDIA_TOO_LARGE`, vai trò sai `400 INVALID_MEDIA_ROLE` |
+| Đặt vai trò (chủ org) | `PATCH /orgs/{id}/media/{media_id}` `{role}` | `200`, vai trò sai `400 INVALID_MEDIA_ROLE`, trái chủ `403` |
 | Danh sách (thành viên) | `GET /orgs/{id}/media` | Mới nhất trước |
 | Xóa tệp (chủ org) | `DELETE /orgs/{id}/media/{media_id}` | `204`, xóa cả bytes |
+| Xóa toàn bộ (chủ org) | `DELETE /orgs/{id}/media` | `204`, xóa mọi metadata + bytes của gallery |
 | Tải/xem tệp | `GET /media/orgs/{org_id}/{file}` | Công khai bằng UUID khó đoán, hỗ trợ `Range` |
 
-- Giới hạn: ảnh `MEDIA_MAX_IMAGE_MB` (mặc định 10: JPG, PNG, WebP, GIF),
-  video `MEDIA_MAX_VIDEO_MB` (mặc định 100: MP4, WebM, MOV). Đọc upload
-  chặn ở `max + 1` byte nên không nuốt RAM.
+- `role` nhận `gallery` (mặc định) | `cover` | `logo`. `cover`/`logo` chỉ
+  nhận ảnh và chỉ chủ org đặt được; mỗi org chỉ giữ một `cover` và một
+  `logo` — đánh dấu mới tự hạ vai trò cũ về `gallery`.
+- Giới hạn: ảnh `MEDIA_MAX_IMAGE_MB` (mặc định 10: JPG, PNG, WebP, GIF,
+  AVIF, BMP, TIFF, HEIC/HEIF), video `MEDIA_MAX_VIDEO_MB` (mặc định 100:
+  MP4, WebM, MOV). Đọc upload chặn ở `max + 1` byte nên không nuốt RAM.
+- Ảnh không web-safe (HEIC, TIFF, BMP…) được `normalize_image`
+  (Pillow + pillow-heif) transcode sang JPEG/PNG lúc upload — áp dụng
+  `exif_transpose`, giữ alpha bằng PNG. Định dạng web-safe đi qua nguyên
+  vẹn (GIF giữ animation). Decode lỗi thì giữ bytes gốc.
 - Layout đĩa: `<MEDIA_ROOT>/orgs/<org_id>/<media_id>.<ext>` — mỗi org đúng
   một thư mục, tên file là UUID nên không đụng độ và không lộ tên gốc.
 - ScyllaDB chỉ giữ metadata (`media_assets` + `media_by_owner` với
@@ -77,8 +86,8 @@ test (viết fake `MediaStore` như test media hiện tại). Đường dẫn t�
   xóa cứng nên slug được tái sử dụng.
 - `organization_members` + `members_by_user`: thành viên hai chiều, xóa
   cứng dọn cả hai phía.
-- `media_assets` + `media_by_owner`: metadata và feed mới-nhất-trước của
-  từng org.
+- `media_assets` + `media_by_owner`: metadata (`role` = `gallery`/`cover`/
+  `logo`) và feed mới-nhất-trước của từng org.
 
 ## 7. Quy tắc quyền
 
@@ -96,4 +105,5 @@ test (viết fake `MediaStore` như test media hiện tại). Đường dẫn t�
 - `tests/integration/test_orgs_db.py`: CRUD qua HTTP, upload `multipart`,
   phục vụ tệp, xóa cứng dọn thư mục đĩa thật.
 - `tests/regression/test_orgs_regression.py`: khóa hợp đồng thùng rác
-  (`deleted_at`, `ORG_DELETED`, `204` xóa cứng) và media (`kind`, mã lỗi).
+  (`deleted_at`, `ORG_DELETED`, `204` xóa cứng) và media (`kind`, `role`,
+  một `cover` duy nhất, mã lỗi `INVALID_MEDIA_ROLE`).

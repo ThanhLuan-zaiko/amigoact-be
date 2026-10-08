@@ -79,6 +79,7 @@ class MediaAsset(models.Model):
     width = columns.Integer(required=False)
     height = columns.Integer(required=False)
     size_bytes = columns.BigInt(required=True, default=0)
+    role = columns.Text(required=True, default="gallery")
     created_at = columns.DateTime(required=True)
 
 

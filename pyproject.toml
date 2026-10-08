@@ -9,10 +9,13 @@ dependencies = [
     "cassandra-driver>=3.30.1",
     "cryptography>=50.0.2",
     "fastapi>=0.142.4",
+    "pillow>=12.3.0",
+    "pillow-heif>=1.8.0",
     "pydantic-settings>=2.15.0",
     "pyjwt>=2.15.1",
     "python-multipart>=0.0.32",
     "uuid-utils>=1.0.0",
+    "websockets>=17.2",
 ]
 
 [dependency-groups]

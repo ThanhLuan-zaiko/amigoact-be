@@ -37,6 +37,9 @@ class Settings(BaseSettings):
     media_root: str = "./media"
     media_max_image_mb: int = 10
     media_max_video_mb: int = 100
+    ws_ticket_ttl_seconds: int = 60
+    ws_heartbeat_seconds: int = 25
+    ws_pong_timeout_seconds: int = 10
 
     @property
     def frontend_urls_list(self) -> list[str]:

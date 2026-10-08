@@ -62,6 +62,11 @@ class UnsupportedMediaError(DomainError):
     status = 415
 
 
+class InvalidMediaRoleError(DomainError):
+    code = "INVALID_MEDIA_ROLE"
+    status = 400
+
+
 class MediaTooLargeError(DomainError):
     code = "MEDIA_TOO_LARGE"
     status = 413

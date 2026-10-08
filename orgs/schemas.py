@@ -14,6 +14,7 @@ _TAX_PATTERN = re.compile(r"^\d{10}(-\d{3})?$")
 _CCCD_PATTERN = re.compile(r"^\d{12}$")
 
 OrgKind = Literal["organization", "club", "group", "business"]
+MediaRole = Literal["gallery", "cover", "logo"]
 
 
 def validate_slug(value: str) -> str:
@@ -103,12 +104,19 @@ class UpdateOrgRequest(BaseModel):
     description: Annotated[str, Field(max_length=500)] = ""
 
 
+class SetMediaRoleRequest(BaseModel):
+    """Owner marks one image as the org cover/logo, or clears it."""
+
+    role: MediaRole
+
+
 class MediaResponse(BaseModel):
     """One gallery row: metadata plus the public file URL."""
 
     id: UUID
     org_id: UUID
     kind: str = "image"
+    role: MediaRole = "gallery"
     mime: str
     size_bytes: int = 0
     file_url: str

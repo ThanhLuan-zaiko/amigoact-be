@@ -223,11 +223,11 @@ async def test_login_rate_limited(client: AsyncClient) -> None:
     assert response.json()["code"] == "TOO_MANY_REQUESTS"
 
 
-def test_rate_limiter_counts_hits() -> None:
+def test_rate_limiter_counts_hits(clean_tables: str) -> None:
+    """Counter increments per window; skips cleanly when Scylla is absent."""
     from auth.repository import CqlRateLimiter
-    from tests.conftest import TEST_KEYSPACE
 
-    limiter = CqlRateLimiter(TEST_KEYSPACE)
+    limiter = CqlRateLimiter(clean_tables)
     assert limiter.hit("probe:bucket", 60) == 1
     assert limiter.hit("probe:bucket", 60) == 2
     assert limiter.hit("probe:bucket", 60) == 3

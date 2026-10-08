@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, Response, UploadFile
+from fastapi import APIRouter, Depends, Form, Query, Response, UploadFile
 from fastapi.responses import FileResponse
 
 from core.config import Settings, get_settings
@@ -16,7 +16,13 @@ from core.dependencies import (
     get_org_service,
 )
 from core.exceptions import NotFoundError
-from orgs.schemas import CreateOrgRequest, MediaResponse, OrgResponse, UpdateOrgRequest
+from orgs.schemas import (
+    CreateOrgRequest,
+    MediaResponse,
+    OrgResponse,
+    SetMediaRoleRequest,
+    UpdateOrgRequest,
+)
 
 if TYPE_CHECKING:
     from core.media import LocalMediaStore
@@ -51,6 +57,7 @@ def _media_schema(item: MediaSnapshot) -> MediaResponse:
         id=item.id,
         org_id=item.org_id,
         kind=item.kind,  # type: ignore[arg-type]
+        role=item.role,  # type: ignore[arg-type]
         mime=item.mime,
         size_bytes=item.size_bytes,
         file_url=item.file_url,
@@ -134,17 +141,18 @@ def restore_org(
 async def upload_org_media(
     org_id: UUID,
     file: UploadFile,
+    role: Annotated[str, Form()] = "gallery",
     current: CurrentUser = Depends(get_current_user),
     service: OrgService = Depends(get_org_service),
     settings: Settings = Depends(get_settings),
 ) -> MediaResponse:
-    """Member uploads one image/video. Reads are capped past the max limit."""
+    """Member uploads one image/video; owner may flag cover/logo at once."""
     cap = max(settings.media_max_image_mb, settings.media_max_video_mb) * 1024 * 1024
     content = await file.read(cap + 1)
     return _media_schema(
         service.upload_media(
             org_id, current.id, file.filename or "upload",
-            file.content_type or "application/octet-stream", content,
+            file.content_type or "application/octet-stream", content, role,
         )
     )
 
@@ -157,6 +165,30 @@ def list_org_media(
 ) -> list[MediaResponse]:
     """Newest-first gallery for members of a live org."""
     return [_media_schema(item) for item in service.list_media(org_id, current.id)]
+
+
+@router.patch("/orgs/{org_id}/media/{media_id}", response_model=MediaResponse)
+def set_org_media_role(
+    org_id: UUID,
+    media_id: UUID,
+    body: SetMediaRoleRequest,
+    current: CurrentUser = Depends(get_current_user),
+    service: OrgService = Depends(get_org_service),
+) -> MediaResponse:
+    """Owner picks the cover/logo image; previous holder drops to gallery."""
+    return _media_schema(
+        service.set_media_role(org_id, current.id, media_id, body.role)
+    )
+
+
+@router.delete("/orgs/{org_id}/media", status_code=204)
+def delete_all_org_media(
+    org_id: UUID,
+    current: CurrentUser = Depends(get_current_user),
+    service: OrgService = Depends(get_org_service),
+) -> None:
+    """Owner wipes the whole org gallery: metadata rows plus bytes."""
+    service.delete_all_media(org_id, current.id)
 
 
 @router.delete("/orgs/{org_id}/media/{media_id}", status_code=204)

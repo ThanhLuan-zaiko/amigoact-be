@@ -15,6 +15,7 @@ Follow it strictly. Do not introduce patterns outside this document without upda
 - UUID generator: `uuid-utils` (`uuid_utils.uuid7()`).
 - JWT: `pyjwt` + `cryptography`.
 - Validation/settings: Pydantic v2 (`pydantic`, `pydantic-settings`).
+- Image normalization: `Pillow` + `pillow-heif` (HEIC decode) — transcode non-web-safe uploads to jpeg/png in `core/media.py` only. No other image libs; video transcode is out of scope until an ffmpeg port exists.
 - Tests: `pytest`, `pytest-asyncio`, `httpx`.
 
 Do not add alternatives (SQLAlchemy, Alembic, bcrypt, passlib-bcrypt, `uuid4` PKs, Django ORM, Tortoise ORM).

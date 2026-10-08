@@ -10,20 +10,23 @@ from uuid import UUID
 from core.exceptions import (
     ForbiddenError,
     InvalidBusinessProfileError,
+    InvalidMediaRoleError,
     MediaTooLargeError,
     NotFoundError,
     OrgDeletedError,
     UnsupportedMediaError,
 )
-from core.media import MediaStore, media_kind
+from core.media import MediaStore, media_kind, normalize_image
 from core.security import utcnow
 from orgs.interfaces import MediaRepository, OrgRepository
 from orgs.repository import generate_org_id
 
 if TYPE_CHECKING:
-    from orgs.model import Organization
+    from orgs.model import MediaAsset, Organization
 
 _ORG_KINDS = ("organization", "club", "group", "business")
+_MEDIA_ROLES = ("gallery", "cover", "logo")
+_BRAND_ROLES = ("cover", "logo")
 
 
 @dataclass(frozen=True)
@@ -54,6 +57,7 @@ class MediaSnapshot:
     id: UUID
     org_id: UUID
     kind: str
+    role: str
     mime: str
     size_bytes: int
     file_url: str
@@ -212,8 +216,46 @@ class OrgService:
             raise InvalidBusinessProfileError("Media storage is not configured.")
         return self._media, self._store
 
+    def _media_snapshot(self, org_id: UUID, row: MediaAsset) -> MediaSnapshot:
+        """Map one media row to its public snapshot."""
+        return MediaSnapshot(
+            id=row.asset_id,
+            org_id=org_id,
+            kind=media_kind(row.mime) or "image",
+            role=getattr(row, "role", None) or "gallery",
+            mime=row.mime,
+            size_bytes=int(row.size_bytes or 0),
+            file_url=f"/media/{row.file_url}",
+            created_at=row.created_at,
+        )
+
+    def _demote_role(
+        self, media: MediaRepository, org_id: UUID, role: str, keep: UUID | None = None
+    ) -> None:
+        """Only one cover and one logo per org: clear other holders."""
+        for other in media.list_by_org(org_id):
+            current = getattr(other, "role", None) or "gallery"
+            if current == role and other.asset_id != keep:
+                media.set_role(other.asset_id, "gallery")
+
+    def _check_role(self, org: Organization, user_id: UUID, kind: str, role: str) -> None:
+        """Brand roles (cover/logo) are owner-only and images only."""
+        if role not in _MEDIA_ROLES:
+            raise InvalidMediaRoleError("Media role is invalid.")
+        if role in _BRAND_ROLES:
+            if kind != "image":
+                raise InvalidMediaRoleError("Cover and logo must be images.")
+            if org.owner_id != user_id:
+                raise ForbiddenError("Only the org owner can mark cover or logo.")
+
     def upload_media(
-        self, org_id: UUID, user_id: UUID, filename: str, mime: str, content: bytes
+        self,
+        org_id: UUID,
+        user_id: UUID,
+        filename: str,
+        mime: str,
+        content: bytes,
+        role: str = "gallery",
     ) -> MediaSnapshot:
         """Any member uploads one image/video into the org folder."""
         org = self._owned(org_id)
@@ -227,22 +269,36 @@ class OrgService:
         limit = self._max_image_bytes if kind == "image" else self._max_video_bytes
         if len(content) > limit:
             raise MediaTooLargeError("File exceeds the size limit.")
+        self._check_role(org, user_id, kind, role)
+        if kind == "image":
+            mime, content = normalize_image(content, mime)
         media, store = self._check_media_ready()
         from core.ids import uuid7
 
         asset_id = uuid7()
         relative = store.save_typed(org_id, asset_id, mime, filename, content)
         now = utcnow()
-        row = media.create_asset(asset_id, org_id, relative, mime, len(content), now)
-        return MediaSnapshot(
-            id=row.asset_id,
-            org_id=org_id,
-            kind=kind,
-            mime=mime,
-            size_bytes=len(content),
-            file_url=f"/media/{relative}",
-            created_at=row.created_at,
-        )
+        self._demote_role(media, org_id, role)
+        row = media.create_asset(asset_id, org_id, relative, mime, len(content), now, role)
+        return self._media_snapshot(org_id, row)
+
+    def set_media_role(
+        self, org_id: UUID, user_id: UUID, media_id: UUID, role: str
+    ) -> MediaSnapshot:
+        """Owner marks a gallery image as cover/logo, or clears it."""
+        self._require_live(org_id, user_id)
+        if role not in _MEDIA_ROLES:
+            raise InvalidMediaRoleError("Media role is invalid.")
+        media, _ = self._check_media_ready()
+        row = media.get_asset(media_id)
+        if row is None or row.owner_id != org_id:
+            raise NotFoundError("Media not found.")
+        if role in _BRAND_ROLES and media_kind(row.mime) != "image":
+            raise InvalidMediaRoleError("Cover and logo must be images.")
+        self._demote_role(media, org_id, role, keep=media_id)
+        updated = media.set_role(media_id, role)
+        assert updated is not None
+        return self._media_snapshot(org_id, updated)
 
     def list_media(self, org_id: UUID, user_id: UUID) -> list[MediaSnapshot]:
         """Newest-first gallery for members of a live org."""
@@ -252,21 +308,9 @@ class OrgService:
         if not self._orgs.is_member(org_id, user_id):
             raise ForbiddenError("Only org members can view media.")
         media, _ = self._check_media_ready()
-        snapshots: list[MediaSnapshot] = []
-        for row in media.list_by_org(org_id):
-            kind = media_kind(row.mime) or "image"
-            snapshots.append(
-                MediaSnapshot(
-                    id=row.asset_id,
-                    org_id=org_id,
-                    kind=kind,
-                    mime=row.mime,
-                    size_bytes=int(row.size_bytes or 0),
-                    file_url=f"/media/{row.file_url}",
-                    created_at=row.created_at,
-                )
-            )
-        return snapshots
+        return [
+            self._media_snapshot(org_id, row) for row in media.list_by_org(org_id)
+        ]
 
     def delete_media(self, org_id: UUID, user_id: UUID, media_id: UUID) -> None:
         """Owner removes one gallery file: metadata row plus bytes."""
@@ -277,6 +321,17 @@ class OrgService:
             raise NotFoundError("Media not found.")
         media.delete_asset(media_id)
         store.delete_file(row.file_url)
+
+    def delete_all_media(self, org_id: UUID, user_id: UUID) -> int:
+        """Owner wipes the whole gallery: metadata rows plus bytes."""
+        self._require_live(org_id, user_id)
+        media, store = self._check_media_ready()
+        removed = 0
+        for row in media.list_by_org(org_id):
+            media.delete_asset(row.asset_id)
+            store.delete_file(row.file_url)
+            removed += 1
+        return removed
 
     def media_file(self, org_id: UUID, media_id: UUID) -> tuple[str, str]:
         """Resolve the absolute file path plus mime for streaming."""

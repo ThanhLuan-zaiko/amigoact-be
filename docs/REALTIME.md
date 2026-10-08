@@ -1,0 +1,89 @@
+# Realtime — WebSocket (`realtime/` + `core/realtime.py`)
+
+## 1. Tổng quan
+
+Realtime dùng WebSocket ngay từ đầu (AGENTS.md §16). Không polling, không
+SSE, không Socket.IO/Pusher/Ably. Transport là `WebSocket` của FastAPI;
+package bổ sung duy nhất là `websockets` (FastAPI yêu cầu cho hỗ trợ WS).
+
+Luồng xác thực (bắt buộc, §16.2): trình duyệt không gắn được header vào
+handshake WebSocket nên JWT không bao giờ nằm trong URL. Client gọi
+`POST /ws/tickets` bằng Bearer JWT để lấy ticket một lần, sau đó mở
+`GET /ws?ticket=<ticket>`.
+
+```text
+POST /ws/tickets (Authorization: Bearer <jwt>)
+    -> 201 {"ticket": "<opaque>", "expires_in": 60}
+WS  /ws?ticket=<opaque>
+    -> {"type": "ready.v1", "data": {"user_id", "channels", "heartbeat_seconds"}}
+```
+
+- Ticket là chuỗi opaque 256-bit (`secrets.token_urlsafe(32)`); chỉ lưu
+  SHA-256 trong bảng `ws_tickets` (`default_time_to_live = 300`).
+- Dùng một lần: consume bằng `DELETE ... IF EXISTS` (LWT). Hết hạn hoặc đã
+  dùng đều đóng `4401`. Không bao giờ log ticket.
+
+## 2. Envelope và frame
+
+Mọi frame là JSON `{"type": "<tên có version>", "data": {...}}`.
+
+| Hướng | `type` | Ý nghĩa |
+|---|---|---|
+| server → client | `ready.v1` | Socket đã bind user; kèm `heartbeat_seconds` |
+| server → client | `ping.v1` | Heartbeat mỗi `WS_HEARTBEAT_SECONDS` |
+| server → client | `subscribed.v1` | Join kênh thành công (`channel`, `channels`) |
+| server → client | `unsubscribed.v1` | Rời kênh thành công |
+| server → client | `event.v1` | Dữ liệu live: `{"channel", "payload"}` |
+| server → client | `error.v1` | Lỗi frame: `{"code", "message", "channel"?}` |
+| client → server | `pong.v1` | Trả lời heartbeat trong `WS_PONG_TIMEOUT_SECONDS` |
+| client → server | `ping.v1` | Probe liveness; server trả `pong.v1` |
+| client → server | `subscribe.v1` | `data.channel = "kind:{uuid}"` |
+| client → server | `unsubscribe.v1` | `data.channel = "kind:{uuid}"` |
+
+`type` lạ được bỏ qua và ghi log, không bao giờ làm sập kết nối.
+
+## 3. Kênh và phân quyền (§16.3)
+
+| Kênh | Quyền |
+|---|---|
+| `notifications:{user_id}` | Chỉ chủ nhân (`subject == user_id`); server tự join sau handshake |
+| `activities:{org_id}` | Phải là member của org (`members_by_user`) |
+| `attendance:{activity_id}` | Staff của org sở hữu activity — port `AttendanceAccess`; hiện từ chối tất cả vì bảng activities chưa tồn tại |
+
+Đăng ký bị từ chối: server gửi `error.v1` `FORBIDDEN` rồi đóng `4403`.
+Tên kênh sai cú pháp: `error.v1` `INVALID_CHANNEL`, kết nối vẫn sống.
+
+## 4. Mã đóng kết nối
+
+| Code | Nghĩa |
+|---|---|
+| `4400` | Bad frame: JSON hỏng hoặc payload sai (kèm `error.v1` `BAD_FRAME`) |
+| `4401` | Ticket sai/hết hạn/đã dùng lúc handshake |
+| `4403` | Subscribe bị từ chối quyền (kèm `error.v1` `FORBIDDEN`) |
+| `4408` | Client bỏ lỡ `pong.v1` quá `WS_PONG_TIMEOUT_SECONDS` |
+
+## 5. Kiến trúc
+
+- `core/realtime.py` (§16.6): codec envelope, parse kênh, `ConnectionManager`
+  (registry socket trong RAM — ephemeral transport, không bao giờ là fact
+  source §16.5), `heartbeat_loop`, hằng số close code.
+- `realtime/` theo chuẩn 6 file: `model.py` (bảng `ws_tickets`),
+  `repository.py` (`CqlWsTicketStore`, LWT consume), `interfaces.py`
+  (`WsTicketStore`, `OrgMembership`, `AttendanceAccess`), `service.py`
+  (`RealtimeService`: issue/consume ticket + `authorize`), `router.py`
+  (REST ticket + `/ws` mỏng), `schemas.py` (`WsTicketResponse`).
+- Wiring: `core/dependencies.py` (`get_realtime_service`,
+  `get_connection_manager` — registry tạo ở lifespan/`app.state`).
+- DB call đồng bộ (cqlengine) được bọc `asyncio.to_thread` trong handler
+  async để không chặn event loop.
+- Fan-out: `ConnectionManager.publish(channel, payload)` → `event.v1` tới
+  mọi socket của kênh. Resume sau reconnect đọc lại từ ScyllaDB (không
+  replay RAM).
+
+## 6. Cấu hình
+
+| Biến | Mặc định | Mô tả |
+|---|---|---|
+| `WS_TICKET_TTL_SECONDS` | `60` | Tuổi thọ ticket một lần |
+| `WS_HEARTBEAT_SECONDS` | `25` | Chu kỳ `ping.v1` của server |
+| `WS_PONG_TIMEOUT_SECONDS` | `10` | Grace chờ `pong.v1` trước khi đóng `4408` |
