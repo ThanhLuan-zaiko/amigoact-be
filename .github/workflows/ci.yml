@@ -1,0 +1,261 @@
+# BE CI — 12 required gates (see AGENTS.md §15).
+# No auto-commit / auto-push / docker push in this pipeline.
+name: be-ci
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+concurrency:
+  group: be-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Gate 01: no junk files tracked in git.
+  gate-01-git-hygiene:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fail if junk is tracked
+        run: |
+          python3 - <<'EOF'
+          import subprocess, sys
+          tracked = subprocess.check_output(["git", "ls-files"], text=True).splitlines()
+          junk_markers = (".venv/", "__pycache__/", ".pytest_cache/", "dist/", "build/",
+                          ".coverage", "htmlcov/", ".mypy_cache/", ".ruff_cache/")
+          junk_suffixes = (".pyc", ".pyo", ".egg-info", ".DS_Store")
+          bad = [f for f in tracked
+                 if f.startswith(junk_markers) or f.endswith(junk_suffixes)
+                 or "/__pycache__/" in f or "/.venv/" in f]
+          if bad:
+              print("Tracked junk files (add to .gitignore, do not commit):")
+              print("\n".join(" - " + f for f in bad))
+              sys.exit(1)
+          print("OK: no tracked junk")
+          EOF
+
+  # Gate 02: every .py file <= 350 lines.
+  gate-02-file-lines:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check .py line limit (350)
+        run: |
+          python3 - <<'EOF'
+          import pathlib, sys
+          bad = []
+          for p in pathlib.Path(".").rglob("*.py"):
+              if ".venv" in p.parts or p.is_dir():
+                  continue
+              n = sum(1 for _ in p.open(encoding="utf-8", errors="replace"))
+              if n > 350:
+                  bad.append(f"{p}: {n}")
+          if bad:
+              print("Files exceeding 350 lines:")
+              print("\n".join(" - " + b for b in bad))
+              sys.exit(1)
+          print("OK: all .py <= 350 lines")
+          EOF
+
+  # Gate 03: FastAPI only — no uvicorn/gunicorn/hypercorn added.
+  gate-03-no-server:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Forbid ASGI server packages
+        run: |
+          python3 - <<'EOF'
+          import pathlib, re, sys
+          pat = re.compile(r"(?i)\b(uvicorn|gunicorn|hypercorn|daphne)\b")
+          bad = []
+          for f in ["pyproject.toml", "uv.lock"]:
+              p = pathlib.Path(f)
+              if p.exists() and pat.search(p.read_text(encoding="utf-8", errors="replace")):
+                  bad.append(f"{f}: forbidden server package reference")
+          for p in list(pathlib.Path(".").rglob("*.py")):
+              if ".venv" in p.parts:
+                  continue
+              if pat.search(p.read_text(encoding="utf-8", errors="replace")):
+                  bad.append(f"{p}: forbidden server import/reference")
+          if bad:
+              print("\n".join(" - " + b for b in bad))
+              sys.exit(1)
+          print("OK: no uvicorn/gunicorn/hypercorn")
+          EOF
+
+  # Gate 04: Argon2id only + UUIDv7 PKs (forbid bcrypt/scrypt, uuid4 in models).
+  gate-04-auth-crypto:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Forbid weak hashing and uuid4 PKs
+        run: |
+          python3 - <<'EOF'
+          import pathlib, re, sys
+          bad = []
+          hash_pat = re.compile(r"(?i)\b(bcrypt|passlib|scrypt)\b")
+          for p in list(pathlib.Path(".").rglob("*.py")) + [pathlib.Path("pyproject.toml")]:
+              if ".venv" in p.parts or not p.exists() or p.is_dir():
+                  continue
+              if hash_pat.search(p.read_text(encoding="utf-8", errors="replace")):
+                  bad.append(f"{p}: forbidden hashing reference (use Argon2id only)")
+          uuid_pat = re.compile(r"uuid4")
+          for p in pathlib.Path(".").rglob("model.py"):
+              if ".venv" in p.parts:
+                  continue
+              if uuid_pat.search(p.read_text(encoding="utf-8", errors="replace")):
+                  bad.append(f"{p}: uuid4 forbidden in models (use UUIDv7)")
+          if bad:
+              print("\n".join(" - " + b for b in bad))
+              sys.exit(1)
+          print("OK: Argon2id / UUIDv7 constraints hold")
+          EOF
+
+  # Gate 05: backend code is English-only (ASCII proxy for .py).
+  gate-05-english-code:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Forbid non-ASCII in .py (code/comments English only)
+        run: |
+          python3 - <<'EOF'
+          import pathlib, sys
+          bad = []
+          for p in pathlib.Path(".").rglob("*.py"):
+              if ".venv" in p.parts:
+                  continue
+              for i, line in enumerate(p.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
+                  if any(ord(c) > 127 for c in line):
+                      bad.append(f"{p}:{i}: {line.strip()[:120]}")
+                      break
+          if bad:
+              print("Non-English (non-ASCII) content in Python files:")
+              print("\n".join(" - " + b for b in bad))
+              sys.exit(1)
+          print("OK: .py files are English-only")
+          EOF
+
+  # Gate 06: docs language — AGENTS.md English, all other .md Vietnamese.
+  gate-06-docs-language:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check Markdown languages
+        run: |
+          python3 - <<'EOF'
+          import pathlib, sys
+          def has_non_ascii(text):
+              return any(ord(c) > 127 for c in text)
+          bad = []
+          for p in pathlib.Path(".").rglob("*.md"):
+              if ".venv" in p.parts or "node_modules" in p.parts:
+                  continue
+              text = p.read_text(encoding="utf-8", errors="replace")
+              if p.name == "AGENTS.md":
+                  continue  # English by definition; enforced by review
+              if not text.strip():
+                  continue
+              if not has_non_ascii(text):
+                  bad.append(f"{p}: expected Vietnamese prose (no non-ASCII found)")
+          if bad:
+              print("\n".join(" - " + b for b in bad))
+              sys.exit(1)
+          print("OK: docs language rule holds")
+          EOF
+
+  # Gate 07: root-per-feature structure — no src/, main.py exposes app.
+  gate-07-structure:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check project structure
+        run: |
+          test ! -d src || (echo "FORBIDDEN: src/ directory must not exist" && exit 1)
+          test -f main.py || (echo "MISSING: main.py at repo root" && exit 1)
+          grep -q "app" main.py || (echo "MISSING: app object in main.py" && exit 1)
+          echo "OK: structure holds (no src/, main.py present)"
+
+  # Gate 08: unit tests.
+  gate-08-unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - name: Run unit tests
+        run: |
+          if [ -d tests/unit ]; then uv run pytest tests/unit -q; else echo "SKIP: tests/unit not present yet"; fi
+
+  # Gate 09: integration tests (skip cleanly when ScyllaDB is unavailable).
+  gate-09-integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - name: Run integration tests
+        run: |
+          if [ -d tests/integration ]; then uv run pytest tests/integration -q; else echo "SKIP: tests/integration not present yet"; fi
+
+  # Gate 10: regression tests.
+  gate-10-regression:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - name: Run regression tests
+        run: |
+          if [ -d tests/regression ]; then uv run pytest tests/regression -q; else echo "SKIP: tests/regression not present yet"; fi
+
+  # Gate 11: Docker image builds (validation only, never pushed).
+  gate-11-docker-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          tags: amigoact-be:ci
+
+  # Gate 12: aggregator — the single required check for branch protection.
+  gate-12-ci-success:
+    runs-on: ubuntu-latest
+    needs:
+      - gate-01-git-hygiene
+      - gate-02-file-lines
+      - gate-03-no-server
+      - gate-04-auth-crypto
+      - gate-05-english-code
+      - gate-06-docs-language
+      - gate-07-structure
+      - gate-08-unit
+      - gate-09-integration
+      - gate-10-regression
+      - gate-11-docker-build
+    if: always()
+    steps:
+      - name: All 12 gates must be green
+        run: |
+          python3 - <<'EOF'
+          import json, os, sys
+          needs = json.loads(os.environ["NEEDS_JSON"])
+          failed = {k: v for k, v in needs.items() if v != "success"}
+          if failed:
+              print("Failing/skipped gates:")
+              for k, v in failed.items():
+                  print(f" - {k}: {v}")
+              sys.exit(1)
+          print("OK: all 12 BE gates green")
+          EOF
+        env:
+          NEEDS_JSON: ${{ toJSON(needs) }}
