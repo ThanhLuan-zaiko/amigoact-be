@@ -33,13 +33,29 @@ uv add --dev pytest pytest-asyncio httpx
 
 ## Chạy
 
+Một lệnh duy nhất vừa khởi động server, vừa kiểm tra kết nối ScyllaDB
+theo `.env` (kết quả hiện trong log lúc khởi động):
+
 ```bash
-# dev
-fastapi dev main.py --port 8100
+# dev (khởi động + kiểm tra DB + tự reload khi sửa code)
+uv run --with fastapi-cli fastapi dev main.py --port 8100
 
 # prod
-fastapi run main.py --port 8100
+uv run --with fastapi-cli fastapi run main.py --port 8100
 ```
+
+Khi khởi động, log sẽ hiện trạng thái DB và danh sách route:
+
+```text
+INFO amigoact: ScyllaDB connected: ... keyspace=amigoact tables=73
+INFO amigoact: Route: GET /health
+```
+
+Xem và thử các phương thức `GET`/`POST`/`PUT`/`DELETE` tại Swagger UI:
+
+- `http://localhost:8100/docs` — tài liệu tương tác đầy đủ theo từng route.
+- `http://localhost:8100/openapi.json` — schema thô.
+- `http://localhost:8100/ready` — kết quả kiểm tra DB lúc khởi động.
 
 Kiểm tra sức khỏe:
 
@@ -55,11 +71,29 @@ Mọi cấu hình nằm trong `core/config.py` (dùng `pydantic-settings`), đ�
 | Biến | Mô tả | Ví dụ |
 |---|---|---|
 | `SCYLLA_HOSTS` | Danh sách host ScyllaDB | `127.0.0.1` |
+| `SCYLLA_PORT` | Cổng CQL ScyllaDB | `9042` |
+| `SCYLLA_DATACENTER` | Datacenter ScyllaDB (khớp replication trong `schemas.cql`) | `datacenter1` |
 | `SCYLLA_KEYSPACE` | Keyspace chính | `amigoact` |
 | `JWT_SECRET` | Khóa ký JWT access | `dev-only-change-me` |
 | `ENV` | Môi trường | `dev` / `test` / `prod` |
 
 Không hard-code host, port, secret trong mã nguồn. Tài liệu biến mới phải cập nhật tại đây.
+
+## Đặt lại cơ sở dữ liệu (môi trường dev)
+
+Script `reset_db.py` nạp lại `schemas.cql` vào ScyllaDB: đọc `.env`
+(`SCYLLA_HOSTS`, `SCYLLA_KEYSPACE`), chỉ xóa đúng keyspace đó nên không
+ảnh hưởng keyspace của repo khác, tự dò ScyllaDB qua TCP/Docker/WSL2 rồi
+chạy từng câu lệnh CQL (kèm xác nhận, trừ khi dùng `--yes`).
+
+```bash
+uv run python reset_db.py --dry-run   # chỉ phân tích, không chạm DB
+uv run python reset_db.py --yes       # xóa keyspace rồi tạo lại 73 bảng
+uv run python reset_db.py --keyspace amigoact_test --yes
+```
+
+Trên Windows không có Docker CLI, script tự dùng `wsl docker ps` để phát
+hiện container `scylladb` chạy trong WSL2.
 
 ## Cấu trúc thư mục
 
