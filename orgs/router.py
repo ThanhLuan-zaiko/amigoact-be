@@ -15,7 +15,8 @@ from core.dependencies import (
     get_media_store,
     get_org_service,
 )
-from core.exceptions import NotFoundError
+from core.exceptions import MediaTooLargeError, NotFoundError
+from core.media import MEDIA_MIMES, media_kind
 from orgs.schemas import (
     CreateOrgRequest,
     MediaResponse,
@@ -147,14 +148,38 @@ async def upload_org_media(
     settings: Settings = Depends(get_settings),
 ) -> MediaResponse:
     """Member uploads one image/video; owner may flag cover/logo at once."""
-    cap = max(settings.media_max_image_mb, settings.media_max_video_mb) * 1024 * 1024
-    content = await file.read(cap + 1)
-    return _media_schema(
-        service.upload_media(
-            org_id, current.id, file.filename or "upload",
-            file.content_type or "application/octet-stream", content, role,
-        )
+    import asyncio
+
+    guessed = media_kind(file.content_type or "application/octet-stream")
+    if guessed == "image":
+        limit = settings.media_max_image_mb * 1024 * 1024
+    elif guessed == "video":
+        limit = settings.media_max_video_mb * 1024 * 1024
+    else:
+        limit = max(settings.media_max_image_mb, settings.media_max_video_mb)
+        limit = limit * 1024 * 1024
+    parts: list[bytes] = []
+    total = 0
+    while True:
+        chunk = await file.read(1024 * 1024)
+        if not chunk:
+            break
+        total += len(chunk)
+        if total > limit:
+            raise MediaTooLargeError("File exceeds the size limit.")
+        parts.append(chunk)
+    content = b"".join(parts)
+    # Sync Pillow transcode plus disk write runs off the event loop.
+    snapshot = await asyncio.to_thread(
+        service.upload_media,
+        org_id,
+        current.id,
+        file.filename or "upload",
+        file.content_type or "application/octet-stream",
+        content,
+        role,
     )
+    return _media_schema(snapshot)
 
 
 @router.get("/orgs/{org_id}/media", response_model=list[MediaResponse])
@@ -206,11 +231,25 @@ def delete_org_media(
 def serve_media_file(
     file_path: str, store: LocalMediaStore = Depends(get_media_store)
 ):
-    """Public uuid-guarded file serving (gallery photos are semi-public)."""
+    """Semi-public uuid-guarded file serving (gallery photos are shared).
+
+    Kept public for direct gallery rendering.
+    TODO: switch galleries to short-lived signed URLs once available.
+    """
     try:
         absolute = store.resolve(file_path)
     except ValueError as exc:
         raise NotFoundError("Media not found.") from exc
     if not absolute.is_file():
         raise NotFoundError("Media not found.")
-    return FileResponse(str(absolute))
+    from pathlib import Path
+
+    suffix = Path(absolute.name).suffix.lower()
+    if suffix == ".jpeg":
+        suffix = ".jpg"
+    mime = next((m for m, e in MEDIA_MIMES.items() if e == suffix), None)
+    return FileResponse(
+        str(absolute),
+        media_type=mime or "application/octet-stream",
+        headers={"X-Content-Type-Options": "nosniff"},
+    )

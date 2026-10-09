@@ -70,9 +70,10 @@ def test_ticket_and_envelope_contract_locked(app_client) -> None:  # noqa: ANN00
 
 
 def test_expired_ticket_closes_4401(app_client) -> None:  # noqa: ANN001
-    """A zero-TTL ticket is already expired at consume time."""
-    import main
-    from core.config import Settings, get_settings
+    """An expired ticket is rejected at consume time."""
+    from datetime import timedelta
+
+    from core.security import hash_token, utcnow
 
     client = TestClient(app_client)
     client.post(
@@ -89,17 +90,13 @@ def test_expired_ticket_closes_4401(app_client) -> None:  # noqa: ANN001
         json={"email": "expired@example.com", "password": PASSWORD},
     )
     headers = {"Authorization": f"Bearer {logged.json()['access_token']}"}
-    main.app.dependency_overrides[get_settings] = lambda: Settings(
-        scylla_keyspace="amigoact_test",
-        jwt_secret="integration-test-secret-32-bytes!",
-        env="dev",
-        ws_ticket_ttl_seconds=0,
+    ticket = client.post("/ws/tickets", headers=headers).json()["ticket"]
+    from realtime.model import WsTicket
+
+    WsTicket.objects(ticket_hash=hash_token(ticket)).update(
+        expires_at=utcnow() - timedelta(seconds=1)
     )
-    try:
-        ticket = client.post("/ws/tickets", headers=headers).json()["ticket"]
-        with client.websocket_connect(f"/ws?ticket={ticket}") as ws:
-            with pytest.raises(WebSocketDisconnect) as closed:
-                ws.receive_json()
-            assert closed.value.code == 4401
-    finally:
-        main.app.dependency_overrides.clear()
+    with client.websocket_connect(f"/ws?ticket={ticket}") as ws:
+        with pytest.raises(WebSocketDisconnect) as closed:
+            ws.receive_json()
+        assert closed.value.code == 4401

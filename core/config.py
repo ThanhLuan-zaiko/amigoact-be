@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -37,9 +38,12 @@ class Settings(BaseSettings):
     media_root: str = "./media"
     media_max_image_mb: int = 10
     media_max_video_mb: int = 100
-    ws_ticket_ttl_seconds: int = 60
-    ws_heartbeat_seconds: int = 25
-    ws_pong_timeout_seconds: int = 10
+    ws_ticket_ttl_seconds: int = Field(default=60, ge=5, le=300)
+    ws_heartbeat_seconds: int = Field(default=25, ge=1, le=120)
+    ws_pong_timeout_seconds: int = Field(default=10, ge=1, le=120)
+    ws_max_frame_bytes: int = Field(default=65536, ge=1024, le=1048576)
+    ws_ticket_per_min: int = Field(default=10, ge=1, le=100)
+    ws_frame_per_sec: int = Field(default=20, ge=1, le=100)
 
     @property
     def frontend_urls_list(self) -> list[str]:

@@ -90,13 +90,10 @@ def get_media_store(settings: Settings = Depends(get_settings)) -> LocalMediaSto
 
 
 def get_connection_manager(websocket: WebSocket) -> ConnectionManager:
-    """App-scoped ephemeral socket registry, created lazily once."""
-    from core.realtime import ConnectionManager
-
+    """App-scoped ephemeral socket registry initialized in lifespan."""
     manager = getattr(websocket.app.state, "ws_manager", None)
     if manager is None:
-        manager = ConnectionManager()
-        websocket.app.state.ws_manager = manager
+        raise RuntimeError("WebSocket manager is not initialized.")
     return manager
 
 

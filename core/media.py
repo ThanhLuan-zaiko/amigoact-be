@@ -41,6 +41,15 @@ VIDEO_MIMES = {
 
 MEDIA_MIMES = {**IMAGE_MIMES, **VIDEO_MIMES}
 
+# Decompression-bomb guard: reject images above this pixel count.
+MAX_IMAGE_PIXELS = 25_000_000
+# Longest edge after transcode; larger images are downscaled.
+MAX_IMAGE_EDGE = 4096
+
+# Allowlisted on-disk suffixes. Anything else is rejected at save time.
+ALLOWED_EXTENSIONS = frozenset({".jpg", ".png", ".webp", ".gif", ".avif",
+    ".bmp", ".tiff", ".heic", ".heif", ".mp4", ".webm", ".mov"})
+
 
 def media_kind(mime: str) -> str | None:
     """Classify a mime as image/video, or None when unsupported."""
@@ -52,15 +61,45 @@ def media_kind(mime: str) -> str | None:
     return None
 
 
+def sniff_mime(content: bytes) -> str | None:
+    """Guess the mime from magic bytes. None when unknown."""
+    if len(content) < 4:
+        return None
+    if content[:3] == b"\xff\xd8\xff":
+        return "image/jpeg"
+    if content[:8] == b"\x89PNG\r\n\x1a\n":
+        return "image/png"
+    if content[:6] in (b"GIF87a", b"GIF89a"):
+        return "image/gif"
+    if content[:4] == b"RIFF" and content[8:12] == b"WEBP":
+        return "image/webp"
+    if content[:2] == b"BM":
+        return "image/bmp"
+    if content[:4] in (b"II*\x00", b"MM\x00*"):
+        return "image/tiff"
+    if len(content) >= 12 and content[4:8] == b"ftyp":
+        brand = content[8:12]
+        if brand in (b"avif", b"avis"):
+            return "image/avif"
+        if brand in (b"heic", b"heix", b"hevc", b"hevw"):
+            return "image/heic"
+        if brand in (b"mif1", b"msf1", b"heif"):
+            return "image/heif"
+        return None
+    if content[:4] == b"\x00\x00\x00\x18" or content[4:8] == b"ftyp":
+        return None
+    return None
+
+
 def extension_for(mime: str, filename: str) -> str | None:
-    """Prefer the mime-mapped extension, fall back to the filename suffix."""
+    """Prefer the mime-mapped extension, fall back to allowlisted suffix."""
     clean = mime.split(";")[0].strip().lower()
     if clean in MEDIA_MIMES:
         return MEDIA_MIMES[clean]
     suffix = Path(filename).suffix.lower()
-    if suffix in (".jpg", ".jpeg"):
+    if suffix == ".jpeg":
         return ".jpg"
-    if suffix in MEDIA_MIMES.values():
+    if suffix in ALLOWED_EXTENSIONS:
         return suffix
     return None
 
@@ -69,19 +108,33 @@ def normalize_image(content: bytes, mime: str) -> tuple[str, bytes]:
     """Transcode non-web-safe images (HEIC, TIFF, BMP...) to jpeg/png bytes.
 
     Browser-safe formats pass through untouched (keeps GIF animation,
-    avoids recompressing jpeg). Decode failure returns the input so the
-    upload still succeeds and stores the original bytes."""
+    avoids recompressing jpeg). Pixel bombs raise ValueError so the caller
+    rejects the upload. Decode failure returns the input so the upload
+    still succeeds and stores the original bytes. Runs in a worker thread
+    via asyncio.to_thread at the router layer (stays sync here).
+    """
     clean = mime.split(";")[0].strip().lower()
+    if clean not in IMAGE_MIMES:
+        sniffed = sniff_mime(content)
+        if sniffed is not None and sniffed in IMAGE_MIMES:
+            clean = sniffed
     if clean in _WEB_SAFE_IMAGES:
         return clean, content
     try:
         from io import BytesIO
 
         import pillow_heif
-        from PIL import Image, ImageOps
+        from PIL import Image, ImageFile, ImageOps
 
+        Image.MAX_IMAGE_PIXELS = MAX_IMAGE_PIXELS
+        ImageFile.LOAD_TRUNCATED_IMAGES = False
         pillow_heif.register_heif_opener()
         img = ImageOps.exif_transpose(Image.open(BytesIO(content)))
+        width, height = img.size
+        if width * height > MAX_IMAGE_PIXELS:
+            raise ValueError("Image exceeds the pixel limit.")
+        if max(width, height) > MAX_IMAGE_EDGE:
+            img.thumbnail((MAX_IMAGE_EDGE, MAX_IMAGE_EDGE))
         has_alpha = img.mode in ("RGBA", "LA", "PA") or "transparency" in img.info
         out = BytesIO()
         if has_alpha:
@@ -89,6 +142,8 @@ def normalize_image(content: bytes, mime: str) -> tuple[str, bytes]:
             return "image/png", out.getvalue()
         img.convert("RGB").save(out, "JPEG", quality=90)
         return "image/jpeg", out.getvalue()
+    except ValueError:
+        raise
     except Exception:
         return clean, content
 
@@ -128,8 +183,11 @@ class LocalMediaStore(MediaStore):
         return self._root / "orgs" / str(org_id)
 
     def save(self, org_id: UUID, media_id: UUID, filename: str, content: bytes) -> str:
+        """Legacy save keyed by filename suffix; only allowlisted exts."""
         ext = extension_for("application/octet-stream", filename)
-        target = self._org_dir(org_id) / f"{media_id}{ext or ''}"
+        if ext is None:
+            raise ValueError("Unsupported file extension.")
+        target = self._org_dir(org_id) / f"{media_id}{ext}"
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(content)
         return f"orgs/{org_id}/{target.name}"
@@ -138,7 +196,10 @@ class LocalMediaStore(MediaStore):
         self, org_id: UUID, media_id: UUID, mime: str, filename: str, content: bytes
     ) -> str:
         """Save with the mime-mapped extension (jpg for jpeg, etc)."""
-        ext = extension_for(mime, filename) or Path(filename).suffix.lower()
+        clean = mime.split(";")[0].strip().lower()
+        ext = MEDIA_MIMES.get(clean)
+        if ext is None:
+            raise ValueError("Unsupported media mime.")
         target = self._org_dir(org_id) / f"{media_id}{ext}"
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(content)

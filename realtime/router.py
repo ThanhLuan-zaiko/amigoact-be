@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 
@@ -14,6 +15,7 @@ from core.dependencies import (
     get_current_user,
     get_realtime_service,
 )
+from core.exceptions import TooManyRequestsError
 from core.realtime import (
     CLOSE_BAD_FRAME,
     CLOSE_FORBIDDEN,
@@ -42,8 +44,21 @@ router = APIRouter(tags=["realtime"])
 def issue_ticket(
     current: CurrentUser = Depends(get_current_user),
     service: RealtimeService = Depends(get_realtime_service),
+    settings: Settings = Depends(get_settings),
 ) -> WsTicketResponse:
     """Mint a one-time WS handshake ticket bound to the current user."""
+    try:
+        from auth.repository import CqlRateLimiter
+
+        hits = CqlRateLimiter(settings.scylla_keyspace).hit(
+            f"ws_ticket:{current.id}", 60
+        )
+        if hits > settings.ws_ticket_per_min:
+            raise TooManyRequestsError("Too many ticket requests.")
+    except TooManyRequestsError:
+        raise
+    except Exception as exc:
+        logger.warning("ws ticket rate-limit unavailable: %s", exc)
     issued = service.issue_ticket(current.id)
     return WsTicketResponse(ticket=issued.token, expires_in=issued.expires_in)
 
@@ -57,12 +72,42 @@ async def websocket_endpoint(
     settings: Settings = Depends(get_settings),
 ) -> None:
     """Bind a one-time ticket to a socket, then serve frames (16)."""
+    if not ticket or not ticket.strip():
+        await websocket.accept()
+        await websocket.close(code=CLOSE_UNAUTHORIZED)
+        return
     await websocket.accept()
     user_id = await asyncio.to_thread(service.consume_ticket, ticket)
     if user_id is None:
         await websocket.close(code=CLOSE_UNAUTHORIZED)
         return
+    if not await _require_active_user(user_id, settings, websocket):
+        return
     await _serve(websocket, user_id, service, manager, settings)
+
+
+async def _require_active_user(user_id, settings: Settings, websocket: WebSocket) -> bool:
+    """Reject suspended or deleted users after ticket consume (AGENTS.md 8).
+
+    TODO: inject a UserLookup port into RealtimeService to avoid importing
+    the auth repository here; router-level check keeps service DIP-clean.
+    """
+    try:
+        from auth.repository import CqlUserRepository
+
+        user = await asyncio.to_thread(
+            CqlUserRepository(settings.scylla_keyspace).get_by_id, user_id
+        )
+    except Exception as exc:
+        logger.warning("ws user lookup unavailable, allowing: %s", exc)
+        return True
+    if user is None or getattr(user, "status", "active") != "active":
+        try:
+            await websocket.close(code=CLOSE_UNAUTHORIZED)
+        except Exception:
+            pass
+        return False
+    return True
 
 
 async def _serve(
@@ -95,12 +140,18 @@ async def _serve(
     try:
         while True:
             raw = await websocket.receive_text()
-            if not await _dispatch(websocket, raw, state, service, manager):
+            if not await _dispatch(websocket, raw, state, service, manager, settings):
                 break
     except WebSocketDisconnect:
         pass
     finally:
         heartbeat.cancel()
+        try:
+            await heartbeat
+        except asyncio.CancelledError:
+            pass
+        except Exception:
+            pass
         manager.unregister(websocket)
 
 
@@ -110,8 +161,27 @@ async def _dispatch(
     state: ConnectionState,
     service: RealtimeService,
     manager: ConnectionManager,
+    settings: Settings,
 ) -> bool:
     """Route one client frame. Returns False when the socket must close."""
+    if len(raw) > settings.ws_max_frame_bytes:
+        await manager.send(
+            websocket,
+            "error.v1",
+            {"code": "BAD_FRAME", "message": "Frame exceeds the size limit."},
+        )
+        await websocket.close(code=CLOSE_BAD_FRAME)
+        return False
+    now = time.monotonic()
+    state.frame_times = [t for t in state.frame_times if now - t < 1.0]
+    if len(state.frame_times) >= settings.ws_frame_per_sec:
+        await manager.send(
+            websocket,
+            "error.v1",
+            {"code": "TOO_MANY_REQUESTS", "message": "Frame rate exceeded."},
+        )
+        return True
+    state.frame_times.append(now)
     try:
         frame = parse_client_frame(raw)
     except BadFrameError as exc:
@@ -123,7 +193,7 @@ async def _dispatch(
         await websocket.close(code=CLOSE_BAD_FRAME)
         return False
     if isinstance(frame, UnknownFrame):
-        logger.info("ws: ignored unknown frame type %r", frame.frame_type)
+        logger.debug("ws: ignored unknown frame type %r", frame.frame_type)
         return True
     if isinstance(frame, PongFrame):
         state.pong_pending = False
@@ -146,6 +216,16 @@ async def _subscribe(
     manager: ConnectionManager,
 ) -> bool:
     """Authorize then join a channel. Denials close 4403 (16.4)."""
+    now = time.monotonic()
+    state.subscribe_times = [t for t in state.subscribe_times if now - t < 60.0]
+    if len(state.subscribe_times) >= 20:
+        await manager.send(
+            websocket,
+            "error.v1",
+            {"code": "TOO_MANY_REQUESTS", "message": "Subscribe rate exceeded."},
+        )
+        return True
+    state.subscribe_times.append(now)
     name = frame.channel_name
     if name is None:
         return await _bad_frame(

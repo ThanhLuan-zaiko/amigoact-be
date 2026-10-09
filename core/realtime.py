@@ -151,6 +151,8 @@ class ConnectionState:
     user_id: UUID
     channels: set[str] = field(default_factory=set)
     pong_pending: bool = False
+    subscribe_times: list[float] = field(default_factory=list)
+    frame_times: list[float] = field(default_factory=list)
 
 
 class ConnectionManager:
@@ -218,17 +220,32 @@ class ConnectionManager:
         self, channel: str, payload: dict[str, Any] | None = None
     ) -> int:
         """Fan one event.v1 frame to a channel. Returns delivered count."""
-        delivered = 0
-        for websocket in list(self._by_channel.get(channel, ())):
+        sockets = list(self._by_channel.get(channel, ()))
+        if not sockets:
+            return 0
+
+        async def _send_one(websocket: WebSocket) -> bool:
             try:
-                await self.send(
-                    websocket,
-                    "event.v1",
-                    {"channel": channel, "payload": payload or {}},
+                await asyncio.wait_for(
+                    self.send(
+                        websocket,
+                        "event.v1",
+                        {"channel": channel, "payload": payload or {}},
+                    ),
+                    timeout=2.0,
                 )
-                delivered += 1
+                return True
             except Exception:
                 logger.debug("publish dropped dead socket on %s", channel)
+                return False
+
+        results = await asyncio.gather(*(_send_one(ws) for ws in sockets))
+        delivered = 0
+        for websocket, ok in zip(sockets, results):
+            if ok:
+                delivered += 1
+            else:
+                self.unregister(websocket)
         return delivered
 
 
@@ -243,22 +260,30 @@ async def heartbeat_loop(
     Each cycle sleeps interval_seconds, pings, then grants the client
     pong_timeout_seconds to answer before closing the socket.
     """
-    while True:
-        await asyncio.sleep(interval_seconds)
-        state = manager.state_of(websocket)
-        if state is None:
-            return
-        state.pong_pending = True
-        try:
-            await manager.send(
-                websocket, "ping.v1", {"ts": utcnow().isoformat()}
-            )
-        except Exception:
-            return
-        await asyncio.sleep(pong_timeout_seconds)
-        state = manager.state_of(websocket)
-        if state is None:
-            return
-        if state.pong_pending:
-            await websocket.close(code=CLOSE_PONG_TIMEOUT)
-            return
+    if interval_seconds < 1 or pong_timeout_seconds < 1:
+        return
+    try:
+        while True:
+            await asyncio.sleep(interval_seconds)
+            state = manager.state_of(websocket)
+            if state is None:
+                return
+            state.pong_pending = True
+            try:
+                await manager.send(
+                    websocket, "ping.v1", {"ts": utcnow().isoformat()}
+                )
+            except Exception:
+                return
+            await asyncio.sleep(pong_timeout_seconds)
+            state = manager.state_of(websocket)
+            if state is None:
+                return
+            if state.pong_pending:
+                try:
+                    await websocket.close(code=CLOSE_PONG_TIMEOUT)
+                except Exception:
+                    pass
+                return
+    except asyncio.CancelledError:
+        return

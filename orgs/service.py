@@ -232,7 +232,8 @@ class OrgService:
     def _demote_role(
         self, media: MediaRepository, org_id: UUID, role: str, keep: UUID | None = None
     ) -> None:
-        """Only one cover and one logo per org: clear other holders."""
+        """Single cover/logo per org; last writer wins on concurrent race."""
+        # TODO: enforce branding uniqueness with LWT on a dedicated table.
         for other in media.list_by_org(org_id):
             current = getattr(other, "role", None) or "gallery"
             if current == role and other.asset_id != keep:
@@ -271,7 +272,10 @@ class OrgService:
             raise MediaTooLargeError("File exceeds the size limit.")
         self._check_role(org, user_id, kind, role)
         if kind == "image":
-            mime, content = normalize_image(content, mime)
+            try:
+                mime, content = normalize_image(content, mime)
+            except ValueError as exc:
+                raise MediaTooLargeError("Image exceeds the pixel limit.") from exc
         media, store = self._check_media_ready()
         from core.ids import uuid7
 
@@ -323,11 +327,12 @@ class OrgService:
         store.delete_file(row.file_url)
 
     def delete_all_media(self, org_id: UUID, user_id: UUID) -> int:
-        """Owner wipes the whole gallery: metadata rows plus bytes."""
+        """Owner wipes gallery, 500 rows max per call; repeat if needed."""
+        # Idempotent: missing rows/files are skipped, safe to retry.
         self._require_live(org_id, user_id)
         media, store = self._check_media_ready()
         removed = 0
-        for row in media.list_by_org(org_id):
+        for row in media.list_by_org(org_id)[:500]:
             media.delete_asset(row.asset_id)
             store.delete_file(row.file_url)
             removed += 1

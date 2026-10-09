@@ -47,7 +47,14 @@ class RealtimeService:
         return IssuedTicket(token=token, expires_in=self._ticket_ttl)
 
     def consume_ticket(self, token: str) -> UUID | None:
-        """Bind a socket to a user. Expired or spent tickets return None."""
+        """Bind a socket to a user. Expired or spent tickets return None.
+
+        User status (active/suspended) is enforced in the router after
+        consume to avoid a circular import on the user repository.
+        TODO: inject a UserLookup port here once auth exposes one.
+        """
+        if not token or not token.strip():
+            return None
         row = self._tickets.consume(hash_token(token))
         if row is None:
             return None

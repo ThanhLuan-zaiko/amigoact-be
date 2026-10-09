@@ -151,8 +151,11 @@ def clean_tables(test_db: str) -> str:
 def app_client(clean_tables: str):
     """FastAPI app with test settings (overrides cleared after each test)."""
     import main
+    from core.realtime import ConnectionManager
 
     main.app.dependency_overrides[get_settings] = _test_settings
+    if getattr(main.app.state, "ws_manager", None) is None:
+        main.app.state.ws_manager = ConnectionManager()
     try:
         yield main.app
     finally:

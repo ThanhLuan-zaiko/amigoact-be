@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from datetime import datetime
 from uuid import UUID
 
@@ -10,12 +11,21 @@ from cassandra.cqlengine.connection import get_session
 from realtime.interfaces import WsTicketStore
 from realtime.model import WsTicket
 
+_KEYSPACE_RE = re.compile(r"^[a-z0-9_]+$")
+
+
+def _checked_keyspace(keyspace: str) -> str:
+    """Reject unsafe keyspaces before interpolating them into raw CQL."""
+    if not _KEYSPACE_RE.match(keyspace):
+        raise ValueError("Invalid keyspace name.")
+    return keyspace
+
 
 class CqlWsTicketStore(WsTicketStore):
     """Single-use ticket rows with atomic DELETE ... IF EXISTS consume."""
 
     def __init__(self, keyspace: str) -> None:
-        self._keyspace = keyspace
+        self._keyspace = _checked_keyspace(keyspace)
 
     def create(
         self,
@@ -37,8 +47,9 @@ class CqlWsTicketStore(WsTicketStore):
             return None
         # Single use: raw LWT because cqlengine cannot express an atomic
         # read-and-delete. Second consumer loses the race -> None.
+        keyspace = _checked_keyspace(self._keyspace)
         applied = get_session().execute(
-            f"DELETE FROM {self._keyspace}.ws_tickets"
+            f"DELETE FROM {keyspace}.ws_tickets"
             " WHERE ticket_hash = %s IF EXISTS",
             [ticket_hash],
         )

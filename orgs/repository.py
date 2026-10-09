@@ -92,9 +92,10 @@ class CqlOrgRepository(OrgRepository):
         return sum(1 for _ in OrganizationMember.objects(org_id=org_id).all())
 
     def is_member(self, org_id: UUID, user_id: UUID) -> bool:
-        return (
-            MemberByUser.objects(user_id=user_id, org_id=org_id).first() is not None
-        )
+        row = MemberByUser.objects(user_id=user_id, org_id=org_id).first()
+        if row is None:
+            return False
+        return (getattr(row, "status", "active") or "active") == "active"
 
     def update_details(
         self, org_id: UUID, name: str, description: str, now: datetime

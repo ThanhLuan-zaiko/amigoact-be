@@ -199,13 +199,14 @@ async def test_manager_subscribe_publish_unregister() -> None:
 
 def _ws_app(
     members: _Membership | None = None,
-    heartbeat: int = 3600,
-    pong_timeout: int = 3600,
+    heartbeat: int = 120,
+    pong_timeout: int = 120,
 ) -> tuple[TestClient, _MemTickets, RealtimeService]:
     """App with realtime deps swapped for in-memory fakes (no ScyllaDB)."""
     import main
     from core.config import get_settings
     from core.dependencies import get_realtime_service
+    from core.realtime import ConnectionManager
 
     store = _MemTickets()
     service = RealtimeService(store, members or _Membership(), None, 60)
@@ -215,6 +216,8 @@ def _ws_app(
         ws_heartbeat_seconds=heartbeat,
         ws_pong_timeout_seconds=pong_timeout,
     )
+    if getattr(main.app.state, "ws_manager", None) is None:
+        main.app.state.ws_manager = ConnectionManager()
     main.app.dependency_overrides.update(
         {
             get_realtime_service: lambda: service,
