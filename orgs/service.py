@@ -19,6 +19,7 @@ from core.exceptions import (
 from core.media import MediaStore, media_kind, normalize_image
 from core.security import utcnow
 from orgs.interfaces import MediaRepository, OrgRepository
+from orgs.listing import OrgListResult, paginate_mine
 from orgs.repository import generate_org_id
 
 if TYPE_CHECKING:
@@ -162,12 +163,24 @@ class OrgService:
         )
         return self._snapshot(org.id)
 
-    def list_my_orgs(self, user_id: UUID, include_deleted: bool = False) -> list[OrgSnapshot]:
-        """List orgs owned or joined by one user, hiding trash by default."""
+    def list_my_orgs(
+        self,
+        user_id: UUID,
+        include_deleted: bool = False,
+        *,
+        q: str | None = None,
+        status: str | None = None,
+        sort: str = "newest",
+        limit: int = 20,
+        offset: int = 0,
+    ) -> OrgListResult:
+        """List, search, filter, sort and page one user's orgs."""
         snapshots = [self._snapshot(org.id) for org in self._orgs.list_by_user(user_id)]
-        if include_deleted:
-            return snapshots
-        return [item for item in snapshots if item.deleted_at is None]
+        if not include_deleted:
+            snapshots = [item for item in snapshots if item.deleted_at is None]
+        return paginate_mine(
+            snapshots, q=q, status=status, sort=sort, limit=limit, offset=offset
+        )
 
     def update_org(
         self, org_id: UUID, user_id: UUID, name: str, description: str

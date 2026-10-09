@@ -30,8 +30,18 @@ dưới `MEDIA_ROOT`, metadata lưu ScyllaDB.
 | Thao tác | Endpoint | Trạng thái |
 |---|---|---|
 | Tạo (người gọi thành chủ) | `POST /orgs` | `201`, slug trùng `409 SLUG_TAKEN` |
-| Danh sách của tôi | `GET /orgs/mine` | `200` (mặc định ẩn thùng rác) |
+| Danh sách của tôi | `GET /orgs/mine` | `200` envelope `{items, total, counts}` (mặc định ẩn thùng rác) |
 | Kèm thùng rác | `GET /orgs/mine?include_deleted=true` | `200` |
+| Tìm/lọc/sắp xếp/trang | `GET /orgs/mine?q=&status=&sort=&limit=&offset=` | `200`, `sort` sai `422` |
+
+- `q`: khớp tên/slug, không phân biệt hoa thường và dấu tiếng Việt
+  (`hoi an` khớp `Hội An`). `status`: `active` | `pending` (giá trị lạ trả
+  rỗng, không `422`). `sort`: `newest` (mặc định) | `name` | `members`.
+  `limit` 1–100 (mặc định 20), `offset` ≥ 0 (mặc định 0). `total` là số
+  lượng sau lọc, `counts` là số lượng từng trạng thái sau `q` (cho chip lọc).
+- Đọc `mine` chỉ chạm một partition `members_by_user` nên lọc/sắp xếp/trang
+  chạy trong service (`orgs/listing.py`), không cần bảng query mới và không
+  `ALLOW FILTERING`. Chỉ xem lại khi một user có hàng trăm org.
 | Sửa tên/mô tả (slug, kind đóng băng) | `PATCH /orgs/{id}` | `200`, khác chủ `403` |
 | Xóa mềm | `DELETE /orgs/{id}` | `200` + `deleted_at` |
 | Khôi phục | `POST /orgs/{id}/restore` | `200`, chưa xóa `400 INVALID_BUSINESS_PROFILE` |

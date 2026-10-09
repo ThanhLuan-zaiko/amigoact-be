@@ -231,3 +231,33 @@ async def test_media_normalization_contract_locked(client: AsyncClient) -> None:
 
     served = await client.get(exotic.json()["file_url"])
     assert served.status_code == 200
+
+
+async def test_mine_page_envelope_contract_locked(client: AsyncClient) -> None:
+    """GET /orgs/mine always returns items/total/counts, never a bare list."""
+    await client.post(
+        "/auth/register",
+        json={
+            "email": "pager@example.com", "phone": "0355123456",
+            "password": PASSWORD, "full_name": "Pager",
+        },
+    )
+    logged = await client.post(
+        "/auth/login", json={"email": "pager@example.com", "password": PASSWORD}
+    )
+    headers = {"Authorization": f"Bearer {logged.json()['access_token']}"}
+    for slug in ("page-a", "page-b"):
+        made = await client.post(
+            "/orgs",
+            json={"name": slug, "slug": slug, "description": "", "kind": "club"},
+            headers=headers,
+        )
+        assert made.status_code == 201
+
+    page = await client.get("/orgs/mine?sort=name&limit=1&offset=1", headers=headers)
+    assert page.status_code == 200
+    body = page.json()
+    assert set(body.keys()) == {"items", "total", "counts"}
+    assert [o["slug"] for o in body["items"]] == ["page-b"]
+    assert body["total"] == 2
+    assert body["counts"] == [{"bucket": "active", "count": 2}]

@@ -189,7 +189,7 @@ def test_list_mine_returns_only_owner_orgs() -> None:
     mine, other = _owner(), _owner()
     service.create_org(mine, "Mine", "mine-1", "", "group")
     service.create_org(other, "Other", "other-1", "", "group")
-    assert [o.slug for o in service.list_my_orgs(mine)] == ["mine-1"]
+    assert [o.slug for o in service.list_my_orgs(mine).items] == ["mine-1"]
     assert isinstance(datetime.now(timezone.utc), datetime)
 
 
@@ -207,14 +207,14 @@ def test_update_soft_restore_hard_cycle() -> None:
 
     trashed = service.soft_delete_org(created.id, owner)
     assert trashed.deleted_at is not None
-    assert service.list_my_orgs(owner) == []
-    assert [o.slug for o in service.list_my_orgs(owner, include_deleted=True)] == ["club-a"]
+    assert service.list_my_orgs(owner).items == []
+    assert [o.slug for o in service.list_my_orgs(owner, include_deleted=True).items] == ["club-a"]
     with pytest.raises(OrgDeletedError):
         service.update_org(created.id, owner, "Again", "")
 
     restored = service.restore_org(created.id, owner)
     assert restored.deleted_at is None
-    assert [o.slug for o in service.list_my_orgs(owner)] == ["club-a"]
+    assert [o.slug for o in service.list_my_orgs(owner).items] == ["club-a"]
 
     with pytest.raises(ForbiddenError):
         service.hard_delete_org(created.id, stranger)

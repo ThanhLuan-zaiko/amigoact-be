@@ -39,7 +39,41 @@ async def test_create_and_list_mine(client: AsyncClient) -> None:
 
     mine = await client.get("/orgs/mine", headers=headers)
     assert mine.status_code == 200
-    assert [o["slug"] for o in mine.json()] == ["club-a"]
+    assert [o["slug"] for o in mine.json()["items"]] == ["club-a"]
+    assert mine.json()["total"] == 1
+
+
+async def test_mine_search_filter_sort_and_page(client: AsyncClient) -> None:
+    access = await _token(client, "orgpage@example.com", "0912345679")
+    headers = {"Authorization": f"Bearer {access}"}
+    for name, slug in [("Hội An", "hoi-an"), ("Da Nang", "da-nang"), ("Hue", "hue")]:
+        made = await client.post(
+            "/orgs",
+            json={"name": name, "slug": slug, "description": "", "kind": "club"},
+            headers=headers,
+        )
+        assert made.status_code == 201, made.text
+
+    folded = await client.get("/orgs/mine?q=hoi+an", headers=headers)
+    assert [o["slug"] for o in folded.json()["items"]] == ["hoi-an"]
+
+    named = await client.get("/orgs/mine?sort=name", headers=headers)
+    assert [o["slug"] for o in named.json()["items"]] == ["da-nang", "hoi-an", "hue"]
+    assert named.json()["total"] == 3
+    assert {c["bucket"]: c["count"] for c in named.json()["counts"]} == {"active": 3}
+
+    first = await client.get("/orgs/mine?sort=name&limit=2&offset=0", headers=headers)
+    assert [o["slug"] for o in first.json()["items"]] == ["da-nang", "hoi-an"]
+    assert first.json()["total"] == 3
+    second = await client.get("/orgs/mine?sort=name&limit=2&offset=2", headers=headers)
+    assert [o["slug"] for o in second.json()["items"]] == ["hue"]
+
+    pending = await client.get("/orgs/mine?status=pending", headers=headers)
+    assert pending.json()["items"] == []
+    assert pending.json()["total"] == 0
+
+    bad_sort = await client.get("/orgs/mine?sort=oldest", headers=headers)
+    assert bad_sort.status_code == 422
 
 
 async def test_business_org_requires_legal_head(client: AsyncClient) -> None:
@@ -121,9 +155,9 @@ async def test_soft_delete_restore_and_trash(client: AsyncClient) -> None:
     assert trashed.json()["deleted_at"] is not None
 
     mine = await client.get("/orgs/mine", headers=headers)
-    assert [o["slug"] for o in mine.json()] == []
+    assert [o["slug"] for o in mine.json()["items"]] == []
     trash = await client.get("/orgs/mine?include_deleted=true", headers=headers)
-    assert [o["slug"] for o in trash.json()] == ["trash-club"]
+    assert [o["slug"] for o in trash.json()["items"]] == ["trash-club"]
 
     blocked = await client.patch(
         f"/orgs/{org_id}", json={"name": "Edit Trash", "description": ""},
@@ -136,7 +170,7 @@ async def test_soft_delete_restore_and_trash(client: AsyncClient) -> None:
     assert restored.status_code == 200, restored.text
     assert restored.json()["deleted_at"] is None
     mine = await client.get("/orgs/mine", headers=headers)
-    assert [o["slug"] for o in mine.json()] == ["trash-club"]
+    assert [o["slug"] for o in mine.json()["items"]] == ["trash-club"]
 
 
 async def test_hard_delete_erases_rows_and_files(client: AsyncClient) -> None:
@@ -160,7 +194,7 @@ async def test_hard_delete_erases_rows_and_files(client: AsyncClient) -> None:
     assert erased.status_code == 204, erased.text
     assert not org_dir.exists()
     mine = await client.get("/orgs/mine?include_deleted=true", headers=headers)
-    assert mine.json() == []
+    assert mine.json()["items"] == []
 
 
 async def test_upload_list_serve_delete_media(client: AsyncClient) -> None:

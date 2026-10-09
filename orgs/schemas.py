@@ -15,6 +15,7 @@ _CCCD_PATTERN = re.compile(r"^\d{12}$")
 
 OrgKind = Literal["organization", "club", "group", "business"]
 MediaRole = Literal["gallery", "cover", "logo"]
+OrgSort = Literal["newest", "name", "members"]
 
 
 def validate_slug(value: str) -> str:
@@ -95,6 +96,21 @@ class OrgResponse(BaseModel):
     status: str = "active"
     deleted_at: datetime | None = None
     created_at: datetime
+
+
+class BucketCount(BaseModel):
+    """One status facet for the mine filter chips."""
+
+    bucket: str
+    count: int
+
+
+class OrgListPage(BaseModel):
+    """One mine-listing page: items plus totals for chips and pager."""
+
+    items: list[OrgResponse]
+    total: int
+    counts: list[BucketCount] = []
 
 
 class UpdateOrgRequest(BaseModel):

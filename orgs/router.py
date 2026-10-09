@@ -18,9 +18,12 @@ from core.dependencies import (
 from core.exceptions import MediaTooLargeError, NotFoundError
 from core.media import MEDIA_MIMES, media_kind
 from orgs.schemas import (
+    BucketCount,
     CreateOrgRequest,
     MediaResponse,
+    OrgListPage,
     OrgResponse,
+    OrgSort,
     SetMediaRoleRequest,
     UpdateOrgRequest,
 )
@@ -88,17 +91,32 @@ def create_org(
     )
 
 
-@router.get("/orgs/mine", response_model=list[OrgResponse])
+@router.get("/orgs/mine", response_model=OrgListPage)
 def list_my_orgs(
     include_deleted: bool = Query(default=False),
+    q: str | None = Query(default=None, max_length=100),
+    status: str | None = Query(default=None, max_length=32),
+    sort: OrgSort = Query(default="newest"),
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
     current: CurrentUser = Depends(get_current_user),
     service: OrgService = Depends(get_org_service),
-) -> list[OrgResponse]:
-    """List orgs the current user owns or joined (trash on request)."""
-    return [
-        _org_schema(item)
-        for item in service.list_my_orgs(current.id, include_deleted)
-    ]
+) -> OrgListPage:
+    """Search, filter, sort and page the orgs the current user owns or joined."""
+    page = service.list_my_orgs(
+        current.id,
+        include_deleted,
+        q=q,
+        status=status,
+        sort=sort,
+        limit=limit,
+        offset=offset,
+    )
+    return OrgListPage(
+        items=[_org_schema(item) for item in page.items],
+        total=page.total,
+        counts=[BucketCount(bucket=key, count=count) for key, count in page.counts],
+    )
 
 
 @router.patch("/orgs/{org_id}", response_model=OrgResponse)
