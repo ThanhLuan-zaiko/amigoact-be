@@ -20,6 +20,21 @@ class UserBrief:
     status: str
 
 
+@dataclass(frozen=True)
+class OrgContactDetails:
+    """Optional contact/legal fields written as a full-replace set."""
+
+    email: str | None = None
+    phone: str | None = None
+    website: str | None = None
+    address: str | None = None
+    city: str | None = None
+    country: str | None = None
+    legal_name: str | None = None
+    license_number: str | None = None
+    is_personal: bool = False
+
+
 class OrgRepository(ABC):
     """Persistence port for orgs plus slug uniqueness and memberships."""
 
@@ -39,8 +54,9 @@ class OrgRepository(ABC):
         legal_rep_position: str | None,
         legal_status: str,
         now: datetime,
+        contact: OrgContactDetails | None = None,
     ) -> Organization:
-        """Claim the slug with LWT, then insert org plus owner membership."""
+        """Claim slug/tax code with LWT, then insert org plus owner row."""
 
     @abstractmethod
     def get_by_id(self, org_id: UUID) -> Organization | None:
@@ -70,16 +86,40 @@ class OrgRepository(ABC):
         description: str,
         now: datetime,
         join_policy: str | None = None,
+        contact: OrgContactDetails | None = None,
     ) -> Organization | None:
-        """Replace name/description (and policy), return the fresh row."""
+        """Replace name/description (and policy/contact), fresh row out."""
 
     @abstractmethod
     def mark_deleted(self, org_id: UUID, now: datetime) -> Organization | None:
-        """Soft delete: stamp deleted_at, keep every row for restore."""
+        """Soft delete: stamp deleted_at, free slug, keep rows for restore."""
 
     @abstractmethod
     def mark_restored(self, org_id: UUID, now: datetime) -> Organization | None:
-        """Clear deleted_at so a soft-deleted org becomes visible again."""
+        """Clear deleted_at, reclaim the slug (suffix fallback if taken)."""
+
+    @abstractmethod
+    def set_brand_media(
+        self, org_id: UUID, role: str, asset_id: UUID | None, now: datetime
+    ) -> None:
+        """Point cover_media_id/logo_media_id at an asset (or clear it)."""
+
+    @abstractmethod
+    def list_by_legal_status(
+        self, legal_status: str, limit: int = 100
+    ) -> list[Organization]:
+        """Verification queue read: orgs under one legal_status, oldest first."""
+
+    @abstractmethod
+    def set_legal_status(
+        self,
+        org_id: UUID,
+        legal_status: str,
+        verified_at: datetime | None,
+        verified_by: UUID | None,
+        now: datetime,
+    ) -> Organization | None:
+        """Move the org to a new legal status and re-partition its queue row."""
 
     @abstractmethod
     def delete_everything(self, org_id: UUID) -> bool:
@@ -99,8 +139,11 @@ class MediaRepository(ABC):
         size_bytes: int,
         now: datetime,
         role: str = "gallery",
+        file_hash: str | None = None,
+        uploader_id: UUID | None = None,
+        original_name: str | None = None,
     ) -> MediaAsset:
-        """Insert the metadata row plus the owner feed row."""
+        """Insert the metadata row plus the owner/uploader/hash feeds."""
 
     @abstractmethod
     def list_by_org(self, org_id: UUID) -> list[MediaAsset]:
@@ -140,15 +183,25 @@ class MemberRepository(ABC):
 
     @abstractmethod
     def put(
-        self, org_id: UUID, user_id: UUID, status: str, now: datetime
+        self,
+        org_id: UUID,
+        user_id: UUID,
+        status: str,
+        now: datetime,
+        invited_by: UUID | None = None,
     ) -> OrganizationMember:
         """Insert both membership rows for a fresh lifecycle."""
 
     @abstractmethod
     def set_status(
-        self, org_id: UUID, user_id: UUID, status: str, now: datetime
+        self,
+        org_id: UUID,
+        user_id: UUID,
+        status: str,
+        now: datetime,
+        invited_by: UUID | None = None,
     ) -> OrganizationMember | None:
-        """Dual-write a status transition on both membership tables."""
+        """Dual-write a status transition; invited_by None keeps existing."""
 
 
 class UserDirectory(ABC):

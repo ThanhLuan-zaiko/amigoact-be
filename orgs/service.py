@@ -15,7 +15,7 @@ from core.exceptions import (
 )
 from core.media import MediaStore
 from core.security import utcnow
-from orgs.interfaces import MediaRepository, OrgRepository
+from orgs.interfaces import MediaRepository, OrgContactDetails, OrgRepository
 from orgs.listing import OrgListResult, paginate_mine
 from orgs.repository import generate_org_id
 
@@ -24,6 +24,16 @@ if TYPE_CHECKING:
 
 _ORG_KINDS = ("organization", "club", "group", "business")
 _JOIN_POLICIES = ("invite", "open")
+_CONTACT_LIMITS = {
+    "email": 254,
+    "phone": 20,
+    "website": 255,
+    "address": 255,
+    "city": 100,
+    "country": 100,
+    "legal_name": 255,
+    "license_number": 100,
+}
 
 
 @dataclass(frozen=True)
@@ -43,6 +53,19 @@ class OrgSnapshot:
     legal_status: str
     status: str
     join_policy: str
+    email: str | None
+    phone: str | None
+    website: str | None
+    address: str | None
+    city: str | None
+    country: str | None
+    legal_name: str | None
+    license_number: str | None
+    is_personal: bool
+    logo_media_id: UUID | None
+    cover_media_id: UUID | None
+    verified_at: datetime | None
+    previous_slug: str | None
     deleted_at: datetime | None
     member_count: int
     created_at: datetime
@@ -78,6 +101,19 @@ class OrgService:
             legal_status=org.legal_status,
             status=getattr(org, "status", "active") or "active",
             join_policy=getattr(org, "join_policy", None) or "invite",
+            email=getattr(org, "email", None),
+            phone=getattr(org, "phone", None),
+            website=getattr(org, "website", None),
+            address=getattr(org, "address", None),
+            city=getattr(org, "city", None),
+            country=getattr(org, "country", None),
+            legal_name=getattr(org, "legal_name", None),
+            license_number=getattr(org, "license_number", None),
+            is_personal=bool(getattr(org, "is_personal", False)),
+            logo_media_id=getattr(org, "logo_media_id", None),
+            cover_media_id=getattr(org, "cover_media_id", None),
+            verified_at=getattr(org, "verified_at", None),
+            previous_slug=getattr(org, "previous_slug", None),
             deleted_at=getattr(org, "deleted_at", None),
             member_count=self._orgs.count_members(org.id),
             created_at=org.created_at,
@@ -114,6 +150,7 @@ class OrgService:
         legal_rep_name: str | None = None,
         legal_rep_id: str | None = None,
         legal_rep_position: str | None = None,
+        contact: OrgContactDetails | None = None,
     ) -> OrgSnapshot:
         """Create an org. Business kind pins tax plus legal head."""
         clean_name = name.strip()
@@ -144,8 +181,28 @@ class OrgService:
             legal_rep_position,
             legal_status,
             now,
+            self._clean_contact(contact),
         )
         return self._snapshot(org.id)
+
+    @staticmethod
+    def _clean_contact(
+        contact: OrgContactDetails | None,
+    ) -> OrgContactDetails | None:
+        """Trim contact strings and enforce column length limits."""
+        if contact is None:
+            return None
+        cleaned: dict[str, object] = {}
+        for field_name, limit in _CONTACT_LIMITS.items():
+            value = getattr(contact, field_name)
+            if isinstance(value, str):
+                value = value.strip() or None
+            if value is not None and len(value) > limit:
+                raise InvalidBusinessProfileError(
+                    f"Org {field_name.replace('_', ' ')} is invalid."
+                )
+            cleaned[field_name] = value
+        return OrgContactDetails(is_personal=contact.is_personal, **cleaned)
 
     def list_my_orgs(
         self,
@@ -173,6 +230,7 @@ class OrgService:
         name: str,
         description: str,
         join_policy: str | None = None,
+        contact: OrgContactDetails | None = None,
     ) -> OrgSnapshot:
         """Owner renames, re-describes or re-policies a live org."""
         self._require_live(org_id, user_id)
@@ -185,7 +243,12 @@ class OrgService:
             raise InvalidBusinessProfileError("Join policy is invalid.")
         now = utcnow()
         org = self._orgs.update_details(
-            org_id, clean_name, description.strip(), now, join_policy
+            org_id,
+            clean_name,
+            description.strip(),
+            now,
+            join_policy,
+            self._clean_contact(contact),
         )
         assert org is not None
         return self._snapshot(org_id)

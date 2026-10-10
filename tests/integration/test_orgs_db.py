@@ -173,6 +173,109 @@ async def test_soft_delete_restore_and_trash(client: AsyncClient) -> None:
     assert [o["slug"] for o in mine.json()["items"]] == ["trash-club"]
 
 
+async def test_org_contact_fields_roundtrip(client: AsyncClient) -> None:
+    access = await _token(client, "contact@example.com", "0912345011")
+    headers = {"Authorization": f"Bearer {access}"}
+    created = await client.post(
+        "/orgs",
+        json={
+            "name": "Contact Club", "slug": "contact-club", "description": "",
+            "kind": "club", "email": "hello@club.vn", "phone": "0905123456",
+            "website": "club.vn", "city": "Da Nang", "country": "Vietnam",
+            "legal_name": "CLB Contact", "license_number": "LN-123",
+        },
+        headers=headers,
+    )
+    assert created.status_code == 201, created.text
+    body = created.json()
+    assert body["email"] == "hello@club.vn"
+    assert body["city"] == "Da Nang"
+    assert body["legal_name"] == "CLB Contact"
+    org_id = body["id"]
+
+    updated = await client.patch(
+        f"/orgs/{org_id}",
+        json={
+            "name": "Contact Club", "description": "",
+            "email": "new@club.vn", "address": "1 Le Loi",
+        },
+        headers=headers,
+    )
+    assert updated.status_code == 200, updated.text
+    assert updated.json()["email"] == "new@club.vn"
+    assert updated.json()["address"] == "1 Le Loi"
+    # Omitted contact fields clear (full-replace contract).
+    assert updated.json()["city"] is None
+    assert updated.json()["website"] is None
+
+    bad = await client.patch(
+        f"/orgs/{org_id}",
+        json={"name": "Contact Club", "description": "", "email": "not-mail"},
+        headers=headers,
+    )
+    assert bad.status_code == 422
+
+
+async def test_duplicate_tax_code_rejected(client: AsyncClient) -> None:
+    access = await _token(client, "tax1@example.com", "0912345012")
+    headers = {"Authorization": f"Bearer {access}"}
+    first = await client.post(
+        "/orgs",
+        json={
+            "name": "Biz One", "slug": "biz-one", "description": "",
+            "kind": "business", "tax_code": "0301234567",
+            "legal_rep_name": "Nguyen Van A", "legal_rep_id": "012345678901",
+        },
+        headers=headers,
+    )
+    assert first.status_code == 201, first.text
+
+    second = await client.post(
+        "/orgs",
+        json={
+            "name": "Biz Two", "slug": "biz-two", "description": "",
+            "kind": "business", "tax_code": "0301234567",
+            "legal_rep_name": "Tran Thi B", "legal_rep_id": "012345678902",
+        },
+        headers=headers,
+    )
+    assert second.status_code == 409
+    assert second.json()["code"] == "TAX_CODE_TAKEN"
+
+    # The failed tax claim must release the slug for reuse.
+    third = await client.post(
+        "/orgs",
+        json={
+            "name": "Biz Three", "slug": "biz-two", "description": "",
+            "kind": "club",
+        },
+        headers=headers,
+    )
+    assert third.status_code == 201, third.text
+
+
+async def test_soft_delete_frees_slug_and_restore_renames(
+    client: AsyncClient,
+) -> None:
+    access = await _token(client, "slug@example.com", "0912345013")
+    headers = {"Authorization": f"Bearer {access}"}
+    first_id = await _make_org(client, headers, "slug-club")
+
+    trashed = await client.delete(f"/orgs/{first_id}", headers=headers)
+    assert trashed.status_code == 200
+
+    # The freed slug is claimable by a replacement org.
+    second_id = await _make_org(client, headers, "slug-club")
+    assert second_id != first_id
+
+    restored = await client.post(f"/orgs/{first_id}/restore", headers=headers)
+    assert restored.status_code == 200, restored.text
+    body = restored.json()
+    assert body["slug"].startswith("slug-club-r")
+    assert body["previous_slug"] == "slug-club"
+    assert body["deleted_at"] is None
+
+
 async def test_hard_delete_erases_rows_and_files(client: AsyncClient) -> None:
     import os
     import pathlib

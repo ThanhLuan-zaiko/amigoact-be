@@ -17,6 +17,8 @@ from core.security import AuthTokenError, decode_access_token
 if TYPE_CHECKING:
     from auth.service import AuthService
     from core.realtime import ConnectionManager
+    from notifications.service import NotificationService
+    from orgs.interfaces import UserDirectory
     from orgs.media_service import MediaService
     from orgs.member_service import MemberService
     from orgs.service import OrgService
@@ -72,7 +74,8 @@ def get_org_service(
     settings: Settings = Depends(get_settings),
 ) -> OrgService:
     """Build one OrgService per request from the org repository."""
-    from orgs.repository import CqlMediaRepository, CqlOrgRepository
+    from orgs.media_repository import CqlMediaRepository
+    from orgs.repository import CqlOrgRepository
     from orgs.service import OrgService
 
     return OrgService(
@@ -87,7 +90,8 @@ def get_media_service(
 ) -> MediaService:
     """Build one MediaService per request for the org gallery."""
     from orgs.media_service import MediaService
-    from orgs.repository import CqlMediaRepository, CqlOrgRepository
+    from orgs.media_repository import CqlMediaRepository
+    from orgs.repository import CqlOrgRepository
 
     return MediaService(
         orgs=CqlOrgRepository(settings.scylla_keyspace),
@@ -114,14 +118,78 @@ def get_access_control() -> AccessControl:
     )
 
 
+def get_notification_service(request: Request) -> NotificationService:
+    """Build one NotificationService per request over both tables."""
+    from notifications.interfaces import NotificationPublisher
+    from notifications.repository import (
+        CqlNotificationStore,
+        CqlPreferenceStore,
+    )
+    from notifications.service import NotificationService
+
+    class _WsPublisher(NotificationPublisher):
+        """Fan notifications onto the socket registry (best-effort)."""
+
+        def __init__(self, manager: ConnectionManager | None) -> None:
+            self._manager = manager
+
+        def push(self, user_id: UUID, payload: dict) -> None:
+            if self._manager is not None:
+                self._manager.schedule_publish(
+                    f"notifications:{user_id}", payload
+                )
+
+    return NotificationService(
+        CqlNotificationStore(),
+        _WsPublisher(getattr(request.app.state, "ws_manager", None)),
+        CqlPreferenceStore(),
+    )
+
+
+def user_directory(settings: Settings) -> UserDirectory:
+    """Read-only bridge onto the auth user tables (shared by features)."""
+    from auth.repository import CqlUserRepository
+    from orgs.interfaces import UserBrief, UserDirectory
+
+    class _UserDirectory(UserDirectory):
+        """get_brief/find_by_email delegate to the auth repository."""
+
+        def __init__(self) -> None:
+            self._users = CqlUserRepository(settings.scylla_keyspace)
+
+        def get_brief(self, user_id: UUID) -> UserBrief | None:
+            user = self._users.get_by_id(user_id)
+            if user is None:
+                return None
+            return UserBrief(
+                id=user.id,
+                full_name=user.full_name,
+                email=user.email,
+                status=user.status,
+            )
+
+        def find_by_email(self, email: str) -> UserBrief | None:
+            user = self._users.get_by_email(email)
+            if user is None:
+                return None
+            return UserBrief(
+                id=user.id,
+                full_name=user.full_name,
+                email=user.email,
+                status=user.status,
+            )
+
+    return _UserDirectory()
+
+
 def get_member_service(
     request: Request,
     settings: Settings = Depends(get_settings),
     access: AccessControl = Depends(get_access_control),
+    notifications: NotificationService = Depends(get_notification_service),
 ) -> MemberService:
     """Build one MemberService; user lookup adapts the auth repository."""
-    from auth.repository import CqlUserRepository
-    from orgs.interfaces import MemberEvents, UserBrief, UserDirectory
+    from orgs.interfaces import MemberEvents
     from orgs.member_repository import CqlMemberRepository
     from orgs.member_service import MemberService
     from orgs.repository import CqlOrgRepository
@@ -162,42 +230,15 @@ def get_member_service(
                     },
                 )
 
-    class _UserDirectory(UserDirectory):
-        """Read-only bridge onto the auth user tables."""
-
-        def __init__(self) -> None:
-            self._users = CqlUserRepository(settings.scylla_keyspace)
-
-        def get_brief(self, user_id: UUID) -> UserBrief | None:
-            user = self._users.get_by_id(user_id)
-            if user is None:
-                return None
-            return UserBrief(
-                id=user.id,
-                full_name=user.full_name,
-                email=user.email,
-                status=user.status,
-            )
-
-        def find_by_email(self, email: str) -> UserBrief | None:
-            user = self._users.get_by_email(email)
-            if user is None:
-                return None
-            return UserBrief(
-                id=user.id,
-                full_name=user.full_name,
-                email=user.email,
-                status=user.status,
-            )
-
     return MemberService(
         orgs=CqlOrgRepository(settings.scylla_keyspace),
         members=CqlMemberRepository(),
-        users=_UserDirectory(),
+        users=user_directory(settings),
         access=access,
         events=_WsMemberEvents(
             getattr(request.app.state, "ws_manager", None)
         ),
+        notifications=notifications,
     )
 
 
@@ -266,3 +307,16 @@ def get_current_user(
     if user.status != "active":
         raise AccountSuspendedError("Account is suspended.")
     return CurrentUser(id=user.id, email=user.email, status=user.status)
+
+
+def get_optional_user(
+    credentials: HTTPAuthorizationCredentials | None = Depends(_bearer),
+    settings: Settings = Depends(get_settings),
+) -> CurrentUser | None:
+    """Like get_current_user but returns None for anonymous visitors."""
+    if credentials is None or not credentials.credentials:
+        return None
+    try:
+        return get_current_user(credentials, settings)
+    except UnauthorizedError:
+        return None

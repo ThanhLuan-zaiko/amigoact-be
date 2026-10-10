@@ -33,19 +33,21 @@ from orgs.member_helpers import (
     my_memberships,
     role_of,
 )
+from orgs.member_moderation import MemberModerationMixin
 from orgs.member_listing import (
     MemberPage,
     MemberSnapshot,
     MembershipSnapshot,
     paginate_members,
 )
+from notifications.interfaces import NotificationPort
 from rbac.interfaces import AccessControl
 
 if TYPE_CHECKING:
     from orgs.model import Organization
 
 
-class MemberService:
+class MemberService(MemberModerationMixin):
     """Invite/accept/decline/join/leave/suspend/remove/role for orgs."""
 
     def __init__(
@@ -55,12 +57,14 @@ class MemberService:
         users: UserDirectory,
         access: AccessControl,
         events: MemberEvents,
+        notifications: NotificationPort | None = None,
     ) -> None:
         self._orgs = orgs
         self._members = members
         self._users = users
         self._access = access
         self._events = events
+        self._notifications = notifications
 
     def _emit(
         self,
@@ -153,7 +157,7 @@ class MemberService:
     ) -> list[MembershipSnapshot]:
         """Caller's links across orgs (invitation inbox, mine view)."""
         return my_memberships(
-            self._members, self._orgs, self._access, user_id, status
+            self._members, self._orgs, self._access, self._users, user_id, status
         )
 
     def invite_member(
@@ -180,13 +184,27 @@ class MemberService:
             raise self._deny(org.id, actor_id, "member.invite", brief.id)
         now = utcnow()
         if row is None:
-            self._members.put(org_id, brief.id, "invited", now)
+            self._members.put(
+                org_id, brief.id, "invited", now, invited_by=actor_id
+            )
         else:
-            self._members.set_status(org_id, brief.id, "invited", now)
+            self._members.set_status(
+                org_id, brief.id, "invited", now, invited_by=actor_id
+            )
         if role == "admin":
             self._access.assign(org_id, actor_id, brief.id, "admin")
         self._audit(org_id, actor_id, "member.invite", brief.id)
         self._emit(org_id, "invited", brief.id, actor_id, notify=brief.id)
+        if self._notifications is not None:
+            try:
+                self._notifications.notify(
+                    brief.id,
+                    "membership",
+                    f"Lời mời vào {org.name}",
+                    "Bạn được mời tham gia tổ chức. Vào Hộp thư lời mời để phản hồi.",
+                )
+            except Exception:  # noqa: BLE001 - notifications are best-effort
+                pass
         fresh = self._members.get(org_id, brief.id)
         assert fresh is not None
         return member_snapshot(
@@ -275,63 +293,3 @@ class MemberService:
         self._audit(org_id, actor_id, action, user_id)
         event = "left" if actor_id == user_id else "removed"
         self._emit(org_id, event, user_id, actor_id, notify=user_id)
-
-    def update_member(
-        self,
-        org_id: UUID,
-        actor_id: UUID,
-        user_id: UUID,
-        *,
-        role: str | None = None,
-        status: str | None = None,
-    ) -> MemberSnapshot:
-        """Owner assigns roles; managers suspend/reactivate plain members."""
-        org = live_org(self._orgs, org_id)
-        if user_id == org.owner_id:
-            raise OwnerImmutableError("The owner cannot be modified.")
-        row = self._members.get(org_id, user_id)
-        if row is None or row.status == "left":
-            raise MemberNotFoundError("Member not found.")
-        if role is not None:
-            if org.owner_id != actor_id:
-                raise self._deny(org.id, actor_id, "member.role", user_id)
-            if role == "admin":
-                self._access.assign(org_id, actor_id, user_id, "admin")
-            elif role == "member":
-                self._access.revoke(org_id, user_id, "admin")
-            else:
-                raise InvalidRoleError("Role is invalid.")
-            self._audit(org_id, actor_id, "member.role", user_id)
-        if status is not None:
-            if status not in ("suspended", "active"):
-                raise InvalidMemberStateError("Status transition is invalid.")
-            self._require_manager(
-                org, actor_id, "member:suspend", "member.suspend", user_id
-            )
-            if is_admin(self._access, org_id, user_id) and org.owner_id != actor_id:
-                raise self._deny(org.id, actor_id, "member.suspend", user_id)
-            current = getattr(row, "status", "active") or "active"
-            if status == "suspended" and current != "active":
-                raise InvalidMemberStateError(
-                    "Only active members can be suspended."
-                )
-            if status == "active" and current != "suspended":
-                raise InvalidMemberStateError(
-                    "Only suspended members can be reactivated."
-                )
-            self._members.set_status(org_id, user_id, status, utcnow())
-            self._audit(org_id, actor_id, "member.suspend", user_id)
-        events: list[str] = []
-        if role is not None:
-            events.append("promoted" if role == "admin" else "demoted")
-        if status is not None:
-            events.append(
-                "suspended" if status == "suspended" else "reactivated"
-            )
-        for event in events:
-            self._emit(org_id, event, user_id, actor_id, notify=user_id)
-        fresh = self._members.get(org_id, user_id)
-        assert fresh is not None
-        return member_snapshot(
-            self._users, org, fresh, self._access.role_map(org_id), show_email=True
-        )

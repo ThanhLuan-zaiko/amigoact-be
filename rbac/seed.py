@@ -10,7 +10,11 @@ from __future__ import annotations
 from datetime import datetime
 
 from core.security import utcnow
-from rbac.catalog import PERMISSIONS, SYSTEM_ROLES
+from rbac.catalog import (
+    PERMISSIONS,
+    PLATFORM_ADMIN_ROLE_ID,
+    SYSTEM_ROLES,
+)
 from rbac.model import Permission, Role, RolePermission
 
 
@@ -26,6 +30,7 @@ def seed_rbac(now: datetime | None = None) -> None:
             Role.create(
                 id=role_id,  # type: ignore[arg-type]
                 org_id=None,
+                code=name,
                 name=name,
                 description=str(meta["description"]),
                 is_system=True,
@@ -39,3 +44,13 @@ def seed_rbac(now: datetime | None = None) -> None:
         }
         for code in meta["permissions"] - held:  # type: ignore[operator]
             RolePermission.create(role_id=role_id, permission_code=code)  # type: ignore[arg-type]
+    if Role.objects(id=PLATFORM_ADMIN_ROLE_ID).first() is None:
+        Role.create(
+            id=PLATFORM_ADMIN_ROLE_ID,
+            org_id=None,
+            code="platform_admin",
+            name="platform_admin",
+            description="Platform administrator: verifies orgs, manages admins.",
+            is_system=True,
+            created_at=stamp,
+        )

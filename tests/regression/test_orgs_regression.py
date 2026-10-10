@@ -131,7 +131,7 @@ async def test_media_role_contract_locked(client: AsyncClient) -> None:
     assert plain.status_code == 201
     assert set(plain.json().keys()) == {
         "id", "org_id", "kind", "role", "mime", "size_bytes", "file_url",
-        "created_at",
+        "uploader_id", "original_name", "upload_status", "created_at",
     }
     assert plain.json()["role"] == "gallery"
 

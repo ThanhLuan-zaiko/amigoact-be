@@ -26,6 +26,20 @@ class Organization(models.Model):
     legal_rep_id = columns.Text(required=False)
     legal_rep_position = columns.Text(required=False)
     legal_status = columns.Text(required=True, default="none")
+    email = columns.Text(required=False)
+    phone = columns.Text(required=False)
+    website = columns.Text(required=False)
+    address = columns.Text(required=False)
+    city = columns.Text(required=False)
+    country = columns.Text(required=False)
+    legal_name = columns.Text(required=False)
+    license_number = columns.Text(required=False)
+    is_personal = columns.Boolean(required=True, default=False)
+    logo_media_id = columns.UUID(required=False)
+    cover_media_id = columns.UUID(required=False)
+    verified_at = columns.DateTime(required=False)
+    verified_by = columns.UUID(required=False)
+    previous_slug = columns.Text(required=False)
     deleted_at = columns.DateTime(required=False)
     created_at = columns.DateTime(required=True)
     updated_at = columns.DateTime(required=True)
@@ -41,6 +55,29 @@ class OrganizationsBySlug(models.Model):
     org_id = columns.UUID(required=True)
 
 
+class OrganizationsByTaxCode(models.Model):
+    """One org per tax code; claimed with LWT like the slug index."""
+
+    __table_name__ = "organizations_by_tax_code"
+    __keyspace__ = "amigoact"
+
+    tax_code = columns.Text(primary_key=True)
+    org_id = columns.UUID(required=True)
+
+
+class OrganizationsByLegalStatus(models.Model):
+    """Platform-admin verification queue, oldest first."""
+
+    __table_name__ = "organizations_by_legal_status"
+    __keyspace__ = "amigoact"
+
+    legal_status = columns.Text(primary_key=True, partition_key=True)
+    created_at = columns.DateTime(primary_key=True, clustering_order="ASC")
+    org_id = columns.UUID(primary_key=True, clustering_order="ASC")
+    name = columns.Text(required=True)
+    slug = columns.Text(required=True)
+
+
 class OrganizationMember(models.Model):
     """Membership rows partitioned by org."""
 
@@ -50,6 +87,7 @@ class OrganizationMember(models.Model):
     org_id = columns.UUID(primary_key=True, partition_key=True)
     user_id = columns.UUID(primary_key=True, clustering_order="ASC")
     status = columns.Text(required=True, default="active")
+    invited_by = columns.UUID(required=False)
     joined_at = columns.DateTime(required=True)
 
 
@@ -62,6 +100,7 @@ class MemberByUser(models.Model):
     user_id = columns.UUID(primary_key=True, partition_key=True)
     org_id = columns.UUID(primary_key=True, clustering_order="ASC")
     status = columns.Text(required=True, default="active")
+    invited_by = columns.UUID(required=False)
     joined_at = columns.DateTime(required=True)
 
 
@@ -81,7 +120,17 @@ class MediaAsset(models.Model):
     height = columns.Integer(required=False)
     size_bytes = columns.BigInt(required=True, default=0)
     role = columns.Text(required=True, default="gallery")
+    uploader_id = columns.UUID(required=False)
+    storage_key = columns.Text(required=False)
+    backend = columns.Text(required=False, default="local")
+    original_name = columns.Text(required=False)
+    visibility = columns.Text(required=False, default="organization")
+    upload_status = columns.Text(required=False, default="active")
+    metadata_json = columns.Text(required=False)
+    thumb_url = columns.Text(required=False)
     created_at = columns.DateTime(required=True)
+    updated_at = columns.DateTime(required=False)
+    deleted_at = columns.DateTime(required=False)
 
 
 class MediaByOwner(models.Model):
@@ -91,6 +140,30 @@ class MediaByOwner(models.Model):
     __keyspace__ = "amigoact"
 
     owner_id = columns.UUID(primary_key=True, partition_key=True)
+    created_at = columns.DateTime(primary_key=True, clustering_order="DESC")
+    asset_id = columns.UUID(primary_key=True, clustering_order="ASC")
+    file_url = columns.Text(required=True)
+    mime = columns.Text(required=True)
+    owner_type = columns.Text(required=True, default="organization")
+
+
+class MediaByHash(models.Model):
+    """Content-checksum lookup for dedup and integrity checks."""
+
+    __table_name__ = "media_by_hash"
+    __keyspace__ = "amigoact"
+
+    file_hash = columns.Text(primary_key=True)
+    asset_id = columns.UUID(required=True)
+
+
+class MediaByUploader(models.Model):
+    """Newest-first feed of one user's uploads across owners."""
+
+    __table_name__ = "media_by_uploader"
+    __keyspace__ = "amigoact"
+
+    uploader_id = columns.UUID(primary_key=True, partition_key=True)
     created_at = columns.DateTime(primary_key=True, clustering_order="DESC")
     asset_id = columns.UUID(primary_key=True, clustering_order="ASC")
     file_url = columns.Text(required=True)

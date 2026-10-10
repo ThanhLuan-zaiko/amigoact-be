@@ -84,9 +84,13 @@ async def lifespan(app: FastAPI):
             settings.scylla_keyspace,
             settings.scylla_datacenter,
         )
+        from activities.seed import seed_categories
+        from profiles.seed import seed_skills
         from rbac.seed import seed_rbac
 
         await asyncio.to_thread(seed_rbac)
+        await asyncio.to_thread(seed_skills)
+        await asyncio.to_thread(seed_categories)
     except Exception as exc:
         logger.error("cqlengine connection setup failed: %s", exc)
     app.state.ws_manager = ConnectionManager()
@@ -104,15 +108,35 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+from activities.detail_router import router as activity_detail_router  # noqa: E402
+from activities.router import router as activities_router  # noqa: E402
+from admin.router import router as admin_router  # noqa: E402
 from auth.router import router as auth_router  # noqa: E402
+from certificates.router import router as certificates_router  # noqa: E402
+from hours.router import router as hours_router  # noqa: E402
+from notifications.router import router as notifications_router  # noqa: E402
 from orgs.members_router import router as members_router  # noqa: E402
 from orgs.router import router as orgs_router  # noqa: E402
+from profiles.router import router as profiles_router  # noqa: E402
 from realtime.router import router as realtime_router  # noqa: E402
+from registrations.router import router as registrations_router  # noqa: E402
+from reviews.router import router as reviews_router  # noqa: E402
+from stats.router import router as stats_router  # noqa: E402
 
 app.include_router(auth_router)
 app.include_router(orgs_router)
 app.include_router(members_router)
 app.include_router(realtime_router)
+app.include_router(admin_router)
+app.include_router(notifications_router)
+app.include_router(profiles_router)
+app.include_router(activities_router)
+app.include_router(activity_detail_router)
+app.include_router(registrations_router)
+app.include_router(hours_router)
+app.include_router(certificates_router)
+app.include_router(reviews_router)
+app.include_router(stats_router)
 
 
 @app.get("/")

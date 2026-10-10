@@ -6,7 +6,7 @@ import pytest
 
 from auth.schemas import RegisterRequest
 from core.exceptions import InvalidBusinessProfileError
-from tests.unit.test_auth_service import _service
+from tests.unit.auth_fakes import make_service as _service
 
 BUSINESS = {
     "email": "biz@example.com",

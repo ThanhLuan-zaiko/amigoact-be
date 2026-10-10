@@ -67,6 +67,17 @@ class FakeOrgs(OrgRepository):
     def mark_restored(self, org_id, now):  # noqa: ANN001, ANN202
         return None
 
+    def set_brand_media(self, org_id, role, asset_id, now):  # noqa: ANN001, ANN202
+        org = self.orgs.get(org_id)
+        if org is not None:
+            setattr(org, f"{role}_media_id", asset_id)
+
+    def list_by_legal_status(self, legal_status, limit=100):  # noqa: ANN001, ANN202
+        return []
+
+    def set_legal_status(self, org_id, legal_status, verified_at, verified_by, now):  # noqa: ANN001, ANN202
+        return None
+
     def delete_everything(self, org_id):  # noqa: ANN001, ANN202
         return False
 
@@ -84,19 +95,25 @@ class FakeMembers(MemberRepository):
     def list_links_by_user(self, user_id):  # noqa: ANN001, ANN202
         return [row for row in self.rows.values() if row.user_id == user_id]
 
-    def put(self, org_id, user_id, status, now):  # noqa: ANN001, ANN202
+    def put(self, org_id, user_id, status, now, invited_by=None):  # noqa: ANN001, ANN202
         row = SimpleNamespace(
-            org_id=org_id, user_id=user_id, status=status, joined_at=now
+            org_id=org_id,
+            user_id=user_id,
+            status=status,
+            invited_by=invited_by,
+            joined_at=now,
         )
         self.rows[(org_id, user_id)] = row
         return row
 
-    def set_status(self, org_id, user_id, status, now):  # noqa: ANN001, ANN202
+    def set_status(self, org_id, user_id, status, now, invited_by=None):  # noqa: ANN001, ANN202
         row = self.rows.get((org_id, user_id))
         if row is None:
             return None
         row.status = status
         row.joined_at = now
+        if invited_by is not None:
+            row.invited_by = invited_by
         return row
 
 

@@ -58,6 +58,8 @@ def member_snapshot(
         if row.user_id == org.owner_id
         else "admin" if "admin" in role_map.get(row.user_id, []) else "member"
     )
+    inviter_id = getattr(row, "invited_by", None)
+    inviter = users.get_brief(inviter_id) if inviter_id is not None else None
     return MemberSnapshot(
         org_id=org.id,
         user_id=row.user_id,
@@ -65,6 +67,8 @@ def member_snapshot(
         email=brief.email if (show_email and brief) else None,
         role=role,
         status=getattr(row, "status", "active") or "active",
+        invited_by=inviter_id,
+        invited_by_name=inviter.full_name if inviter else None,
         joined_at=row.joined_at,
     )
 
@@ -73,6 +77,7 @@ def my_memberships(
     members: MemberRepository,
     orgs: OrgRepository,
     access: AccessControl,
+    users: UserDirectory,
     user_id: UUID,
     status: str | None,
 ) -> list[MembershipSnapshot]:
@@ -84,6 +89,10 @@ def my_memberships(
         org = orgs.get_by_id(link.org_id)
         if org is None or getattr(org, "deleted_at", None) is not None:
             continue
+        inviter_id = getattr(link, "invited_by", None)
+        inviter = (
+            users.get_brief(inviter_id) if inviter_id is not None else None
+        )
         out.append(
             MembershipSnapshot(
                 org_id=org.id,
@@ -91,6 +100,7 @@ def my_memberships(
                 org_slug=org.slug,
                 role=role_of(access, org, user_id),
                 status=link.status,
+                invited_by_name=inviter.full_name if inviter else None,
                 joined_at=link.joined_at,
             )
         )

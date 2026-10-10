@@ -47,6 +47,11 @@ class SlugTakenError(DomainError):
     status = 409
 
 
+class TaxCodeTakenError(DomainError):
+    code = "TAX_CODE_TAKEN"
+    status = 409
+
+
 class OrgNameTakenError(DomainError):
     code = "NAME_TAKEN"
     status = 409
@@ -150,6 +155,66 @@ class InviteOnlyError(DomainError):
 class InvalidRoleError(DomainError):
     code = "INVALID_ROLE"
     status = 400
+
+
+class InvalidOrgStateError(DomainError):
+    code = "INVALID_ORG_STATE"
+    status = 400
+
+
+class SkillNotFoundError(DomainError):
+    code = "SKILL_NOT_FOUND"
+    status = 404
+
+
+class InvalidSkillLevelError(DomainError):
+    code = "INVALID_SKILL_LEVEL"
+    status = 400
+
+
+class TooManyContactsError(DomainError):
+    code = "TOO_MANY_CONTACTS"
+    status = 400
+
+
+class ProfileNotFoundError(DomainError):
+    code = "PROFILE_NOT_FOUND"
+    status = 404
+
+
+class AlreadyRegisteredError(DomainError):
+    code = "ALREADY_REGISTERED"
+    status = 409
+
+
+class RegistrationClosedError(DomainError):
+    code = "REGISTRATION_CLOSED"
+    status = 400
+
+
+class AlreadyCheckedInError(DomainError):
+    code = "ALREADY_CHECKED_IN"
+    status = 409
+
+
+class InvalidRegistrationStateError(DomainError):
+    code = "INVALID_REGISTRATION_STATE"
+    status = 400
+
+
+class InvalidHoursStateError(DomainError):
+    code = "INVALID_HOURS_STATE"
+    status = 400
+
+
+class CertificateExistsError(DomainError):
+    code = "CERTIFICATE_EXISTS"
+    status = 409
+
+
+class ReviewExistsError(DomainError):
+    code = "REVIEW_EXISTS"
+    status = 409
 
 
 async def domain_error_handler(_: Request, exc: DomainError) -> JSONResponse:

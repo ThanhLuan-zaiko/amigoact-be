@@ -27,6 +27,8 @@ class MemberSnapshot:
     email: str | None
     role: str
     status: str
+    invited_by: UUID | None
+    invited_by_name: str | None
     joined_at: datetime
 
 
@@ -39,6 +41,7 @@ class MembershipSnapshot:
     org_slug: str
     role: str
     status: str
+    invited_by_name: str | None
     joined_at: datetime
 
 

@@ -44,11 +44,23 @@ class Settings(BaseSettings):
     ws_max_frame_bytes: int = Field(default=65536, ge=1024, le=1048576)
     ws_ticket_per_min: int = Field(default=10, ge=1, le=100)
     ws_frame_per_sec: int = Field(default=20, ge=1, le=100)
+    # Comma-separated emails that always count as platform admins. This is
+    # the bootstrap path; additional admins live in platform_user_roles.
+    platform_admin_emails: str = ""
 
     @property
     def frontend_urls_list(self) -> list[str]:
         """Split comma-separated frontend origins for CORS allow-list."""
         return [u.strip() for u in self.frontend_urls.split(",") if u.strip()]
+
+    @property
+    def platform_admin_emails_set(self) -> frozenset[str]:
+        """Lowercased bootstrap admin emails (env-sourced, not stored)."""
+        return frozenset(
+            e.strip().lower()
+            for e in self.platform_admin_emails.split(",")
+            if e.strip()
+        )
 
     @property
     def scylla_hosts_list(self) -> list[str]:

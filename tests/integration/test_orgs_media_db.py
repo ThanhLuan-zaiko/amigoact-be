@@ -129,6 +129,38 @@ async def test_media_roles_cover_and_logo(client: AsyncClient) -> None:
     assert cleared.json()["role"] == "gallery"
 
 
+async def test_upload_records_uploader_and_brand_sync(
+    client: AsyncClient,
+) -> None:
+    """Registry fields land on upload; cover role feeds cover_media_id."""
+    access = await _token(client, "upl@example.com", "0912345014")
+    headers = {"Authorization": f"Bearer {access}"}
+    me = await client.get("/auth/me", headers=headers)
+    org_id = await _make_org(client, headers, "upl-club")
+
+    uploaded = await client.post(
+        f"/orgs/{org_id}/media",
+        files={"file": ("cover.png", b"\x89PNG" + b"5" * 120, "image/png")},
+        data={"role": "cover"},
+        headers=headers,
+    )
+    assert uploaded.status_code == 201, uploaded.text
+    body = uploaded.json()
+    assert body["uploader_id"] == me.json()["id"]
+    assert body["original_name"] == "cover.png"
+    assert body["upload_status"] == "active"
+
+    mine = await client.get("/orgs/mine", headers=headers)
+    assert mine.json()["items"][0]["cover_media_id"] == body["id"]
+
+    removed = await client.delete(
+        f"/orgs/{org_id}/media/{body['id']}", headers=headers
+    )
+    assert removed.status_code == 204
+    mine = await client.get("/orgs/mine", headers=headers)
+    assert mine.json()["items"][0]["cover_media_id"] is None
+
+
 async def test_exotic_image_normalized_on_upload(client: AsyncClient) -> None:
     """HEIC/TIFF uploads transcode to web-safe jpeg/png and still serve."""
     import pathlib

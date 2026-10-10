@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from datetime import datetime
+from datetime import date, datetime
 from uuid import UUID
 
 from auth.model import (
@@ -32,12 +32,37 @@ class UserRepository(ABC):
         legal_rep_name: str | None = None,
         legal_rep_id: str | None = None,
         legal_rep_position: str | None = None,
+        date_of_birth: date | None = None,
+        gender: str | None = None,
+        address: str | None = None,
     ) -> User:
         """Insert the user row after claiming both unique indexes."""
 
     @abstractmethod
     def get_by_id(self, user_id: UUID) -> User | None:
         """Load a user by primary key."""
+
+    @abstractmethod
+    def update_profile(
+        self,
+        user_id: UUID,
+        full_name: str,
+        date_of_birth: date | None,
+        gender: str | None,
+        address: str | None,
+        now: datetime,
+    ) -> User | None:
+        """Replace the editable profile fields, return the fresh row."""
+
+    @abstractmethod
+    def mark_login(self, user_id: UUID, now: datetime) -> None:
+        """Stamp last_login_at after a successful credential check."""
+
+    @abstractmethod
+    def set_avatar_media(
+        self, user_id: UUID, asset_id: UUID | None, now: datetime
+    ) -> None:
+        """Point avatar_media_id at an uploaded asset (or clear it)."""
 
     @abstractmethod
     def get_by_email(self, email: str) -> User | None:

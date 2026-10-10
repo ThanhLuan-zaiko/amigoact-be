@@ -4,8 +4,10 @@
 //
 // Conventions (must match AGENTS.md):
 // - All primary keys are CQL `uuid`, generated application-side as UUIDv7
-//   (uuid_utils.uuid7()). The single exception is `qr_codes.code`, a short
-//   human-scannable string that IS the lookup key.
+//   (uuid_utils.uuid7()). Exceptions are natural-key lookup tables where
+//   the key itself IS the query path (users_by_email, qr_codes.code,
+//   permissions.code, organizations_by_tax_code, certificates_by_serial,
+//   media_by_hash, api_keys.key_hash, idempotency_keys, ws_tickets, ...).
 // - No Secondary Indexes and no ALLOW FILTERING. Every access path has its own
 //   query table (e.g. registrations_by_activity / registrations_by_student).
 // - Time-ordered feeds use CLUSTERING ORDER BY ... DESC.
@@ -23,9 +25,15 @@
 //   Ephemeral coordination that is typically kept in RAM is persisted instead:
 //   `idempotency_keys` (safe retries), `auth_rate_limits` (durable buckets),
 //   `job_leases` (single-worker background jobs).
-// - 76 tables total: 9 auth + 8 org + 9 rbac + 3 student + 9 activity
-//   + 6 registration + 8 attendance + 4 hours + 4 certificate + 4 media
-//   + 3 notification + 4 report + 2 review + 3 durability.
+// - Feature lineage: concepts ported from the PostgreSQL reference design
+//   (../schema.sql) — scoped RBAC grants (platform/org/activity), central
+//   file-registry fields on media_assets, skills matching, activity
+//   partners, legal org identity, per-registration check-in tokens, and
+//   hour approval queues. Everything is re-modeled query-first: no joins.
+// - 101 tables total: 9 auth + 11 org + 14 rbac + 7 student/skills
+//   + 13 activity + 8 registration + 9 attendance + 6 hours
+//   + 5 certificate + 6 media + 3 notification + 4 report + 2 review
+//   + 3 durability + 1 realtime.
 // =============================================================================
 
 CREATE KEYSPACE IF NOT EXISTS amigoact
@@ -34,7 +42,7 @@ WITH replication = {'class': 'NetworkTopologyStrategy', 'datacenter1': 1};
 USE amigoact;
 
 // -----------------------------------------------------------------------------
-// 1. AUTH & IDENTITY (6 tables)
+// 1. AUTH & IDENTITY (9 tables)
 // Hybrid auth: stateless JWT access + stateful opaque refresh (SHA-256 hashes).
 // -----------------------------------------------------------------------------
 
@@ -50,6 +58,14 @@ CREATE TABLE IF NOT EXISTS users (
     legal_rep_name text,
     legal_rep_id text,
     legal_rep_position text,
+    // Profile fields from the relational design (deployed keyspaces:
+    // ALTER TABLE users ADD date_of_birth date, ADD gender text,
+    // ADD address text, ADD avatar_media_id uuid, ADD last_login_at timestamp).
+    date_of_birth date,
+    gender text, // male | female | other | unspecified
+    address text,
+    avatar_media_id uuid, // -> media_assets
+    last_login_at timestamp,
     email_verified_at timestamp,
     status text, // active | suspended | deleted
     created_at timestamp,
@@ -98,9 +114,13 @@ CREATE TABLE IF NOT EXISTS auth_sessions (
     user_id uuid,
     session_id uuid,
     device_label text,
+    user_agent text,
     ip text,
     created_at timestamp,
     last_seen_at timestamp,
+    // revoked beats expired (deployed keyspaces: ALTER TABLE auth_sessions
+    // ADD user_agent text, ADD expires_at timestamp).
+    expires_at timestamp,
     revoked_at timestamp,
     PRIMARY KEY ((user_id), session_id)
 );
@@ -121,7 +141,7 @@ CREATE TABLE IF NOT EXISTS email_verifications (
 );
 
 // -----------------------------------------------------------------------------
-// 2. ORGANIZATIONS & MULTI-TENANCY (8 tables)
+// 2. ORGANIZATIONS & MULTI-TENANCY (11 tables)
 // Enterprise scoping: organization -> campus -> department. Every business row
 // carries org_id so data never leaks across tenants.
 // -----------------------------------------------------------------------------
@@ -140,6 +160,28 @@ CREATE TABLE IF NOT EXISTS organizations (
     legal_rep_id text,
     legal_rep_position text,
     legal_status text, // none | pending | verified
+    // Contact channels + legal identity + verification trail from the
+    // relational design (deployed keyspaces: ALTER TABLE organizations ADD
+    // email text, ADD phone text, ADD website text, ADD address text,
+    // ADD city text, ADD country text, ADD legal_name text,
+    // ADD license_number text, ADD is_personal boolean,
+    // ADD logo_media_id uuid, ADD cover_media_id uuid,
+    // ADD verified_at timestamp, ADD verified_by uuid,
+    // ADD previous_slug text).
+    email text,
+    phone text,
+    website text,
+    address text,
+    city text,
+    country text,
+    legal_name text, // registered name on the license
+    license_number text, // operating license / permit number
+    is_personal boolean, // auto-created personal community org
+    logo_media_id uuid,
+    cover_media_id uuid,
+    verified_at timestamp,
+    verified_by uuid,
+    previous_slug text, // slug vacated by soft-delete; reclaim on restore
     deleted_at timestamp, // null = alive; set = soft-deleted, restorable
     created_at timestamp,
     updated_at timestamp
@@ -150,10 +192,36 @@ CREATE TABLE IF NOT EXISTS organizations_by_slug (
     org_id uuid
 );
 
+// One verified org per tax code; claimed with LWT like users_by_email.
+CREATE TABLE IF NOT EXISTS organizations_by_tax_code (
+    tax_code text PRIMARY KEY,
+    org_id uuid
+);
+
+// Platform-admin verification queue, oldest first.
+CREATE TABLE IF NOT EXISTS organizations_by_legal_status (
+    legal_status text, // none | pending | verified
+    created_at timestamp,
+    org_id uuid,
+    name text,
+    slug text,
+    PRIMARY KEY ((legal_status), created_at, org_id)
+) WITH CLUSTERING ORDER BY (created_at ASC, org_id ASC);
+
+// Org-kind lookup — a table (not a hard-coded enum) so new kinds ship with
+// data instead of schema churn. Seed: school, youth_union, ngo, nonprofit,
+// business, government, community.
+CREATE TABLE IF NOT EXISTS org_types (
+    code text PRIMARY KEY,
+    name text,
+    sort_order int
+);
+
 CREATE TABLE IF NOT EXISTS organization_members (
     org_id uuid,
     user_id uuid,
     status text, // active | invited | suspended | left
+    invited_by uuid, // (deployed keyspaces: ALTER TABLE organization_members ADD invited_by uuid)
     joined_at timestamp,
     PRIMARY KEY ((org_id), user_id)
 );
@@ -162,6 +230,7 @@ CREATE TABLE IF NOT EXISTS members_by_user (
     user_id uuid,
     org_id uuid,
     status text,
+    invited_by uuid, // (deployed keyspaces: ALTER TABLE members_by_user ADD invited_by uuid)
     joined_at timestamp,
     PRIMARY KEY ((user_id), org_id)
 );
@@ -201,7 +270,7 @@ CREATE TABLE IF NOT EXISTS departments_by_campus (
 );
 
 // -----------------------------------------------------------------------------
-// 3. RBAC — ENTERPRISE AUTHORIZATION (9 tables)
+// 3. RBAC — ENTERPRISE AUTHORIZATION (14 tables)
 // Layered model: system/org roles -> permissions, plus direct per-user grants
 // with expiry, API keys for integrations, and a full access audit trail.
 // Checks always combine role permissions AND direct grants AND ownership.
@@ -210,6 +279,7 @@ CREATE TABLE IF NOT EXISTS departments_by_campus (
 CREATE TABLE IF NOT EXISTS roles (
     id uuid PRIMARY KEY,
     org_id uuid, // null = system-wide role
+    code text, // stable machine code, unique per scope ('org_admin')
     name text,
     description text,
     is_system boolean,
@@ -254,6 +324,53 @@ CREATE TABLE IF NOT EXISTS roles_by_user (
     PRIMARY KEY ((user_id), org_id, role_id)
 );
 
+// Scoped role grants. PK columns cannot be null, so the three scope levels
+// of the relational user_role_assignments get separate tables:
+//   platform_user_roles          -> platform-wide grant (platform admins)
+//   user_roles / roles_by_user   -> organization-wide grant (above)
+//   activity_user_roles          -> single-activity grant (an external
+//                                   volunteer leading one corporate event
+//                                   without holding org rights)
+// expires_at enables temporary delegation; granted_by keeps the audit trail.
+CREATE TABLE IF NOT EXISTS platform_user_roles (
+    user_id uuid,
+    role_id uuid,
+    granted_by uuid,
+    granted_at timestamp,
+    expires_at timestamp,
+    PRIMARY KEY ((user_id), role_id)
+);
+
+CREATE TABLE IF NOT EXISTS platform_role_roster (
+    role_id uuid,
+    user_id uuid,
+    granted_by uuid,
+    granted_at timestamp,
+    expires_at timestamp,
+    PRIMARY KEY ((role_id), user_id)
+);
+
+CREATE TABLE IF NOT EXISTS activity_user_roles (
+    activity_id uuid,
+    user_id uuid,
+    role_id uuid,
+    org_id uuid,
+    granted_by uuid,
+    granted_at timestamp,
+    expires_at timestamp,
+    PRIMARY KEY ((activity_id), user_id, role_id)
+);
+
+CREATE TABLE IF NOT EXISTS user_activity_roles (
+    user_id uuid,
+    activity_id uuid,
+    role_id uuid,
+    org_id uuid,
+    granted_at timestamp,
+    expires_at timestamp,
+    PRIMARY KEY ((user_id), activity_id, role_id)
+);
+
 CREATE TABLE IF NOT EXISTS user_permission_grants (
     org_id uuid,
     user_id uuid,
@@ -290,8 +407,23 @@ CREATE TABLE IF NOT EXISTS access_audit_logs (
     PRIMARY KEY ((org_id), occurred_at, log_id)
 ) WITH CLUSTERING ORDER BY (occurred_at DESC, log_id ASC);
 
+// Per-resource history ("everything that happened to object X"), e.g. the
+// revocation trail of one certificate or the grant history of one event.
+CREATE TABLE IF NOT EXISTS access_audit_by_resource (
+    resource_id uuid,
+    occurred_at timestamp,
+    log_id uuid,
+    org_id uuid,
+    actor_id uuid,
+    action text,
+    result text, // allowed | denied
+    PRIMARY KEY ((resource_id), occurred_at, log_id)
+) WITH CLUSTERING ORDER BY (occurred_at DESC, log_id ASC);
+
 // -----------------------------------------------------------------------------
-// 4. STUDENT PROFILES (3 tables)
+// 4. STUDENT PROFILES & SKILLS (7 tables)
+// Profiles extend users 1-1; skills are a seeded lookup powering the
+// volunteer <-> activity matching (self-declared, level app-validated 1-5).
 // -----------------------------------------------------------------------------
 
 CREATE TABLE IF NOT EXISTS student_profiles (
@@ -301,6 +433,9 @@ CREATE TABLE IF NOT EXISTS student_profiles (
     department_id uuid,
     class_name text,
     enrollment_year int,
+    school_name text, // free-text school outside a member org
+    bio text,
+    interests set<text>,
     status text, // studying | graduated | suspended
     total_hours double,
     updated_at timestamp
@@ -323,8 +458,37 @@ CREATE TABLE IF NOT EXISTS emergency_contacts (
     PRIMARY KEY ((user_id), contact_id)
 );
 
+// Skill catalog — seeded lookup (first-aid, teaching, translation, ...).
+CREATE TABLE IF NOT EXISTS skills (
+    id uuid PRIMARY KEY,
+    name text,
+    slug text
+);
+
+CREATE TABLE IF NOT EXISTS skills_by_slug (
+    slug text PRIMARY KEY,
+    skill_id uuid
+);
+
+// n-m: user <-> skill (self-declared). Both directions: profile listing on
+// user_skills, coordinator matching on users_by_skill ("who has first-aid
+// level >= 3?"). Activity-side requirements live in section 5.
+CREATE TABLE IF NOT EXISTS user_skills (
+    user_id uuid,
+    skill_id uuid,
+    level int, // 1-5
+    PRIMARY KEY ((user_id), skill_id)
+);
+
+CREATE TABLE IF NOT EXISTS users_by_skill (
+    skill_id uuid,
+    user_id uuid,
+    level int,
+    PRIMARY KEY ((skill_id), user_id)
+);
+
 // -----------------------------------------------------------------------------
-// 5. ACTIVITIES / EVENTS (9 tables)
+// 5. ACTIVITIES / EVENTS (13 tables)
 // -----------------------------------------------------------------------------
 
 CREATE TABLE IF NOT EXISTS activities (
@@ -343,6 +507,20 @@ CREATE TABLE IF NOT EXISTS activities (
     requirements_json text,
     cover_media_id uuid,
     created_by uuid,
+    // Relational parity (deployed keyspaces: ALTER TABLE activities ADD
+    // slug text, ADD person_in_charge_id uuid, ADD address text,
+    // ADD city text, ADD latitude decimal, ADD longitude decimal,
+    // ADD is_remote boolean, ADD registration_deadline timestamp,
+    // ADD published_at timestamp).
+    slug text, // unique per org via activities_by_slug (LWT claim)
+    person_in_charge_id uuid, // on-site answerable contact, != created_by
+    address text,
+    city text,
+    latitude decimal,
+    longitude decimal,
+    is_remote boolean,
+    registration_deadline timestamp,
+    published_at timestamp,
     created_at timestamp,
     updated_at timestamp
 );
@@ -375,14 +553,53 @@ CREATE TABLE IF NOT EXISTS activities_by_category (
     PRIMARY KEY ((category_id), start_at, activity_id)
 ) WITH CLUSTERING ORDER BY (start_at DESC, activity_id ASC);
 
+// Pretty URLs + per-org slug uniqueness (relational UNIQUE(org, slug)).
+CREATE TABLE IF NOT EXISTS activities_by_slug (
+    org_id uuid,
+    slug text,
+    activity_id uuid,
+    title text,
+    status text,
+    start_at timestamp,
+    PRIMARY KEY ((org_id), slug)
+);
+
 CREATE TABLE IF NOT EXISTS activity_categories (
     id uuid PRIMARY KEY,
     org_id uuid, // null = global category
     name text,
+    slug text,
     description text,
+    icon text,
     default_hours double,
     color text
 );
+
+// n-m: activity <-> skill (required/desired skills for volunteers).
+CREATE TABLE IF NOT EXISTS activity_skills (
+    activity_id uuid,
+    skill_id uuid,
+    is_required boolean,
+    PRIMARY KEY ((activity_id), skill_id)
+);
+
+// n-m: activity <-> partner orgs (businesses co-organizing/sponsoring).
+CREATE TABLE IF NOT EXISTS activity_partners (
+    activity_id uuid,
+    org_id uuid,
+    role text, // co_organizer | sponsor
+    note text,
+    PRIMARY KEY ((activity_id), org_id)
+);
+
+CREATE TABLE IF NOT EXISTS partner_activities_by_org (
+    org_id uuid,
+    start_at timestamp,
+    activity_id uuid,
+    title text,
+    role text, // co_organizer | sponsor
+    PRIMARY KEY ((org_id), start_at, activity_id)
+) WITH CLUSTERING ORDER BY (start_at DESC, activity_id ASC);
 
 CREATE TABLE IF NOT EXISTS activity_schedules (
     id uuid PRIMARY KEY,
@@ -394,6 +611,17 @@ CREATE TABLE IF NOT EXISTS activity_schedules (
     status text, // scheduled | open | closed | cancelled
     created_at timestamp
 );
+
+// Per-activity session feed: the main row is keyed by id, this is the
+// "list sessions of one activity" query table.
+CREATE TABLE IF NOT EXISTS schedules_by_activity (
+    activity_id uuid,
+    start_at timestamp,
+    schedule_id uuid,
+    title text,
+    status text,
+    PRIMARY KEY ((activity_id), start_at, schedule_id)
+) WITH CLUSTERING ORDER BY (start_at ASC, schedule_id ASC);
 
 CREATE TABLE IF NOT EXISTS activity_slots (
     schedule_id uuid,
@@ -426,8 +654,8 @@ CREATE TABLE IF NOT EXISTS activity_announcements (
 ) WITH CLUSTERING ORDER BY (published_at DESC, announcement_id ASC);
 
 // -----------------------------------------------------------------------------
-// 6. REGISTRATIONS — STUDENT <-> ACTIVITY N-M (6 tables)
-// The N-M join is explicit: `registrations` + both directional query tables.
+// 6. REGISTRATIONS — STUDENT <-> ACTIVITY N-M (8 tables)
+// The N-M join is explicit: `registrations` + directional query tables.
 // -----------------------------------------------------------------------------
 
 CREATE TABLE IF NOT EXISTS registrations (
@@ -437,9 +665,13 @@ CREATE TABLE IF NOT EXISTS registrations (
     slot_id uuid,
     status text, // pending | approved | rejected | waitlisted | cancelled | attended
     form_data text, // JSON answers to registration_forms questions
+    note text, // volunteer's message / motivation
+    review_note text, // reviewer feedback or rejection reason
+    reviewed_by uuid,
+    reviewed_at timestamp,
+    checkin_token uuid, // personal QR payload; resolve via registrations_by_token
     registered_at timestamp,
-    decided_by uuid,
-    decided_at timestamp
+    cancelled_at timestamp
 );
 
 CREATE TABLE IF NOT EXISTS registrations_by_activity (
@@ -460,6 +692,31 @@ CREATE TABLE IF NOT EXISTS registrations_by_student (
     status text,
     PRIMARY KEY ((student_id), registered_at, registration_id)
 ) WITH CLUSTERING ORDER BY (registered_at DESC, registration_id ASC);
+
+// Per-student registration lookup inside one activity — the CQL answer to
+// the relational UNIQUE(activity, slot, student): duplicate checks plus
+// multi-shift registrations of the same event. slot_id = zero UUID marks
+// a whole-activity registration (PK columns cannot be null).
+CREATE TABLE IF NOT EXISTS registrations_by_activity_student (
+    activity_id uuid,
+    student_id uuid,
+    slot_id uuid, // 00000000-0000-0000-0000-000000000000 = whole activity
+    registration_id uuid,
+    status text,
+    registered_at timestamp,
+    PRIMARY KEY ((activity_id), student_id, slot_id)
+);
+
+// Personal-QR check-in path: staff scans the volunteer's checkin_token and
+// lands straight on the registration (per-session staff QR is section 7).
+CREATE TABLE IF NOT EXISTS registrations_by_token (
+    checkin_token uuid PRIMARY KEY,
+    registration_id uuid,
+    activity_id uuid,
+    student_id uuid,
+    slot_id uuid,
+    status text
+);
 
 CREATE TABLE IF NOT EXISTS registration_status_history (
     registration_id uuid,
@@ -494,7 +751,7 @@ CREATE TABLE IF NOT EXISTS waitlist_entries (
 ) WITH CLUSTERING ORDER BY (joined_at ASC, waitlist_id ASC);
 
 // -----------------------------------------------------------------------------
-// 7. QR CHECK-IN & ATTENDANCE (8 tables)
+// 7. QR CHECK-IN & ATTENDANCE (9 tables)
 // QR flow is simulated: qr_codes are issued per session, scans are validated
 // against expiry/max_uses, every scan is logged, disputes go to appeals.
 // -----------------------------------------------------------------------------
@@ -540,7 +797,20 @@ CREATE TABLE IF NOT EXISTS attendance_records (
     student_id uuid,
     method text, // qr | manual
     scanned_at timestamp,
-    verified_by uuid
+    verified_by uuid,
+    checked_out_at timestamp, // optional check-out for actual-hours credit
+    check_out_method text,
+    actual_hours double // staff-set or derived from in/out; overrides hours_awarded
+);
+
+// One attendance record per registration (relational UNIQUE(registration_id)).
+CREATE TABLE IF NOT EXISTS attendance_by_registration (
+    registration_id uuid PRIMARY KEY,
+    record_id uuid,
+    activity_id uuid,
+    student_id uuid,
+    session_id uuid,
+    scanned_at timestamp
 );
 
 CREATE TABLE IF NOT EXISTS attendance_by_activity (
@@ -588,17 +858,24 @@ CREATE TABLE IF NOT EXISTS attendance_summaries (
 );
 
 // -----------------------------------------------------------------------------
-// 8. VOLUNTEER HOURS (4 tables)
+// 8. VOLUNTEER HOURS (8 tables)
 // Hours are append-only ledger entries; summaries are maintained per term.
+// 'attendance' rows are written on attendance completion; 'manual' and
+// 'adjustment' rows let staff add or correct hours through the approval
+// workflow (pending_hours_by_org is the staff queue).
 // -----------------------------------------------------------------------------
 
 CREATE TABLE IF NOT EXISTS volunteer_hour_ledger (
     entry_id uuid PRIMARY KEY,
     student_id uuid,
     activity_id uuid,
-    source text, // attendance | adjustment
+    source text, // attendance | manual | adjustment
     hours double,
     term text, // e.g. '2026-H1'
+    registration_id uuid, // link back to the attended registration
+    status text, // pending | approved | rejected
+    approved_by uuid,
+    approved_at timestamp,
     recorded_at timestamp,
     recorded_by uuid,
     note text
@@ -612,6 +889,42 @@ CREATE TABLE IF NOT EXISTS hours_by_student (
     updated_at timestamp,
     PRIMARY KEY ((student_id), term)
 );
+
+// Student-facing ledger history, newest first (source-of-truth ledger is
+// keyed by entry_id only, so this feed keeps reads partition-local).
+CREATE TABLE IF NOT EXISTS hour_entries_by_student (
+    student_id uuid,
+    recorded_at timestamp,
+    entry_id uuid,
+    activity_id uuid,
+    hours double,
+    source text,
+    status text,
+    PRIMARY KEY ((student_id), recorded_at, entry_id)
+) WITH CLUSTERING ORDER BY (recorded_at DESC, entry_id ASC);
+
+// Per-activity hours feed for event reports and dashboards.
+CREATE TABLE IF NOT EXISTS hours_by_activity (
+    activity_id uuid,
+    recorded_at timestamp,
+    entry_id uuid,
+    student_id uuid,
+    hours double,
+    status text,
+    PRIMARY KEY ((activity_id), recorded_at, entry_id)
+) WITH CLUSTERING ORDER BY (recorded_at DESC, entry_id ASC);
+
+// Staff approval queue: pending entries per org, oldest first. Rows are
+// deleted when the ledger entry gets approved or rejected.
+CREATE TABLE IF NOT EXISTS pending_hours_by_org (
+    org_id uuid,
+    recorded_at timestamp,
+    entry_id uuid,
+    student_id uuid,
+    activity_id uuid,
+    hours double,
+    PRIMARY KEY ((org_id), recorded_at, entry_id)
+) WITH CLUSTERING ORDER BY (recorded_at ASC, entry_id ASC);
 
 CREATE TABLE IF NOT EXISTS hour_adjustments (
     adjustment_id uuid PRIMARY KEY,
@@ -633,8 +946,25 @@ CREATE TABLE IF NOT EXISTS hour_rules (
     is_active boolean
 );
 
+// Term leaderboard, top hours first. A student's row moves when the
+// approved total changes: delete the old-total clustering row, insert
+// the new one. term='all' keeps the all-time board beside term boards.
+CREATE TABLE IF NOT EXISTS leaderboard_by_term (
+    term text,
+    total_hours double,
+    student_id uuid,
+    student_name text,
+    updated_at timestamp,
+    PRIMARY KEY ((term), total_hours, student_id)
+) WITH CLUSTERING ORDER BY (total_hours DESC, student_id ASC);
+
+// Distinct term list for leaderboard filters — one row per known term.
+CREATE TABLE IF NOT EXISTS leaderboard_terms (
+    term text PRIMARY KEY
+);
+
 // -----------------------------------------------------------------------------
-// 9. CERTIFICATES (4 tables)
+// 9. CERTIFICATES (5 tables)
 // One certificate per (activity, student). PDFs are stored as media_assets.
 // -----------------------------------------------------------------------------
 
@@ -652,6 +982,7 @@ CREATE TABLE IF NOT EXISTS certificates (
     activity_id uuid,
     student_id uuid,
     certificate_id uuid,
+    registration_id uuid, // the completed registration this cert rewards
     template_id uuid,
     serial_no text,
     issued_at timestamp,
@@ -671,6 +1002,15 @@ CREATE TABLE IF NOT EXISTS certificates_by_student (
     PRIMARY KEY ((student_id), issued_at, certificate_id)
 ) WITH CLUSTERING ORDER BY (issued_at DESC, certificate_id ASC);
 
+// Public verification by the human-readable serial printed on the PDF.
+CREATE TABLE IF NOT EXISTS certificates_by_serial (
+    serial_no text PRIMARY KEY,
+    certificate_id uuid,
+    activity_id uuid,
+    student_id uuid,
+    status text
+);
+
 CREATE TABLE IF NOT EXISTS certificate_revocations (
     revocation_id uuid PRIMARY KEY,
     certificate_id uuid,
@@ -682,9 +1022,12 @@ CREATE TABLE IF NOT EXISTS certificate_revocations (
 );
 
 // -----------------------------------------------------------------------------
-// 10. MEDIA & IMAGES (4 tables)
+// 10. MEDIA & IMAGES (6 tables)
 // Binary files live in object storage; ScyllaDB stores metadata + references.
 // Moderation is an append-only review history; latest row = current status.
+// media_assets doubles as the central file registry: upload_status tracks
+// the async upload flow ('pending' while the presigned upload is open,
+// 'active' once confirmed), media_by_hash dedups by content checksum.
 // -----------------------------------------------------------------------------
 
 CREATE TABLE IF NOT EXISTS media_assets (
@@ -698,7 +1041,22 @@ CREATE TABLE IF NOT EXISTS media_assets (
     height int,
     size_bytes bigint,
     role text, // gallery | cover | logo (one cover and one logo per owner)
-    created_at timestamp
+    // Central file-registry fields from the relational design (deployed
+    // keyspaces: ALTER TABLE media_assets ADD uploader_id uuid,
+    // ADD storage_key text, ADD backend text, ADD original_name text,
+    // ADD visibility text, ADD upload_status text, ADD metadata_json text,
+    // ADD thumb_url text, ADD updated_at timestamp, ADD deleted_at timestamp).
+    uploader_id uuid,
+    storage_key text, // object key inside the backend; globally unique
+    backend text, // local | s3 | gcs
+    original_name text,
+    visibility text, // private | organization | public
+    upload_status text, // pending | active | failed | deleted
+    metadata_json text, // per-file attributes (page count, scan result...)
+    thumb_url text, // generated thumbnail/poster derivative
+    created_at timestamp,
+    updated_at timestamp,
+    deleted_at timestamp
 );
 
 CREATE TABLE IF NOT EXISTS media_by_owner (
@@ -709,6 +1067,22 @@ CREATE TABLE IF NOT EXISTS media_by_owner (
     mime text,
     owner_type text,
     PRIMARY KEY ((owner_id), created_at, asset_id)
+) WITH CLUSTERING ORDER BY (created_at DESC, asset_id ASC);
+
+// Dedup + integrity: identical uploads reuse one asset (LWT-claimed).
+CREATE TABLE IF NOT EXISTS media_by_hash (
+    file_hash text PRIMARY KEY,
+    asset_id uuid
+);
+
+CREATE TABLE IF NOT EXISTS media_by_uploader (
+    uploader_id uuid,
+    created_at timestamp,
+    asset_id uuid,
+    file_url text,
+    mime text,
+    owner_type text,
+    PRIMARY KEY ((uploader_id), created_at, asset_id)
 ) WITH CLUSTERING ORDER BY (created_at DESC, asset_id ASC);
 
 CREATE TABLE IF NOT EXISTS activity_media (
@@ -743,6 +1117,7 @@ CREATE TABLE IF NOT EXISTS notifications (
     data_json text,
     channel text, // inapp | email
     status text, // unread | read
+    read_at timestamp,
     created_at timestamp
 );
 

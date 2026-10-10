@@ -223,6 +223,57 @@ async def test_login_rate_limited(client: AsyncClient) -> None:
     assert response.json()["code"] == "TOO_MANY_REQUESTS"
 
 
+async def test_profile_update_and_last_login_stamp(client: AsyncClient) -> None:
+    email, phone = "profile@example.com", "0967890123"
+    await client.post("/auth/register", json=_payload(email, phone))
+    logged = await client.post(
+        "/auth/login", json={"email": email, "password": PASSWORD}
+    )
+    access = logged.json()["access_token"]
+    headers = {"Authorization": f"Bearer {access}"}
+
+    me = await client.get("/auth/me", headers=headers)
+    assert me.status_code == 200
+    assert me.json()["last_login_at"] is not None
+    assert me.json()["date_of_birth"] is None
+
+    patched = await client.patch(
+        "/auth/me",
+        json={
+            "full_name": "Vo Thi B",
+            "date_of_birth": "2000-05-15",
+            "gender": "female",
+            "address": "Da Nang",
+        },
+        headers=headers,
+    )
+    assert patched.status_code == 200, patched.text
+    body = patched.json()
+    assert body["full_name"] == "Vo Thi B"
+    assert body["date_of_birth"] == "2000-05-15"
+    assert body["gender"] == "female"
+    assert body["address"] == "Da Nang"
+
+    fresh = await client.get("/auth/me", headers=headers)
+    assert fresh.json()["date_of_birth"] == "2000-05-15"
+    assert fresh.json()["last_login_at"] is not None
+
+    cleared = await client.patch(
+        "/auth/me",
+        json={"full_name": "Vo Thi B", "date_of_birth": None},
+        headers=headers,
+    )
+    assert cleared.status_code == 200
+    assert cleared.json()["date_of_birth"] is None
+
+    bad = await client.patch(
+        "/auth/me",
+        json={"full_name": "Vo Thi B", "gender": "alien"},
+        headers=headers,
+    )
+    assert bad.status_code == 422
+
+
 def test_rate_limiter_counts_hits(clean_tables: str) -> None:
     """Counter increments per window; skips cleanly when Scylla is absent."""
     from auth.repository import CqlRateLimiter

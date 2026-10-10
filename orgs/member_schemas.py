@@ -58,6 +58,8 @@ class MemberResponse(BaseModel):
     email: str | None = None
     role: MemberRole
     status: MemberStatus
+    invited_by: UUID | None = None
+    invited_by_name: str | None = None
     joined_at: datetime
 
 
@@ -78,6 +80,7 @@ class MyMembership(BaseModel):
     org_slug: str
     role: MemberRole
     status: MemberStatus
+    invited_by_name: str | None = None
     joined_at: datetime
 
 

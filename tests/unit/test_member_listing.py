@@ -28,6 +28,8 @@ def _snap(
         email=email,
         role=role,
         status=status,
+        invited_by=None,
+        invited_by_name=None,
         joined_at=datetime.now(timezone.utc) - timedelta(minutes=age_minutes),
     )
 

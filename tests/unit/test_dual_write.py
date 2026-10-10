@@ -29,11 +29,12 @@ def test_member_put_compensates_on_second_failure(monkeypatch) -> None:
 
     class FakeOrgMembers:
         @staticmethod
-        def create(org_id, user_id, status, joined_at):  # noqa: ANN001, ANN202
+        def create(org_id, user_id, status, joined_at, invited_by=None):  # noqa: ANN001, ANN202
             return SimpleNamespace(
                 org_id=org_id,
                 user_id=user_id,
                 status=status,
+                invited_by=invited_by,
                 joined_at=joined_at,
             )
 

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from datetime import datetime
+from datetime import date, datetime
 from typing import Annotated, Literal
 from uuid import UUID
 
@@ -181,6 +181,35 @@ class ChangePasswordRequest(BaseModel):
     _password = field_validator("new_password", mode="before")(validate_password)  # noqa: SLF001
 
 
+def validate_date_of_birth(value: date) -> date:
+    """Reject future birthdays and implausible old ones."""
+    today = datetime.now().date()
+    if value > today or value.year < 1900:
+        raise ValueError("Date of birth must be a past date after 1900.")
+    return value
+
+
+class UpdateProfileRequest(BaseModel):
+    """Replace the editable profile fields; null clears an optional one."""
+
+    full_name: Annotated[str, Field(min_length=2, max_length=100)]
+    date_of_birth: date | None = None
+    gender: Literal["male", "female", "other", "unspecified"] | None = None
+    address: Annotated[str, Field(max_length=255)] | None = None
+
+    _dob = field_validator("date_of_birth")(  # noqa: SLF001
+        lambda v: validate_date_of_birth(v) if v is not None else v
+    )
+
+    @field_validator("full_name", "address", mode="before")
+    @classmethod
+    def _strip_text(cls, value: object) -> object:
+        if isinstance(value, str):
+            stripped = value.strip()
+            return stripped if stripped else None
+        return value
+
+
 class DevChallengeRequest(BaseModel):
     """Dev-only code issuance (ENV=dev). kind is verification or reset."""
 
@@ -211,6 +240,10 @@ class UserProfile(BaseModel):
     legal_rep_name: str | None = None
     legal_rep_id: str | None = None
     legal_rep_position: str | None = None
+    date_of_birth: date | None = None
+    gender: str | None = None
+    address: str | None = None
+    last_login_at: datetime | None = None
     email_verified: bool
     created_at: datetime
 

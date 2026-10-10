@@ -15,6 +15,7 @@ class Role(models.Model):
 
     id = columns.UUID(primary_key=True, default=uuid7)
     org_id = columns.UUID(required=False)
+    code = columns.Text(required=False)
     name = columns.Text(required=True)
     description = columns.Text(required=False, default="")
     is_system = columns.Boolean(required=True, default=False)
@@ -113,3 +114,20 @@ class AccessAuditLog(models.Model):
     result = columns.Text(required=True)
     ip = columns.Text(required=False, default="")
     meta = columns.Text(db_field="metadata", required=False, default="")
+
+
+class AccessAuditByResource(models.Model):
+    """Per-resource audit trail ("everything that happened to object X")."""
+
+    __table_name__ = "access_audit_by_resource"
+    __keyspace__ = "amigoact"
+
+    resource_id = columns.UUID(primary_key=True, partition_key=True)
+    occurred_at = columns.DateTime(primary_key=True, clustering_order="DESC")
+    log_id = columns.UUID(
+        primary_key=True, clustering_order="ASC", default=uuid7
+    )
+    org_id = columns.UUID(required=False)
+    actor_id = columns.UUID(required=True)
+    action = columns.Text(required=True)
+    result = columns.Text(required=True)

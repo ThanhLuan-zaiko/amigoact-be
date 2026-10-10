@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from uuid import UUID
 
 from cassandra.cqlengine.connection import get_session
@@ -49,6 +49,9 @@ class CqlUserRepository(UserRepository):
         legal_rep_name: str | None = None,
         legal_rep_id: str | None = None,
         legal_rep_position: str | None = None,
+        date_of_birth: date | None = None,
+        gender: str | None = None,
+        address: str | None = None,
     ) -> User:
         # Raw CQL here because the flow needs was_applied from
         # INSERT ... IF NOT EXISTS, which cqlengine does not surface.
@@ -85,6 +88,9 @@ class CqlUserRepository(UserRepository):
             legal_rep_name=legal_rep_name,
             legal_rep_id=legal_rep_id,
             legal_rep_position=legal_rep_position,
+            date_of_birth=date_of_birth,
+            gender=gender,
+            address=address,
             status="active",
             created_at=now,
             updated_at=now,
@@ -92,6 +98,36 @@ class CqlUserRepository(UserRepository):
 
     def get_by_id(self, user_id: UUID) -> User | None:
         return User.objects(id=user_id).first()
+
+    def update_profile(
+        self,
+        user_id: UUID,
+        full_name: str,
+        date_of_birth: date | None,
+        gender: str | None,
+        address: str | None,
+        now: datetime,
+    ) -> User | None:
+        if self.get_by_id(user_id) is None:
+            return None
+        User.objects(id=user_id).update(
+            full_name=full_name,
+            date_of_birth=date_of_birth,
+            gender=gender,
+            address=address,
+            updated_at=now,
+        )
+        return self.get_by_id(user_id)
+
+    def mark_login(self, user_id: UUID, now: datetime) -> None:
+        User.objects(id=user_id).update(last_login_at=now)
+
+    def set_avatar_media(
+        self, user_id: UUID, asset_id: UUID | None, now: datetime
+    ) -> None:
+        User.objects(id=user_id).update(
+            avatar_media_id=asset_id, updated_at=now
+        )
 
     def get_by_email(self, email: str) -> User | None:
         index = UsersByEmail.objects(email=email).first()

@@ -17,6 +17,7 @@ from auth.schemas import (
     ResendVerificationRequest,
     ResetPasswordRequest,
     TokenResponse,
+    UpdateProfileRequest,
     UserProfile,
     VerifyEmailRequest,
 )
@@ -46,6 +47,10 @@ def _profile_schema(profile: SessionProfile) -> UserProfile:
         legal_rep_name=profile.legal_rep_name,
         legal_rep_id=profile.legal_rep_id,
         legal_rep_position=profile.legal_rep_position,
+        date_of_birth=profile.date_of_birth,
+        gender=profile.gender,
+        address=profile.address,
+        last_login_at=profile.last_login_at,
         email_verified=profile.email_verified,
         created_at=profile.created_at,
     )
@@ -223,6 +228,24 @@ def me(
 ) -> UserProfile:
     """Current session profile for frontend session state."""
     return _profile_schema(service.get_profile(current.id))
+
+
+@router.patch("/auth/me", response_model=UserProfile)
+def update_me(
+    body: UpdateProfileRequest,
+    current: CurrentUser = Depends(get_current_user),
+    service: AuthService = Depends(get_auth_service),
+) -> UserProfile:
+    """Replace the editable profile fields; null clears optional ones."""
+    return _profile_schema(
+        service.update_profile(
+            current.id,
+            body.full_name,
+            body.date_of_birth,
+            body.gender,
+            body.address,
+        )
+    )
 
 
 @router.post("/auth/dev/challenge-code", response_model=DevChallengeResponse)

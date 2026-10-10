@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from uuid import UUID
 
 from auth.interfaces import (
@@ -14,6 +14,7 @@ from auth.interfaces import (
     UserRepository,
     VerificationCodeStore,
 )
+from auth.profile_service import ProfileService, SessionProfile  # noqa: F401
 from auth.repository import generate_user_id
 from core.config import Settings
 from core.email import EmailSender
@@ -48,24 +49,6 @@ class TokenPair:
     expires_in: int
 
 
-@dataclass(frozen=True)
-class SessionProfile:
-    """Signed-in user snapshot for GET /auth/me and cards."""
-
-    id: UUID
-    email: str
-    phone: str
-    full_name: str
-    account_type: str
-    tax_code: str | None
-    company_name: str | None
-    legal_rep_name: str | None
-    legal_rep_id: str | None
-    legal_rep_position: str | None
-    email_verified: bool
-    created_at: datetime
-
-
 class AuthService:
     """Registration, verification, login, rotation, reset, change."""
 
@@ -81,6 +64,7 @@ class AuthService:
         settings: Settings,
     ) -> None:
         self._users = users
+        self._profiles = ProfileService(users)
         self._refresh_tokens = refresh_tokens
         self._verifications = verifications
         self._resets = resets
@@ -94,23 +78,7 @@ class AuthService:
             raise TooManyRequestsError("Too many attempts. Try again later.")
 
     def _profile_of(self, user_id: UUID) -> SessionProfile:
-        user = self._users.get_by_id(user_id)
-        if user is None:
-            raise NotFoundError("User not found.")
-        return SessionProfile(
-            id=user.id,
-            email=user.email,
-            phone=user.phone,
-            full_name=user.full_name,
-            account_type=getattr(user, "account_type", "individual") or "individual",
-            tax_code=getattr(user, "tax_code", None),
-            company_name=getattr(user, "company_name", None),
-            legal_rep_name=getattr(user, "legal_rep_name", None),
-            legal_rep_id=getattr(user, "legal_rep_id", None),
-            legal_rep_position=getattr(user, "legal_rep_position", None),
-            email_verified=user.email_verified_at is not None,
-            created_at=user.created_at,
-        )
+        return self._profiles.of(user_id)
 
     def _mint_pair(self, user_id: UUID) -> TokenPair:
         ttl = self._settings.jwt_access_ttl_seconds
@@ -225,10 +193,12 @@ class AuthService:
             raise InvalidCredentialsError("Email or password is incorrect.")
         if user.status != "active":
             raise AccountSuspendedError("Account is suspended.")
+        now = utcnow()
         if self._hasher.needs_rehash(user.password_hash):
             self._users.set_password_hash(
-                user.id, self._hasher.hash(password), utcnow()
+                user.id, self._hasher.hash(password), now
             )
+        self._users.mark_login(user.id, now)
         return self._mint_pair(user.id)
 
     def refresh(self, refresh_token: str) -> TokenPair:
@@ -322,6 +292,19 @@ class AuthService:
     def get_profile(self, user_id: UUID) -> SessionProfile:
         """Public session snapshot for GET /auth/me and cards."""
         return self._profile_of(user_id)
+
+    def update_profile(
+        self,
+        user_id: UUID,
+        full_name: str,
+        date_of_birth: date | None = None,
+        gender: str | None = None,
+        address: str | None = None,
+    ) -> SessionProfile:
+        """Replace the editable profile fields; None clears optional ones."""
+        return self._profiles.update(
+            user_id, full_name, date_of_birth, gender, address
+        )
 
     def dev_challenge_code(self, email: str, kind: str) -> tuple[str, int]:
         """Dev-only plaintext code issuance (router guards ENV=dev)."""

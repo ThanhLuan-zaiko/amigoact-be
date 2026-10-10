@@ -171,6 +171,21 @@ class MediaStore(ABC):
     def sweep_orphans(self, known_org_ids: set[str]) -> int:
         """Delete org folders with no matching org. Returns removal count."""
 
+    @abstractmethod
+    def save_user_media(
+        self,
+        user_id: UUID,
+        media_id: UUID,
+        mime: str,
+        filename: str,
+        content: bytes,
+    ) -> str:
+        """Persist bytes under users/<user_id>/ (avatars, documents)."""
+
+    @abstractmethod
+    def delete_user_dir(self, user_id: UUID) -> bool:
+        """Remove the whole user folder. True when something was deleted."""
+
 
 class LocalMediaStore(MediaStore):
     """Local-disk backend rooted at MEDIA_ROOT (never committed to git)."""
@@ -181,6 +196,9 @@ class LocalMediaStore(MediaStore):
 
     def _org_dir(self, org_id: UUID) -> Path:
         return self._root / "orgs" / str(org_id)
+
+    def _user_dir(self, user_id: UUID) -> Path:
+        return self._root / "users" / str(user_id)
 
     def save(self, org_id: UUID, media_id: UUID, filename: str, content: bytes) -> str:
         """Legacy save keyed by filename suffix; only allowlisted exts."""
@@ -204,6 +222,33 @@ class LocalMediaStore(MediaStore):
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(content)
         return f"orgs/{org_id}/{target.name}"
+
+    def save_user_media(
+        self,
+        user_id: UUID,
+        media_id: UUID,
+        mime: str,
+        filename: str,
+        content: bytes,
+    ) -> str:
+        """Save under users/<user_id>/ so orphan sweeps never touch it."""
+        clean = mime.split(";")[0].strip().lower()
+        ext = MEDIA_MIMES.get(clean)
+        if ext is None:
+            raise ValueError("Unsupported media mime.")
+        target = self._user_dir(user_id) / f"{media_id}{ext}"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(content)
+        return f"users/{user_id}/{target.name}"
+
+    def delete_user_dir(self, user_id: UUID) -> bool:
+        import shutil
+
+        target = self._user_dir(user_id)
+        if target.is_dir():
+            shutil.rmtree(target)
+            return True
+        return False
 
     def resolve(self, relative_path: str) -> Path:
         candidate = (self._root / Path(relative_path)).resolve()

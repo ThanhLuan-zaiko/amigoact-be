@@ -15,12 +15,18 @@ PERMISSIONS: dict[str, str] = {
     "org:update": "Update the org profile and join policy.",
     "media:upload": "Upload files into the org gallery.",
     "media:manage": "Manage org gallery files.",
+    "activity:view": "View draft and internal activity details.",
+    "activity:create": "Create activities inside the org.",
+    "activity:manage": "Publish, edit, staff, and cancel activities.",
 }
 
 # Well-known ids let seeding and role lookup stay deterministic.
 # (Fixed constants, not generated PKs: system roles are reference data,
 # so the UUIDv7 rule for new entity ids does not apply here.)
 ADMIN_ROLE_ID = UUID("0197f6a0-9c3b-7f2e-8d4a-b1c2d3e4f501")
+# Platform-wide administrator; deliberately kept OUT of SYSTEM_ROLES so the
+# org-scoped resolve_role() can never hand it to an org member.
+PLATFORM_ADMIN_ROLE_ID = UUID("0197f6a0-9c3b-7f2e-8d4a-b1c2d3e4f502")
 
 SYSTEM_ROLES: dict[str, dict[str, object]] = {
     "admin": {
@@ -31,6 +37,9 @@ SYSTEM_ROLES: dict[str, dict[str, object]] = {
             "member:suspend",
             "member:remove",
             "member:view",
+            "activity:view",
+            "activity:create",
+            "activity:manage",
         },
     },
 }

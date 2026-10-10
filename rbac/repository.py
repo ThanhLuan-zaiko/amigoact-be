@@ -8,6 +8,7 @@ from uuid import UUID
 from rbac.catalog import SYSTEM_ROLES
 from rbac.interfaces import AuditWriter, GrantRepository, RoleRepository
 from rbac.model import (
+    AccessAuditByResource,
     AccessAuditLog,
     Permission,
     Role,
@@ -155,13 +156,24 @@ class CqlAuditWriter(AuditWriter):
     ) -> None:
         from core.ids import uuid7
 
+        log_id = uuid7()
         AccessAuditLog.create(
             org_id=org_id,
             occurred_at=now,
-            log_id=uuid7(),
+            log_id=log_id,
             actor_id=actor_id,
             action=action,
             resource_type=resource_type,
             resource_id=resource_id,
             result=result,
         )
+        if resource_id is not None:
+            AccessAuditByResource.create(
+                resource_id=resource_id,
+                occurred_at=now,
+                log_id=log_id,
+                org_id=org_id,
+                actor_id=actor_id,
+                action=action,
+                result=result,
+            )

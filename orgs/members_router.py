@@ -35,6 +35,8 @@ def _to_member(row: MemberSnapshot) -> MemberResponse:
         email=row.email,
         role=row.role,  # type: ignore[arg-type]
         status=row.status,  # type: ignore[arg-type]
+        invited_by=row.invited_by,
+        invited_by_name=row.invited_by_name,
         joined_at=row.joined_at,
     )
 
@@ -63,6 +65,7 @@ def list_my_memberships(
                 org_slug=item.org_slug,
                 role=item.role,  # type: ignore[arg-type]
                 status=item.status,  # type: ignore[arg-type]
+                invited_by_name=item.invited_by_name,
                 joined_at=item.joined_at,
             )
             for item in items

@@ -12,6 +12,11 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 _SLUG_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 _TAX_PATTERN = re.compile(r"^\d{10}(-\d{3})?$")
 _CCCD_PATTERN = re.compile(r"^\d{12}$")
+_EMAIL_SHAPE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+_ORG_PHONE = re.compile(r"^[0-9+\-().\s]{5,20}$")
+_WEBSITE_SHAPE = re.compile(
+    r"^(https?://)?[a-z0-9][a-z0-9.-]*\.[a-z]{2,}(/[^\s]*)?$", re.IGNORECASE
+)
 
 OrgKind = Literal["organization", "club", "group", "business"]
 MediaRole = Literal["gallery", "cover", "logo"]
@@ -47,6 +52,30 @@ def validate_cccd(value: str) -> str:
     return code
 
 
+def validate_contact_email(value: str) -> str:
+    """Org inbox address: optional, plain email shape."""
+    address = value.strip().lower()
+    if len(address) > 254 or not _EMAIL_SHAPE.match(address):
+        raise ValueError("Contact email is invalid.")
+    return address
+
+
+def validate_org_phone(value: str) -> str:
+    """Org hotline: digits plus dialing punctuation, 5-20 chars."""
+    phone = value.strip()
+    if not _ORG_PHONE.match(phone):
+        raise ValueError("Contact phone is invalid.")
+    return phone
+
+
+def validate_website(value: str) -> str:
+    """Org site: bare domain or http(s) URL without spaces."""
+    site = value.strip()
+    if len(site) > 255 or not _WEBSITE_SHAPE.match(site):
+        raise ValueError("Website is invalid.")
+    return site
+
+
 class CreateOrgRequest(BaseModel):
     """Create an org. Business kind requires tax plus legal representative."""
 
@@ -61,6 +90,15 @@ class CreateOrgRequest(BaseModel):
     legal_rep_position: Annotated[str, Field(min_length=2, max_length=100)] | None = (
         None
     )
+    email: str | None = None
+    phone: Annotated[str, Field(max_length=20)] | None = None
+    website: Annotated[str, Field(max_length=255)] | None = None
+    address: Annotated[str, Field(max_length=255)] | None = None
+    city: Annotated[str, Field(max_length=100)] | None = None
+    country: Annotated[str, Field(max_length=100)] | None = None
+    legal_name: Annotated[str, Field(max_length=255)] | None = None
+    license_number: Annotated[str, Field(max_length=100)] | None = None
+    is_personal: bool = False
 
     _slug = field_validator("slug", mode="before")(validate_slug)  # noqa: SLF001
     _tax = field_validator("tax_code", mode="before")(  # noqa: SLF001
@@ -68,6 +106,15 @@ class CreateOrgRequest(BaseModel):
     )
     _cccd = field_validator("legal_rep_id", mode="before")(  # noqa: SLF001
         lambda v: validate_cccd(v) if v not in (None, "") else v
+    )
+    _email = field_validator("email", mode="before")(  # noqa: SLF001
+        lambda v: validate_contact_email(v) if v not in (None, "") else None
+    )
+    _phone = field_validator("phone", mode="before")(  # noqa: SLF001
+        lambda v: validate_org_phone(v) if v not in (None, "") else None
+    )
+    _site = field_validator("website", mode="before")(  # noqa: SLF001
+        lambda v: validate_website(v) if v not in (None, "") else None
     )
 
     @model_validator(mode="after")
@@ -97,6 +144,19 @@ class OrgResponse(BaseModel):
     legal_status: str = "none"
     status: str = "active"
     join_policy: JoinPolicy = "invite"
+    email: str | None = None
+    phone: str | None = None
+    website: str | None = None
+    address: str | None = None
+    city: str | None = None
+    country: str | None = None
+    legal_name: str | None = None
+    license_number: str | None = None
+    is_personal: bool = False
+    logo_media_id: UUID | None = None
+    cover_media_id: UUID | None = None
+    verified_at: datetime | None = None
+    previous_slug: str | None = None
     deleted_at: datetime | None = None
     created_at: datetime
 
@@ -117,11 +177,30 @@ class OrgListPage(BaseModel):
 
 
 class UpdateOrgRequest(BaseModel):
-    """Owner edits name, description and join policy (slug/kind frozen)."""
+    """Owner replaces details; slug/kind/tax stay frozen, null clears."""
 
     name: Annotated[str, Field(min_length=2, max_length=100)]
     description: Annotated[str, Field(max_length=500)] = ""
     join_policy: JoinPolicy | None = None
+    email: str | None = None
+    phone: Annotated[str, Field(max_length=20)] | None = None
+    website: Annotated[str, Field(max_length=255)] | None = None
+    address: Annotated[str, Field(max_length=255)] | None = None
+    city: Annotated[str, Field(max_length=100)] | None = None
+    country: Annotated[str, Field(max_length=100)] | None = None
+    legal_name: Annotated[str, Field(max_length=255)] | None = None
+    license_number: Annotated[str, Field(max_length=100)] | None = None
+    is_personal: bool = False
+
+    _email = field_validator("email", mode="before")(  # noqa: SLF001
+        lambda v: validate_contact_email(v) if v not in (None, "") else None
+    )
+    _phone = field_validator("phone", mode="before")(  # noqa: SLF001
+        lambda v: validate_org_phone(v) if v not in (None, "") else None
+    )
+    _site = field_validator("website", mode="before")(  # noqa: SLF001
+        lambda v: validate_website(v) if v not in (None, "") else None
+    )
 
 
 class SetMediaRoleRequest(BaseModel):
@@ -140,4 +219,7 @@ class MediaResponse(BaseModel):
     mime: str
     size_bytes: int = 0
     file_url: str
+    uploader_id: UUID | None = None
+    original_name: str | None = None
+    upload_status: str = "active"
     created_at: datetime

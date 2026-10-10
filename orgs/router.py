@@ -18,6 +18,7 @@ from core.dependencies import (
 )
 from core.exceptions import MediaTooLargeError, NotFoundError
 from core.media import MEDIA_MIMES, media_kind
+from orgs.interfaces import OrgContactDetails
 from orgs.schemas import (
     BucketCount,
     CreateOrgRequest,
@@ -54,6 +55,19 @@ def _org_schema(snapshot: OrgSnapshot) -> OrgResponse:
         legal_status=snapshot.legal_status,
         status=snapshot.status,
         join_policy=snapshot.join_policy,  # type: ignore[arg-type]
+        email=snapshot.email,
+        phone=snapshot.phone,
+        website=snapshot.website,
+        address=snapshot.address,
+        city=snapshot.city,
+        country=snapshot.country,
+        legal_name=snapshot.legal_name,
+        license_number=snapshot.license_number,
+        is_personal=snapshot.is_personal,
+        logo_media_id=snapshot.logo_media_id,
+        cover_media_id=snapshot.cover_media_id,
+        verified_at=snapshot.verified_at,
+        previous_slug=snapshot.previous_slug,
         deleted_at=snapshot.deleted_at,
         created_at=snapshot.created_at,
     )
@@ -68,7 +82,25 @@ def _media_schema(item: MediaSnapshot) -> MediaResponse:
         mime=item.mime,
         size_bytes=item.size_bytes,
         file_url=item.file_url,
+        uploader_id=item.uploader_id,
+        original_name=item.original_name,
+        upload_status=item.upload_status,
         created_at=item.created_at,
+    )
+
+
+def _contact_of(body: CreateOrgRequest | UpdateOrgRequest) -> OrgContactDetails:
+    """Project the request's optional contact block into a value object."""
+    return OrgContactDetails(
+        email=body.email,
+        phone=body.phone,
+        website=body.website,
+        address=body.address,
+        city=body.city,
+        country=body.country,
+        legal_name=body.legal_name,
+        license_number=body.license_number,
+        is_personal=body.is_personal,
     )
 
 
@@ -91,6 +123,7 @@ def create_org(
             body.legal_rep_name,
             body.legal_rep_id,
             body.legal_rep_position,
+            _contact_of(body),
         )
     )
 
@@ -133,7 +166,12 @@ def update_org(
     """Owner renames, re-describes or re-policies a live org."""
     return _org_schema(
         service.update_org(
-            org_id, current.id, body.name, body.description, body.join_policy
+            org_id,
+            current.id,
+            body.name,
+            body.description,
+            body.join_policy,
+            _contact_of(body),
         )
     )
 

@@ -83,6 +83,43 @@ async def test_invite_accept_and_roster_flow(client: AsyncClient) -> None:
     assert all(item["email"] for item in body["items"])
 
 
+async def test_invitation_records_inviter(client: AsyncClient) -> None:
+    owner = await _token(client, "vown@example.com", "0912346014")
+    owner_h = _headers(owner)
+    org_id = await _make_org(client, owner_h, "v-club")
+    owner_me = await client.get("/auth/me", headers=owner_h)
+
+    invitee = await _token(client, "vinv@example.com", "0912346015")
+    invitee_h = _headers(invitee)
+
+    invited = await client.post(
+        f"/orgs/{org_id}/members",
+        json={"email": "vinv@example.com"},
+        headers=owner_h,
+    )
+    assert invited.status_code == 201, invited.text
+    assert invited.json()["invited_by"] == owner_me.json()["id"]
+    assert invited.json()["invited_by_name"] == "Member User"
+
+    inbox = await client.get(
+        "/orgs/memberships/mine?status=invited", headers=invitee_h
+    )
+    assert inbox.status_code == 200
+    assert inbox.json()["items"][0]["invited_by_name"] == "Member User"
+
+    # Accepting keeps the inviter recorded on the roster row.
+    await client.post(
+        f"/orgs/{org_id}/members/me/accept", headers=invitee_h
+    )
+    roster = await client.get(f"/orgs/{org_id}/members", headers=owner_h)
+    row = [
+        item
+        for item in roster.json()["items"]
+        if item["user_id"] == invited.json()["user_id"]
+    ][0]
+    assert row["invited_by"] == owner_me.json()["id"]
+
+
 async def test_invite_decline_and_member_privacy(client: AsyncClient) -> None:
     owner = await _token(client, "dwn@example.com", "0912346003")
     owner_h = _headers(owner)

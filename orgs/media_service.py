@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING
@@ -38,6 +39,9 @@ class MediaSnapshot:
     mime: str
     size_bytes: int
     file_url: str
+    uploader_id: UUID | None
+    original_name: str | None
+    upload_status: str
     created_at: datetime
 
 
@@ -83,6 +87,9 @@ class MediaService:
             mime=row.mime,
             size_bytes=int(row.size_bytes or 0),
             file_url=f"/media/{row.file_url}",
+            uploader_id=getattr(row, "uploader_id", None),
+            original_name=getattr(row, "original_name", None),
+            upload_status=getattr(row, "upload_status", None) or "active",
             created_at=row.created_at,
         )
 
@@ -95,6 +102,22 @@ class MediaService:
             current = getattr(other, "role", None) or "gallery"
             if current == role and other.asset_id != keep:
                 self._media.set_role(other.asset_id, "gallery")
+
+    def _sync_brand(
+        self, org_id: UUID, role: str, asset_id: UUID | None
+    ) -> None:
+        """Point the org's cover_media_id/logo_media_id at the asset."""
+        self._orgs.set_brand_media(org_id, role, asset_id, utcnow())
+
+    def _clear_brand_if(self, org_id: UUID, asset_id: UUID) -> None:
+        """Drop brand pointers that reference a deleted/demoted asset."""
+        org = self._orgs.get_by_id(org_id)
+        if org is None:
+            return
+        if getattr(org, "cover_media_id", None) == asset_id:
+            self._sync_brand(org_id, "cover", None)
+        if getattr(org, "logo_media_id", None) == asset_id:
+            self._sync_brand(org_id, "logo", None)
 
     def _check_role(
         self, org: Organization, user_id: UUID, kind: str, role: str
@@ -150,8 +173,19 @@ class MediaService:
         now = utcnow()
         self._demote_role(org_id, role)
         row = self._media.create_asset(
-            asset_id, org_id, relative, mime, len(content), now, role
+            asset_id,
+            org_id,
+            relative,
+            mime,
+            len(content),
+            now,
+            role,
+            file_hash=hashlib.sha256(content).hexdigest(),
+            uploader_id=user_id,
+            original_name=filename,
         )
+        if role in _BRAND_ROLES:
+            self._sync_brand(org_id, role, asset_id)
         return self._media_snapshot(org_id, row)
 
     def set_media_role(
@@ -169,6 +203,10 @@ class MediaService:
         self._demote_role(org_id, role, keep=media_id)
         updated = self._media.set_role(media_id, role)
         assert updated is not None
+        if role in _BRAND_ROLES:
+            self._sync_brand(org_id, role, media_id)
+        else:
+            self._clear_brand_if(org_id, media_id)
         return self._media_snapshot(org_id, updated)
 
     def list_media(self, org_id: UUID, user_id: UUID) -> list[MediaSnapshot]:
@@ -189,6 +227,7 @@ class MediaService:
         row = self._media.get_asset(media_id)
         if row is None or row.owner_id != org_id:
             raise NotFoundError("Media not found.")
+        self._clear_brand_if(org_id, media_id)
         self._media.delete_asset(media_id)
         self._store.delete_file(row.file_url)
 
@@ -201,4 +240,6 @@ class MediaService:
             self._media.delete_asset(row.asset_id)
             self._store.delete_file(row.file_url)
             removed += 1
+        self._sync_brand(org_id, "cover", None)
+        self._sync_brand(org_id, "logo", None)
         return removed
