@@ -16,6 +16,7 @@ _CCCD_PATTERN = re.compile(r"^\d{12}$")
 OrgKind = Literal["organization", "club", "group", "business"]
 MediaRole = Literal["gallery", "cover", "logo"]
 OrgSort = Literal["newest", "name", "members"]
+JoinPolicy = Literal["invite", "open"]
 
 
 def validate_slug(value: str) -> str:
@@ -53,6 +54,7 @@ class CreateOrgRequest(BaseModel):
     slug: str
     description: Annotated[str, Field(max_length=500)] = ""
     kind: OrgKind = "organization"
+    join_policy: JoinPolicy = "invite"
     tax_code: str | None = None
     legal_rep_name: Annotated[str, Field(min_length=2, max_length=100)] | None = None
     legal_rep_id: str | None = None
@@ -94,6 +96,7 @@ class OrgResponse(BaseModel):
     legal_rep_position: str | None = None
     legal_status: str = "none"
     status: str = "active"
+    join_policy: JoinPolicy = "invite"
     deleted_at: datetime | None = None
     created_at: datetime
 
@@ -114,10 +117,11 @@ class OrgListPage(BaseModel):
 
 
 class UpdateOrgRequest(BaseModel):
-    """Owner edits name and description (slug and kind stay frozen)."""
+    """Owner edits name, description and join policy (slug/kind frozen)."""
 
     name: Annotated[str, Field(min_length=2, max_length=100)]
     description: Annotated[str, Field(max_length=500)] = ""
+    join_policy: JoinPolicy | None = None
 
 
 class SetMediaRoleRequest(BaseModel):

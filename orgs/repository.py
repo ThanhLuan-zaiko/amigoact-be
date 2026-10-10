@@ -34,6 +34,7 @@ class CqlOrgRepository(OrgRepository):
         slug: str,
         description: str,
         kind: str,
+        join_policy: str,
         tax_code: str | None,
         legal_rep_name: str | None,
         legal_rep_id: str | None,
@@ -56,6 +57,7 @@ class CqlOrgRepository(OrgRepository):
             description=description,
             org_type=kind,
             status="active",
+            join_policy=join_policy,
             owner_id=owner_id,
             tax_code=tax_code,
             legal_rep_name=legal_rep_name,
@@ -83,13 +85,20 @@ class CqlOrgRepository(OrgRepository):
     def list_by_user(self, user_id: UUID) -> list[Organization]:
         orgs: list[Organization] = []
         for link in MemberByUser.objects(user_id=user_id).all():
+            # Invited/left rows stay out of the "my orgs" listing.
+            if (getattr(link, "status", "active") or "active") != "active":
+                continue
             org = self.get_by_id(link.org_id)
             if org is not None:
                 orgs.append(org)
         return orgs
 
     def count_members(self, org_id: UUID) -> int:
-        return sum(1 for _ in OrganizationMember.objects(org_id=org_id).all())
+        return sum(
+            1
+            for row in OrganizationMember.objects(org_id=org_id).all()
+            if (getattr(row, "status", "active") or "active") == "active"
+        )
 
     def is_member(self, org_id: UUID, user_id: UUID) -> bool:
         row = MemberByUser.objects(user_id=user_id, org_id=org_id).first()
@@ -98,13 +107,23 @@ class CqlOrgRepository(OrgRepository):
         return (getattr(row, "status", "active") or "active") == "active"
 
     def update_details(
-        self, org_id: UUID, name: str, description: str, now: datetime
+        self,
+        org_id: UUID,
+        name: str,
+        description: str,
+        now: datetime,
+        join_policy: str | None = None,
     ) -> Organization | None:
         if self.get_by_id(org_id) is None:
             return None
-        Organization.objects(id=org_id).update(
-            name=name, description=description, updated_at=now
-        )
+        fields: dict[str, object] = {
+            "name": name,
+            "description": description,
+            "updated_at": now,
+        }
+        if join_policy is not None:
+            fields["join_policy"] = join_policy
+        Organization.objects(id=org_id).update(**fields)
         return self.get_by_id(org_id)
 
     def mark_deleted(self, org_id: UUID, now: datetime) -> Organization | None:

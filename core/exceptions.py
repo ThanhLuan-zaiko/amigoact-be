@@ -112,6 +112,46 @@ class AccountSuspendedError(DomainError):
     status = 403
 
 
+class UserNotFoundError(DomainError):
+    code = "USER_NOT_FOUND"
+    status = 404
+
+
+class AlreadyMemberError(DomainError):
+    code = "ALREADY_MEMBER"
+    status = 409
+
+
+class AlreadyInvitedError(DomainError):
+    code = "ALREADY_INVITED"
+    status = 409
+
+
+class MemberNotFoundError(DomainError):
+    code = "MEMBER_NOT_FOUND"
+    status = 404
+
+
+class OwnerImmutableError(DomainError):
+    code = "OWNER_IMMUTABLE"
+    status = 400
+
+
+class InvalidMemberStateError(DomainError):
+    code = "INVALID_MEMBER_STATE"
+    status = 400
+
+
+class InviteOnlyError(DomainError):
+    code = "INVITE_ONLY"
+    status = 403
+
+
+class InvalidRoleError(DomainError):
+    code = "INVALID_ROLE"
+    status = 400
+
+
 async def domain_error_handler(_: Request, exc: DomainError) -> JSONResponse:
     """Render every domain failure as {"code": ..., "message": ...}."""
     return JSONResponse(

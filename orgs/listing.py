@@ -20,7 +20,7 @@ _BUCKET_ORDER = ("active", "pending")
 
 def fold_search_text(value: str) -> str:
     """Fold Vietnamese text so search ignores case and diacritics."""
-    lowered = value.lower().replace("đ", "d")
+    lowered = value.lower().replace("\u0111", "d")
     decomposed = unicodedata.normalize("NFD", lowered)
     return "".join(
         char for char in decomposed if unicodedata.category(char) != "Mn"

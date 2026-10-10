@@ -27,7 +27,7 @@ CLOSE_UNAUTHORIZED = 4401
 CLOSE_FORBIDDEN = 4403
 CLOSE_PONG_TIMEOUT = 4408
 
-CHANNEL_KINDS = ("notifications", "attendance", "activities")
+CHANNEL_KINDS = ("notifications", "attendance", "activities", "members")
 
 
 class BadFrameError(Exception):
@@ -247,6 +247,23 @@ class ConnectionManager:
             else:
                 self.unregister(websocket)
         return delivered
+
+    def schedule_publish(
+        self, channel: str, payload: dict[str, Any] | None = None
+    ) -> bool:
+        """Fire-and-forget publish for sync callers inside the loop.
+
+        Member mutations run in sync services called from async
+        endpoints, so they cannot await publish(); the send is queued
+        on the running loop instead. Callers without a running loop
+        (unit tests, scripts) get False and no delivery attempt.
+        """
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return False
+        loop.create_task(self.publish(channel, payload))
+        return True
 
 
 async def heartbeat_loop(

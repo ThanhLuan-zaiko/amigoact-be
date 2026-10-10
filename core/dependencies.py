@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 from uuid import UUID
 
-from fastapi import Depends, WebSocket
+from fastapi import Depends, Request, WebSocket
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from core.config import Settings, get_settings
@@ -17,7 +17,10 @@ from core.security import AuthTokenError, decode_access_token
 if TYPE_CHECKING:
     from auth.service import AuthService
     from core.realtime import ConnectionManager
+    from orgs.media_service import MediaService
+    from orgs.member_service import MemberService
     from orgs.service import OrgService
+    from rbac.interfaces import AccessControl
     from realtime.service import RealtimeService
 
 _bearer = HTTPBearer(auto_error=False)
@@ -69,7 +72,6 @@ def get_org_service(
     settings: Settings = Depends(get_settings),
 ) -> OrgService:
     """Build one OrgService per request from the org repository."""
-    from core.media import LocalMediaStore
     from orgs.repository import CqlMediaRepository, CqlOrgRepository
     from orgs.service import OrgService
 
@@ -77,8 +79,125 @@ def get_org_service(
         orgs=CqlOrgRepository(settings.scylla_keyspace),
         media=CqlMediaRepository(),
         store=get_media_store(settings),
+    )
+
+
+def get_media_service(
+    settings: Settings = Depends(get_settings),
+) -> MediaService:
+    """Build one MediaService per request for the org gallery."""
+    from orgs.media_service import MediaService
+    from orgs.repository import CqlMediaRepository, CqlOrgRepository
+
+    return MediaService(
+        orgs=CqlOrgRepository(settings.scylla_keyspace),
+        media=CqlMediaRepository(),
+        store=get_media_store(settings),
         max_image_bytes=settings.media_max_image_mb * 1024 * 1024,
         max_video_bytes=settings.media_max_video_mb * 1024 * 1024,
+    )
+
+
+def get_access_control() -> AccessControl:
+    """Build one AccessControlService per request over the rbac tables."""
+    from rbac.repository import (
+        CqlAuditWriter,
+        CqlGrantRepository,
+        CqlRoleRepository,
+    )
+    from rbac.service import AccessControlService
+
+    return AccessControlService(
+        roles=CqlRoleRepository(),
+        grants=CqlGrantRepository(),
+        audit=CqlAuditWriter(),
+    )
+
+
+def get_member_service(
+    request: Request,
+    settings: Settings = Depends(get_settings),
+    access: AccessControl = Depends(get_access_control),
+) -> MemberService:
+    """Build one MemberService; user lookup adapts the auth repository."""
+    from auth.repository import CqlUserRepository
+    from orgs.interfaces import MemberEvents, UserBrief, UserDirectory
+    from orgs.member_repository import CqlMemberRepository
+    from orgs.member_service import MemberService
+    from orgs.repository import CqlOrgRepository
+
+    class _WsMemberEvents(MemberEvents):
+        """Fan roster and invite events onto the socket registry."""
+
+        def __init__(self, manager: ConnectionManager | None) -> None:
+            self._manager = manager
+
+        def member_changed(
+            self,
+            org_id: UUID,
+            action: str,
+            target_id: UUID,
+            actor_id: UUID,
+        ) -> None:
+            if self._manager is not None:
+                self._manager.schedule_publish(
+                    f"members:{org_id}",
+                    {
+                        "action": action,
+                        "user_id": str(target_id),
+                        "actor_id": str(actor_id),
+                    },
+                )
+
+        def inbox_changed(
+            self, user_id: UUID, action: str, org_id: UUID
+        ) -> None:
+            if self._manager is not None:
+                self._manager.schedule_publish(
+                    f"notifications:{user_id}",
+                    {
+                        "scope": "membership",
+                        "action": action,
+                        "org_id": str(org_id),
+                    },
+                )
+
+    class _UserDirectory(UserDirectory):
+        """Read-only bridge onto the auth user tables."""
+
+        def __init__(self) -> None:
+            self._users = CqlUserRepository(settings.scylla_keyspace)
+
+        def get_brief(self, user_id: UUID) -> UserBrief | None:
+            user = self._users.get_by_id(user_id)
+            if user is None:
+                return None
+            return UserBrief(
+                id=user.id,
+                full_name=user.full_name,
+                email=user.email,
+                status=user.status,
+            )
+
+        def find_by_email(self, email: str) -> UserBrief | None:
+            user = self._users.get_by_email(email)
+            if user is None:
+                return None
+            return UserBrief(
+                id=user.id,
+                full_name=user.full_name,
+                email=user.email,
+                status=user.status,
+            )
+
+    return MemberService(
+        orgs=CqlOrgRepository(settings.scylla_keyspace),
+        members=CqlMemberRepository(),
+        users=_UserDirectory(),
+        access=access,
+        events=_WsMemberEvents(
+            getattr(request.app.state, "ws_manager", None)
+        ),
     )
 
 

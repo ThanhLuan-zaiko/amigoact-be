@@ -69,7 +69,7 @@ class RealtimeService:
         """Channel ACLs (8: authentication is not authorization)."""
         if channel.kind == "notifications":
             return channel.subject == user_id
-        if channel.kind == "activities":
+        if channel.kind in ("activities", "members"):
             return self._membership.is_member(channel.subject, user_id)
         if channel.kind == "attendance":
             # Activities store lands later: deny until a real port exists.

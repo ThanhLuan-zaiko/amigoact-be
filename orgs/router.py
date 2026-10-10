@@ -12,6 +12,7 @@ from core.config import Settings, get_settings
 from core.dependencies import (
     CurrentUser,
     get_current_user,
+    get_media_service,
     get_media_store,
     get_org_service,
 )
@@ -30,7 +31,8 @@ from orgs.schemas import (
 
 if TYPE_CHECKING:
     from core.media import LocalMediaStore
-    from orgs.service import MediaSnapshot, OrgService, OrgSnapshot
+    from orgs.media_service import MediaService, MediaSnapshot
+    from orgs.service import OrgService, OrgSnapshot
 
 router = APIRouter(tags=["orgs"])
 
@@ -51,6 +53,7 @@ def _org_schema(snapshot: OrgSnapshot) -> OrgResponse:
         legal_rep_position=snapshot.legal_rep_position,
         legal_status=snapshot.legal_status,
         status=snapshot.status,
+        join_policy=snapshot.join_policy,  # type: ignore[arg-type]
         deleted_at=snapshot.deleted_at,
         created_at=snapshot.created_at,
     )
@@ -83,6 +86,7 @@ def create_org(
             body.slug,
             body.description,
             body.kind,
+            body.join_policy,
             body.tax_code,
             body.legal_rep_name,
             body.legal_rep_id,
@@ -126,9 +130,11 @@ def update_org(
     current: CurrentUser = Depends(get_current_user),
     service: OrgService = Depends(get_org_service),
 ) -> OrgResponse:
-    """Owner renames or re-describes a live org."""
+    """Owner renames, re-describes or re-policies a live org."""
     return _org_schema(
-        service.update_org(org_id, current.id, body.name, body.description)
+        service.update_org(
+            org_id, current.id, body.name, body.description, body.join_policy
+        )
     )
 
 
@@ -162,7 +168,7 @@ async def upload_org_media(
     file: UploadFile,
     role: Annotated[str, Form()] = "gallery",
     current: CurrentUser = Depends(get_current_user),
-    service: OrgService = Depends(get_org_service),
+    service: MediaService = Depends(get_media_service),
     settings: Settings = Depends(get_settings),
 ) -> MediaResponse:
     """Member uploads one image/video; owner may flag cover/logo at once."""
@@ -204,7 +210,7 @@ async def upload_org_media(
 def list_org_media(
     org_id: UUID,
     current: CurrentUser = Depends(get_current_user),
-    service: OrgService = Depends(get_org_service),
+    service: MediaService = Depends(get_media_service),
 ) -> list[MediaResponse]:
     """Newest-first gallery for members of a live org."""
     return [_media_schema(item) for item in service.list_media(org_id, current.id)]
@@ -216,7 +222,7 @@ def set_org_media_role(
     media_id: UUID,
     body: SetMediaRoleRequest,
     current: CurrentUser = Depends(get_current_user),
-    service: OrgService = Depends(get_org_service),
+    service: MediaService = Depends(get_media_service),
 ) -> MediaResponse:
     """Owner picks the cover/logo image; previous holder drops to gallery."""
     return _media_schema(
@@ -228,7 +234,7 @@ def set_org_media_role(
 def delete_all_org_media(
     org_id: UUID,
     current: CurrentUser = Depends(get_current_user),
-    service: OrgService = Depends(get_org_service),
+    service: MediaService = Depends(get_media_service),
 ) -> None:
     """Owner wipes the whole org gallery: metadata rows plus bytes."""
     service.delete_all_media(org_id, current.id)
@@ -239,7 +245,7 @@ def delete_org_media(
     org_id: UUID,
     media_id: UUID,
     current: CurrentUser = Depends(get_current_user),
-    service: OrgService = Depends(get_org_service),
+    service: MediaService = Depends(get_media_service),
 ) -> None:
     """Owner removes one gallery file: metadata row plus bytes."""
     service.delete_media(org_id, current.id, media_id)

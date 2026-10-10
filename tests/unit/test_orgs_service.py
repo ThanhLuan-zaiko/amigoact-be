@@ -18,6 +18,7 @@ from core.exceptions import (
 )
 from core.media import MediaStore
 from orgs.interfaces import MediaRepository, OrgRepository
+from orgs.media_service import MediaService
 from orgs.service import OrgService
 
 
@@ -27,12 +28,13 @@ class FakeOrgs(OrgRepository):
         self.slugs: dict[str, UUID] = {}
         self.members: dict[UUID, set[UUID]] = {}
 
-    def create(self, org_id, owner_id, name, slug, description, kind, tax_code, legal_rep_name, legal_rep_id, legal_rep_position, legal_status, now):  # noqa: ANN001, ANN202
+    def create(self, org_id, owner_id, name, slug, description, kind, join_policy, tax_code, legal_rep_name, legal_rep_id, legal_rep_position, legal_status, now):  # noqa: ANN001, ANN202
         if slug in self.slugs:
             raise SlugTakenError("Organization slug is already taken.")
         org = SimpleNamespace(
             id=org_id, owner_id=owner_id, name=name, slug=slug,
-            description=description, org_type=kind, tax_code=tax_code,
+            description=description, org_type=kind, join_policy=join_policy,
+            tax_code=tax_code,
             legal_rep_name=legal_rep_name, legal_rep_id=legal_rep_id,
             legal_rep_position=legal_rep_position, legal_status=legal_status,
             status="active", deleted_at=None,
@@ -59,12 +61,14 @@ class FakeOrgs(OrgRepository):
     def is_member(self, org_id, user_id):  # noqa: ANN001, ANN202
         return user_id in self.members.get(org_id, set())
 
-    def update_details(self, org_id, name, description, now):  # noqa: ANN001, ANN202
+    def update_details(self, org_id, name, description, now, join_policy=None):  # noqa: ANN001, ANN202
         org = self.orgs.get(org_id)
         if org is None:
             return None
         org.name = name
         org.description = description
+        if join_policy is not None:
+            org.join_policy = join_policy
         org.updated_at = now
         return org
 
@@ -145,9 +149,14 @@ class FakeStore(MediaStore):
         return 0
 
 
-def _media_service() -> tuple[OrgService, FakeOrgs, FakeMedia]:
+def _media_service() -> tuple[OrgService, MediaService, FakeOrgs, FakeMedia]:
     orgs, media = FakeOrgs(), FakeMedia()
-    return OrgService(orgs, media, FakeStore()), orgs, media
+    return (
+        OrgService(orgs, media, FakeStore()),
+        MediaService(orgs, media, FakeStore()),
+        orgs,
+        media,
+    )
 
 
 def _owner() -> UUID:
@@ -169,7 +178,8 @@ def test_create_business_requires_legal_head() -> None:
         service.create_org(_owner(), "Biz", "biz-1", "", "business")
     snapshot = service.create_org(
         _owner(), "Biz", "biz-1", "", "business",
-        "0312345678", "Nguyen Van A", "012345678901", "Giam doc",
+        tax_code="0312345678", legal_rep_name="Nguyen Van A",
+        legal_rep_id="012345678901", legal_rep_position="Giam doc",
     )
     assert snapshot.legal_status == "pending"
     assert snapshot.tax_code == "0312345678"
@@ -232,18 +242,18 @@ def test_restore_live_org_rejected() -> None:
 
 
 def test_upload_media_defaults_to_gallery() -> None:
-    service, _, _ = _media_service()
+    orgs_service, service, _, _ = _media_service()
     owner = _owner()
-    org = service.create_org(owner, "Club A", "club-a", "", "club")
+    org = orgs_service.create_org(owner, "Club A", "club-a", "", "club")
     snap = service.upload_media(org.id, owner, "a.png", "image/png", b"1" * 10)
     assert snap.kind == "image"
     assert snap.role == "gallery"
 
 
 def test_upload_cover_demotes_previous_cover() -> None:
-    service, _, media = _media_service()
+    orgs_service, service, _, media = _media_service()
     owner = _owner()
-    org = service.create_org(owner, "Club A", "club-a", "", "club")
+    org = orgs_service.create_org(owner, "Club A", "club-a", "", "club")
     first = service.upload_media(
         org.id, owner, "a.png", "image/png", b"1" * 10, "cover"
     )
@@ -256,9 +266,9 @@ def test_upload_cover_demotes_previous_cover() -> None:
 
 
 def test_brand_roles_are_image_only_and_owner_only() -> None:
-    service, orgs, _ = _media_service()
+    orgs_service, service, orgs, _ = _media_service()
     owner, member = _owner(), _owner()
-    org = service.create_org(owner, "Club A", "club-a", "", "club")
+    org = orgs_service.create_org(owner, "Club A", "club-a", "", "club")
     orgs.members[org.id].add(member)
     with pytest.raises(InvalidMediaRoleError):
         service.upload_media(
@@ -279,9 +289,9 @@ def test_brand_roles_are_image_only_and_owner_only() -> None:
 
 
 def test_set_media_role_owner_only_with_demotion() -> None:
-    service, _, media = _media_service()
+    orgs_service, service, _, media = _media_service()
     owner, stranger = _owner(), _owner()
-    org = service.create_org(owner, "Club A", "club-a", "", "club")
+    org = orgs_service.create_org(owner, "Club A", "club-a", "", "club")
     one = service.upload_media(org.id, owner, "a.png", "image/png", b"1" * 10)
     two = service.upload_media(org.id, owner, "b.png", "image/png", b"1" * 10)
 
@@ -298,27 +308,27 @@ def test_set_media_role_owner_only_with_demotion() -> None:
 
 
 def test_set_media_role_on_video_rejected() -> None:
-    service, _, _ = _media_service()
+    orgs_service, service, _, _ = _media_service()
     owner = _owner()
-    org = service.create_org(owner, "Club A", "club-a", "", "club")
+    org = orgs_service.create_org(owner, "Club A", "club-a", "", "club")
     clip = service.upload_media(org.id, owner, "v.mp4", "video/mp4", b"1" * 10)
     with pytest.raises(InvalidMediaRoleError):
         service.set_media_role(org.id, owner, clip.id, "cover")
 
 
 def test_list_media_surfaces_role() -> None:
-    service, _, _ = _media_service()
+    orgs_service, service, _, _ = _media_service()
     owner = _owner()
-    org = service.create_org(owner, "Club A", "club-a", "", "club")
+    org = orgs_service.create_org(owner, "Club A", "club-a", "", "club")
     service.upload_media(org.id, owner, "a.png", "image/png", b"1" * 10, "cover")
     listed = service.list_media(org.id, owner)
     assert listed[0].role == "cover"
 
 
 def test_delete_all_media_owner_only() -> None:
-    service, _, media = _media_service()
+    orgs_service, service, _, media = _media_service()
     owner, stranger = _owner(), _owner()
-    org = service.create_org(owner, "Club A", "club-a", "", "club")
+    org = orgs_service.create_org(owner, "Club A", "club-a", "", "club")
     service.upload_media(org.id, owner, "a.png", "image/png", b"1" * 10)
     service.upload_media(org.id, owner, "b.png", "image/png", b"1" * 10)
 

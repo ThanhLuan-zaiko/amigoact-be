@@ -133,6 +133,7 @@ CREATE TABLE IF NOT EXISTS organizations (
     description text,
     org_type text, // organization | club | group | business
     status text, // active | suspended
+    join_policy text, // invite | open (deployed keyspaces: ALTER TABLE organizations ADD join_policy text)
     owner_id uuid,
     tax_code text,
     legal_rep_name text,

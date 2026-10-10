@@ -84,6 +84,9 @@ async def lifespan(app: FastAPI):
             settings.scylla_keyspace,
             settings.scylla_datacenter,
         )
+        from rbac.seed import seed_rbac
+
+        await asyncio.to_thread(seed_rbac)
     except Exception as exc:
         logger.error("cqlengine connection setup failed: %s", exc)
     app.state.ws_manager = ConnectionManager()
@@ -102,11 +105,13 @@ app.add_middleware(
 )
 
 from auth.router import router as auth_router  # noqa: E402
+from orgs.members_router import router as members_router  # noqa: E402
 from orgs.router import router as orgs_router  # noqa: E402
 from realtime.router import router as realtime_router  # noqa: E402
 
 app.include_router(auth_router)
 app.include_router(orgs_router)
+app.include_router(members_router)
 app.include_router(realtime_router)
 
 

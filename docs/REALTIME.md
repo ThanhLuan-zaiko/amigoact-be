@@ -48,6 +48,7 @@ Mọi frame là JSON `{"type": "<tên có version>", "data": {...}}`.
 |---|---|
 | `notifications:{user_id}` | Chỉ chủ nhân (`subject == user_id`); server tự join sau handshake |
 | `activities:{org_id}` | Phải là member của org (`members_by_user`) |
+| `members:{org_id}` | Phải là member `active` của org; nhận `event.v1` mọi thay đổi roster |
 | `attendance:{activity_id}` | Staff của org sở hữu activity — port `AttendanceAccess`; hiện từ chối tất cả vì bảng activities chưa tồn tại |
 
 Đăng ký bị từ chối: server gửi `error.v1` `FORBIDDEN` rồi đóng `4403`.
@@ -79,6 +80,23 @@ Tên kênh sai cú pháp: `error.v1` `INVALID_CHANNEL`, kết nối vẫn sống
 - Fan-out: `ConnectionManager.publish(channel, payload)` → `event.v1` tới
   mọi socket của kênh. Resume sau reconnect đọc lại từ ScyllaDB (không
   replay RAM).
+- Publish từ code đồng bộ (service sync chạy trong endpoint async):
+  `schedule_publish(channel, payload)` xếp task lên loop đang chạy, trả
+  `False` nếu không có loop (unit test) — publish là best-effort, không
+  bao giờ làm hỏng request.
+
+### Sự kiện membership (orgs)
+
+`MemberService` phát qua port `MemberEvents` sau mỗi mutation thành công:
+
+| Kênh | `payload.action` | `payload` còn lại |
+|---|---|---|
+| `members:{org_id}` | `invited`/`accepted`/`declined`/`joined`/`promoted`/`demoted`/`suspended`/`reactivated`/`removed`/`left` | `user_id`, `actor_id` |
+| `notifications:{user_id}` | cùng action | `scope: "membership"`, `org_id` |
+
+Kênh `notifications` cho người được mời/bị đổi — họ chưa (hoặc không
+còn) là member nên không subscribe được `members:{org_id}`. Client chỉ
+invalidate TanStack Query khi nhận event; không tin payload làm sự thật.
 
 ## 6. Cấu hình
 

@@ -34,6 +34,7 @@ def _snap(
         legal_rep_position=None,
         legal_status=legal_status,
         status=status,
+        join_policy="invite",
         deleted_at=None,
         member_count=members,
         created_at=now,
@@ -41,8 +42,8 @@ def _snap(
 
 
 def test_fold_ignores_case_and_vietnamese_diacritics() -> None:
-    assert fold_search_text("Hà Nội") == "ha noi"
-    assert fold_search_text("ĐÀ NẴNG") == "da nang"
+    assert fold_search_text("H\u00e0 N\u1ed9i") == "ha noi"
+    assert fold_search_text("\u0110\u00c0 N\u1eb4NG") == "da nang"
     assert fold_search_text("  Club  ") == "club"
 
 
@@ -53,7 +54,7 @@ def test_pending_legal_review_wins_status_bucket() -> None:
 
 
 def test_q_matches_name_and_slug_without_diacritics() -> None:
-    rows = [_snap("Hội An", "hoi-an"), _snap("Da Nang", "da-nang")]
+    rows = [_snap("H\u1ed9i An", "hoi-an"), _snap("Da Nang", "da-nang")]
     assert [o.slug for o in paginate_mine(rows, q="hoi an").items] == ["hoi-an"]
     assert [o.slug for o in paginate_mine(rows, q="DA-NANG").items] == ["da-nang"]
     assert paginate_mine(rows, q="hue").total == 0
@@ -72,7 +73,7 @@ def test_status_filter_uses_buckets_and_counts_stay_prefilter() -> None:
 
 
 def test_name_sort_folds_diacritics_like_vietnamese_order() -> None:
-    rows = [_snap("Hội An", "hoi-an"), _snap("Da Nang", "da-nang"), _snap("Hue", "hue")]
+    rows = [_snap("H\u1ed9i An", "hoi-an"), _snap("Da Nang", "da-nang"), _snap("Hue", "hue")]
     assert [o.slug for o in paginate_mine(rows, sort="name").items] == [
         "da-nang",
         "hoi-an",

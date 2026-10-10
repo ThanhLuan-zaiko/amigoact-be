@@ -40,6 +40,14 @@ TABLES = [
     "members_by_user",
     "media_assets",
     "media_by_owner",
+    "roles",
+    "roles_by_org",
+    "permissions",
+    "role_permissions",
+    "user_roles",
+    "roles_by_user",
+    "user_permission_grants",
+    "access_audit_logs",
     "ws_tickets",
 ]
 
@@ -79,6 +87,7 @@ def test_db() -> str:
 
     import auth.model as models
     import orgs.model as org_models
+    import rbac.model as rbac_models
     import realtime.model as realtime_models
 
     cluster = Cluster(
@@ -113,6 +122,14 @@ def test_db() -> str:
         org_models.MemberByUser,
         org_models.MediaAsset,
         org_models.MediaByOwner,
+        rbac_models.Role,
+        rbac_models.RolesByOrg,
+        rbac_models.Permission,
+        rbac_models.RolePermission,
+        rbac_models.UserRole,
+        rbac_models.RolesByUser,
+        rbac_models.UserPermissionGrant,
+        rbac_models.AccessAuditLog,
         realtime_models.WsTicket,
     ]
     saved = {model: model.__keyspace__ for model in targets}
@@ -144,6 +161,10 @@ def clean_tables(test_db: str) -> str:
     session = get_session()
     for table in TABLES:
         session.execute(f"TRUNCATE {TEST_KEYSPACE}.{table}")
+    # Truncating wipes the seeded catalog; re-seed so role checks work.
+    from rbac.seed import seed_rbac
+
+    seed_rbac()
     return TEST_KEYSPACE
 
 

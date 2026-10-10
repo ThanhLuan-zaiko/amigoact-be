@@ -19,6 +19,7 @@ class Organization(models.Model):
     description = columns.Text(required=False, default="")
     org_type = columns.Text(required=True, default="organization")
     status = columns.Text(required=True, default="active")
+    join_policy = columns.Text(required=True, default="invite")
     owner_id = columns.UUID(required=True)
     tax_code = columns.Text(required=False)
     legal_rep_name = columns.Text(required=False)

@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from datetime import timedelta
 from types import SimpleNamespace
-from typing import cast
+from typing import Any, cast
 from uuid import UUID
 
 import pytest
@@ -86,6 +86,7 @@ def test_parse_channel() -> None:
     assert channel == Channel(kind="notifications", subject=uid)
     assert parse_channel(f"attendance:{uid}").kind == "attendance"  # type: ignore[union-attr]
     assert parse_channel(f"activities:{uid}").kind == "activities"  # type: ignore[union-attr]
+    assert parse_channel(f"members:{uid}").kind == "members"  # type: ignore[union-attr]
     assert parse_channel("weird") is None
     assert parse_channel("admins:x") is None
     assert parse_channel("notifications:not-a-uuid") is None
@@ -152,6 +153,8 @@ def test_authorize_channels() -> None:
     assert not service.authorize(Channel("notifications", other), uid)
     assert service.authorize(Channel("activities", org), uid)
     assert not service.authorize(Channel("activities", org), other)
+    assert service.authorize(Channel("members", org), uid)
+    assert not service.authorize(Channel("members", org), other)
     assert not service.authorize(Channel("attendance", org), uid)
 
 
@@ -197,6 +200,9 @@ async def test_manager_subscribe_publish_unregister() -> None:
     assert await manager.publish(channel) == 0
 
 
+_ACTIVE_USER_PATCH: Any = None
+
+
 def _ws_app(
     members: _Membership | None = None,
     heartbeat: int = 120,
@@ -207,6 +213,23 @@ def _ws_app(
     from core.config import get_settings
     from core.dependencies import get_realtime_service
     from core.realtime import ConnectionManager
+
+    global _ACTIVE_USER_PATCH
+    from unittest import mock
+
+    class _ActiveUsers:
+        """Router-level user check always sees an active account."""
+
+        def __init__(self, *_args, **_kwargs) -> None:  # noqa: ANN002, ANN003
+            pass
+
+        def get_by_id(self, user_id):  # noqa: ANN001, ANN202
+            return SimpleNamespace(id=user_id, status="active")
+
+    _ACTIVE_USER_PATCH = mock.patch(
+        "auth.repository.CqlUserRepository", _ActiveUsers
+    )
+    _ACTIVE_USER_PATCH.start()
 
     store = _MemTickets()
     service = RealtimeService(store, members or _Membership(), None, 60)
@@ -231,6 +254,10 @@ def _clear_overrides() -> None:
     import main
 
     main.app.dependency_overrides.clear()
+    global _ACTIVE_USER_PATCH
+    if _ACTIVE_USER_PATCH is not None:
+        _ACTIVE_USER_PATCH.stop()
+        _ACTIVE_USER_PATCH = None
 
 
 def test_handshake_ready_and_frames() -> None:

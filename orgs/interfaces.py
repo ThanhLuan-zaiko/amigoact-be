@@ -3,10 +3,21 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from datetime import datetime
 from uuid import UUID
 
-from orgs.model import MediaAsset, Organization
+from orgs.model import MediaAsset, MemberByUser, Organization, OrganizationMember
+
+
+@dataclass(frozen=True)
+class UserBrief:
+    """Minimal user fields other features may render (auth owns users)."""
+
+    id: UUID
+    full_name: str
+    email: str
+    status: str
 
 
 class OrgRepository(ABC):
@@ -21,6 +32,7 @@ class OrgRepository(ABC):
         slug: str,
         description: str,
         kind: str,
+        join_policy: str,
         tax_code: str | None,
         legal_rep_name: str | None,
         legal_rep_id: str | None,
@@ -40,7 +52,7 @@ class OrgRepository(ABC):
 
     @abstractmethod
     def list_by_user(self, user_id: UUID) -> list[Organization]:
-        """List every org a user belongs to via the member index."""
+        """List every org a user actively belongs to via the member index."""
 
     @abstractmethod
     def count_members(self, org_id: UUID) -> int:
@@ -52,9 +64,14 @@ class OrgRepository(ABC):
 
     @abstractmethod
     def update_details(
-        self, org_id: UUID, name: str, description: str, now: datetime
+        self,
+        org_id: UUID,
+        name: str,
+        description: str,
+        now: datetime,
+        join_policy: str | None = None,
     ) -> Organization | None:
-        """Replace name and description, return the fresh row or None."""
+        """Replace name/description (and policy), return the fresh row."""
 
     @abstractmethod
     def mark_deleted(self, org_id: UUID, now: datetime) -> Organization | None:
@@ -104,3 +121,57 @@ class MediaRepository(ABC):
     @abstractmethod
     def known_org_ids(self) -> set[str]:
         """Every org id owning a folder, used for orphan sweeps."""
+
+
+class MemberRepository(ABC):
+    """Persistence port for the dual membership tables."""
+
+    @abstractmethod
+    def get(self, org_id: UUID, user_id: UUID) -> OrganizationMember | None:
+        """Load one membership row."""
+
+    @abstractmethod
+    def list_by_org(self, org_id: UUID) -> list[OrganizationMember]:
+        """Every membership row of one org (all statuses)."""
+
+    @abstractmethod
+    def list_links_by_user(self, user_id: UUID) -> list[MemberByUser]:
+        """Every membership link one user holds (all statuses)."""
+
+    @abstractmethod
+    def put(
+        self, org_id: UUID, user_id: UUID, status: str, now: datetime
+    ) -> OrganizationMember:
+        """Insert both membership rows for a fresh lifecycle."""
+
+    @abstractmethod
+    def set_status(
+        self, org_id: UUID, user_id: UUID, status: str, now: datetime
+    ) -> OrganizationMember | None:
+        """Dual-write a status transition on both membership tables."""
+
+
+class UserDirectory(ABC):
+    """Read-only user lookup port (auth owns the users tables)."""
+
+    @abstractmethod
+    def get_brief(self, user_id: UUID) -> UserBrief | None:
+        """Load display fields for one user."""
+
+    @abstractmethod
+    def find_by_email(self, email: str) -> UserBrief | None:
+        """Resolve an account by email (invite lookups)."""
+
+
+class MemberEvents(ABC):
+    """Realtime fan-out port for roster and invitation changes (best-effort)."""
+
+    @abstractmethod
+    def member_changed(
+        self, org_id: UUID, action: str, target_id: UUID, actor_id: UUID
+    ) -> None:
+        """Broadcast one roster change to members:{org_id} subscribers."""
+
+    @abstractmethod
+    def inbox_changed(self, user_id: UUID, action: str, org_id: UUID) -> None:
+        """Push to notifications:{user_id} so an invitee updates live."""

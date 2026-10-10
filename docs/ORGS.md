@@ -29,7 +29,7 @@ dưới `MEDIA_ROOT`, metadata lưu ScyllaDB.
 
 | Thao tác | Endpoint | Trạng thái |
 |---|---|---|
-| Tạo (người gọi thành chủ) | `POST /orgs` | `201`, slug trùng `409 SLUG_TAKEN` |
+| Tạo (người gọi thành chủ) | `POST /orgs` | `201`, slug trùng `409 SLUG_TAKEN`; `join_policy`: `invite` (mặc định) \| `open` |
 | Danh sách của tôi | `GET /orgs/mine` | `200` envelope `{items, total, counts}` (mặc định ẩn thùng rác) |
 | Kèm thùng rác | `GET /orgs/mine?include_deleted=true` | `200` |
 | Tìm/lọc/sắp xếp/trang | `GET /orgs/mine?q=&status=&sort=&limit=&offset=` | `200`, `sort` sai `422` |
@@ -42,13 +42,17 @@ dưới `MEDIA_ROOT`, metadata lưu ScyllaDB.
 - Đọc `mine` chỉ chạm một partition `members_by_user` nên lọc/sắp xếp/trang
   chạy trong service (`orgs/listing.py`), không cần bảng query mới và không
   `ALLOW FILTERING`. Chỉ xem lại khi một user có hàng trăm org.
-| Sửa tên/mô tả (slug, kind đóng băng) | `PATCH /orgs/{id}` | `200`, khác chủ `403` |
+| Sửa tên/mô tả/`join_policy` (slug, kind đóng băng) | `PATCH /orgs/{id}` | `200`, khác chủ `403` |
 | Xóa mềm | `DELETE /orgs/{id}` | `200` + `deleted_at` |
 | Khôi phục | `POST /orgs/{id}/restore` | `200`, chưa xóa `400 INVALID_BUSINESS_PROFILE` |
 | Xóa cứng | `DELETE /orgs/{id}?hard=true` | `204`, xóa cả tệp vật lý |
 
 Org đã xóa mềm: mọi thao tác đọc/ghi trả `410 ORG_DELETED`, trừ xem thùng
 rác và khôi phục. Org không tồn tại trả `404`.
+
+`join_policy` quyết định cách thành viên gia nhập: `invite` chỉ qua lời
+mời của owner/admin, `open` cho bất kỳ ai `POST /join` vào thẳng `active`.
+Vòng đời thành viên, phân quyền RBAC và API members: xem `docs/MEMBERS.md`.
 
 ## 4. Thư viện ảnh/video
 
