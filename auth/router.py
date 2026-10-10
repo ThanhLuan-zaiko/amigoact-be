@@ -151,7 +151,7 @@ def refresh(
     token = request.cookies.get(REFRESH_COOKIE)
     if not token:
         raise UnauthorizedError("Session has expired.")
-    pair = service.refresh(token)
+    pair = service.refresh(token, _client_ip(request))
     _write_refresh_cookie(response, pair.refresh_token, settings)
     return _token_schema(pair)
 

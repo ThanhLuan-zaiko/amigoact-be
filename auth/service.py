@@ -201,8 +201,13 @@ class AuthService:
         self._users.mark_login(user.id, now)
         return self._mint_pair(user.id)
 
-    def refresh(self, refresh_token: str) -> TokenPair:
+    def refresh(self, refresh_token: str, ip: str) -> TokenPair:
         """Rotate one token. Reuse of a revoked token burns the family."""
+        self._check_rate(
+            f"refresh:{ip}",
+            self._settings.refresh_max_attempts,
+            self._settings.refresh_window_seconds,
+        )
         row = self._refresh_tokens.get_by_hash(hash_token(refresh_token))
         now = utcnow()
         if row is None or _expired(row.expires_at):

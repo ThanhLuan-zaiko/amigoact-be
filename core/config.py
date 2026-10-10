@@ -26,6 +26,8 @@ class Settings(BaseSettings):
     reset_code_ttl_minutes: int = 15
     login_max_attempts: int = 5
     login_window_seconds: int = 60
+    refresh_max_attempts: int = 30
+    refresh_window_seconds: int = 60
     code_max_attempts: int = 5
     code_window_seconds: int = 300
     smtp_host: str = ""

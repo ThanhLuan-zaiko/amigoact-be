@@ -185,12 +185,12 @@ class RegistrationService(_RegistrationBase):
             activity.org_id, reviewer_id, f"registration.{target}",
             "registration", registration_id, "allowed",
         )
-        label = {"approved": "được duyệt", "rejected": "bị từ chối",
-                 "waitlisted": "đưa vào danh sách chờ"}[target]
+        label = {"approved": "\u0111\u01b0\u1ee3c duy\u1ec7t", "rejected": "b\u1ecb t\u1eeb ch\u1ed1i",
+                 "waitlisted": "\u0111\u01b0a v\u00e0o danh s\u00e1ch ch\u1edd"}[target]
         self._notify(
             row.student_id,
-            f"Đăng ký {label}",
-            f"Đơn tham gia {activity.title} {label}.",
+            f"\u0110\u0103ng k\u00fd {label}",
+            f"\u0110\u01a1n tham gia {activity.title} {label}.",
             {"activity_id": str(activity_id)},
         )
         return updated
@@ -239,7 +239,7 @@ class RegistrationService(_RegistrationBase):
                 student_name=(
                     brief.full_name
                     if (brief := self._users.get_brief(row.student_id))
-                    else "Người dùng"
+                    else "Ng\u01b0\u1eddi d\u00f9ng"
                 ),
                 student_email=brief.email if brief else None,
                 status=row.status,

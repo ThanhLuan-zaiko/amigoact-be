@@ -23,6 +23,7 @@ if TYPE_CHECKING:
     from registrations.service import RegistrationService
     from reviews.service import ReviewService
     from stats.service import OrgStatsService
+    from audit.service import AuditService
 
 
 def get_admin_service(
@@ -219,6 +220,25 @@ def get_stats_service(
         attendance=CqlAttendanceStore(settings.scylla_keyspace),
         certificates=CqlCertificateStore(settings.scylla_keyspace),
         access=access,
+    )
+
+
+def get_audit_service(
+    settings: Settings = Depends(get_settings),
+    access: AccessControl = Depends(get_access_control),
+) -> AuditService:
+    """Build one AuditService over the rbac audit partition."""
+    from audit.service import AuditService
+    from orgs.member_repository import CqlMemberRepository
+    from orgs.repository import CqlOrgRepository
+    from rbac.repository import CqlAuditReader
+
+    return AuditService(
+        orgs=CqlOrgRepository(settings.scylla_keyspace),
+        members=CqlMemberRepository(),
+        access=access,
+        reader=CqlAuditReader(),
+        users=user_directory(settings),
     )
 
 

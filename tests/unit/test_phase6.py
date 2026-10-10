@@ -63,7 +63,7 @@ def _hour_setup() -> tuple:
 def test_approve_moves_leaderboard_rows() -> None:
     service, ledger, activity, _o, owner, board, users = _hour_setup()
     student = uid()
-    users.add(student, "s@x.dev", "Sinh Viên")
+    users.add(student, "s@x.dev", "Sinh Vi\u00ean")
     service.record_attendance(
         activity.org_id, activity.id, student, uid(), 3.0, owner
     )
@@ -73,7 +73,7 @@ def test_approve_moves_leaderboard_rows() -> None:
     assert (entry.term, 0.0, 3.0) in calls
     assert ("all", 0.0, 3.0) in calls
     top = service.leaderboard_top("all")
-    assert top[0].student_name == "Sinh Viên"
+    assert top[0].student_name == "Sinh Vi\u00ean"
     assert service.leaderboard_terms() == sorted(
         {entry.term, "all"}
     )
@@ -130,8 +130,8 @@ def test_muted_type_skips_notification() -> None:
     service, store, _p = _notify_service()
     user = uid()
     service.update_preferences(user, None, {"hours"})
-    service.notify(user, "hours", "Giờ được duyệt")
-    service.notify(user, "system", "Hệ thống")
+    service.notify(user, "hours", "Gi\u1edd \u0111\u01b0\u1ee3c duy\u1ec7t")
+    service.notify(user, "system", "H\u1ec7 th\u1ed1ng")
     assert len(store.rows) == 1
 
 
@@ -210,7 +210,7 @@ def test_attended_student_reviews_once() -> None:
     student = uid()
     users.add(student, "s@x.dev", "Reviewer")
     _attend(regs, activity.id, student)
-    view = service.create(activity.id, student, 5, "Tuyệt vời")
+    view = service.create(activity.id, student, 5, "Tuy\u1ec7t v\u1eddi")
     assert view.student_name == "Reviewer"
     assert service.list_for_activity(activity.id)[0].rating == 5
     assert not service.can_review(activity.id, student)
@@ -297,7 +297,7 @@ def test_discovery_curates_sections() -> None:
     )
     owner = uid()
     org = _org_with_owner(orgs, owner)
-    cat = categories.seed("Môi trường", "moi-truong")
+    cat = categories.seed("M\u00f4i tr\u01b0\u1eddng", "moi-truong")
     for index in range(3):
         row = activities.create(
             org.id, owner,
@@ -311,5 +311,5 @@ def test_discovery_curates_sections() -> None:
     assert len(view.featured) == 3
     assert len(view.upcoming) == 3
     assert draft.id not in {a.id for a in view.featured}
-    assert view.categories[0].name == "Môi trường"
+    assert view.categories[0].name == "M\u00f4i tr\u01b0\u1eddng"
     assert len(view.categories[0].items) == 3

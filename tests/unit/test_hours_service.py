@@ -149,7 +149,7 @@ def test_issue_requires_attended() -> None:
 def test_issue_then_verify_serial() -> None:
     svc, certs, regs, activity, _o, owner, users, notes = _cert_setup()
     student = uid()
-    users.add(student, "s@example.com", "Sinh viên")
+    users.add(student, "s@example.com", "Sinh vi\u00ean")
     reg = regs.create(
         activity.id, student, None, uuid_utils.uuid7(), datetime.now(UTC)
     )
@@ -159,7 +159,7 @@ def test_issue_then_verify_serial() -> None:
     assert notes.sent and notes.sent[-1][0] == student
     result = svc.verify(cert.serial_no)
     assert result.status == "issued"
-    assert result.student_name == "Sinh viên"
+    assert result.student_name == "Sinh vi\u00ean"
 
 
 def test_issue_twice_conflict() -> None:

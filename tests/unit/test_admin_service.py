@@ -100,7 +100,7 @@ def test_verify_org_moves_status_and_notifies_owner() -> None:
     assert item.legal_status == "verified"
     assert item.verified_at is not None
     assert orgs.get_by_id(org.id).legal_status == "verified"
-    assert notes.sent == [(owner, "organization", "Tổ chức đã được xác minh")]
+    assert notes.sent == [(owner, "organization", "T\u1ed5 ch\u1ee9c \u0111\u00e3 \u0111\u01b0\u1ee3c x\u00e1c minh")]
     assert ("org.verify", org.id, "allowed") in access.audit
 
 
@@ -113,7 +113,7 @@ def test_reject_org_records_reason_notification() -> None:
     item = service.reject_org(_uid(), ADMIN_EMAIL, org.id, "Missing papers")
 
     assert item.legal_status == "rejected"
-    assert notes.sent[0][2] == "Tổ chức chưa được xác minh"
+    assert notes.sent[0][2] == "T\u1ed5 ch\u1ee9c ch\u01b0a \u0111\u01b0\u1ee3c x\u00e1c minh"
 
 
 def test_verify_requires_admin_and_pending_state() -> None:

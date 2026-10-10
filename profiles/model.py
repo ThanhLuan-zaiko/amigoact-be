@@ -76,7 +76,7 @@ class UserSkill(models.Model):
 
 
 class UserBySkill(models.Model):
-    """Reverse edge: who holds a skill — coordinator matching feed."""
+    """Reverse edge: who holds a skill - coordinator matching feed."""
 
     __table_name__ = "users_by_skill"
     __keyspace__ = "amigoact"

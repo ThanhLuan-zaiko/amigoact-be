@@ -6,7 +6,12 @@ from datetime import datetime
 from uuid import UUID
 
 from rbac.catalog import SYSTEM_ROLES
-from rbac.interfaces import AuditWriter, GrantRepository, RoleRepository
+from rbac.interfaces import (
+    AuditReader,
+    AuditWriter,
+    GrantRepository,
+    RoleRepository,
+)
 from rbac.model import (
     AccessAuditByResource,
     AccessAuditLog,
@@ -139,6 +144,17 @@ class CqlGrantRepository(GrantRepository):
         return UserPermissionGrant.objects(
             org_id=org_id, user_id=user_id, permission_code=permission_code
         ).first()
+
+
+class CqlAuditReader(AuditReader):
+    """Newest-first reads over the org audit partition."""
+
+    def list_for_org(
+        self, org_id: UUID, limit: int
+    ) -> list[AccessAuditLog]:
+        return list(
+            AccessAuditLog.objects(org_id=org_id).limit(limit)
+        )
 
 
 class CqlAuditWriter(AuditWriter):

@@ -110,7 +110,7 @@ async def test_admin_reject_and_notification(client: AsyncClient) -> None:
     items = inbox.json()["items"]
     assert len(items) == 1
     assert items[0]["type"] == "organization"
-    assert "xác minh" in items[0]["title"]
+    assert "x\u00e1c minh" in items[0]["title"]
 
 
 async def test_admin_grant_revoke_platform_role(client: AsyncClient) -> None:

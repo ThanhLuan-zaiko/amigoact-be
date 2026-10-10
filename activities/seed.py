@@ -11,14 +11,14 @@ from uuid import UUID
 from activities.model import ActivityCategory
 
 _GLOBAL: tuple[tuple[str, str, str, float | None], ...] = (
-    ("environment", "Môi trường", "0197f6a2-0001-7000-8000-000000000001", 4.0),
-    ("education", "Giáo dục", "0197f6a2-0001-7000-8000-000000000002", 4.0),
-    ("health", "Y tế & Sức khỏe", "0197f6a2-0001-7000-8000-000000000003", 6.0),
-    ("community", "Cộng đồng", "0197f6a2-0001-7000-8000-000000000004", 4.0),
-    ("disaster", "Cứu trợ thiên tai", "0197f6a2-0001-7000-8000-000000000005", 8.0),
-    ("fundraising", "Gây quỹ", "0197f6a2-0001-7000-8000-000000000006", 3.0),
-    ("events", "Sự kiện", "0197f6a2-0001-7000-8000-000000000007", 4.0),
-    ("other", "Khác", "0197f6a2-0001-7000-8000-000000000008", None),
+    ("environment", "M\u00f4i tr\u01b0\u1eddng", "0197f6a2-0001-7000-8000-000000000001", 4.0),
+    ("education", "Gi\u00e1o d\u1ee5c", "0197f6a2-0001-7000-8000-000000000002", 4.0),
+    ("health", "Y t\u1ebf & S\u1ee9c kh\u1ecfe", "0197f6a2-0001-7000-8000-000000000003", 6.0),
+    ("community", "C\u1ed9ng \u0111\u1ed3ng", "0197f6a2-0001-7000-8000-000000000004", 4.0),
+    ("disaster", "C\u1ee9u tr\u1ee3 thi\u00ean tai", "0197f6a2-0001-7000-8000-000000000005", 8.0),
+    ("fundraising", "G\u00e2y qu\u1ef9", "0197f6a2-0001-7000-8000-000000000006", 3.0),
+    ("events", "S\u1ef1 ki\u1ec7n", "0197f6a2-0001-7000-8000-000000000007", 4.0),
+    ("other", "Kh\u00e1c", "0197f6a2-0001-7000-8000-000000000008", None),
 )
 
 

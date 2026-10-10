@@ -77,12 +77,12 @@ def test_login_mints_decodable_access_token() -> None:
 def test_refresh_rotates_and_reuse_burns_family() -> None:
     service, parts = make_service()
     pair = verified_pair(service, parts)
-    rotated = service.refresh(pair.refresh_token)
+    rotated = service.refresh(pair.refresh_token, "127.0.0.1")
     assert rotated.refresh_token != pair.refresh_token
     with pytest.raises(InvalidCredentialsError):
-        service.refresh(pair.refresh_token)
+        service.refresh(pair.refresh_token, "127.0.0.1")
     with pytest.raises(InvalidCredentialsError):
-        service.refresh(rotated.refresh_token)
+        service.refresh(rotated.refresh_token, "127.0.0.1")
 
 
 def test_logout_and_logout_all_revoke() -> None:
@@ -90,12 +90,12 @@ def test_logout_and_logout_all_revoke() -> None:
     pair = verified_pair(service, parts)
     service.logout(pair.refresh_token)
     with pytest.raises(InvalidCredentialsError):
-        service.refresh(pair.refresh_token)
+        service.refresh(pair.refresh_token, "127.0.0.1")
     pair2 = service.login(EMAIL, PASSWORD, "127.0.0.1")
     user = parts["users"].get_by_email(EMAIL)
     service.logout_all(user.id)
     with pytest.raises(InvalidCredentialsError):
-        service.refresh(pair2.refresh_token)
+        service.refresh(pair2.refresh_token, "127.0.0.1")
 
 
 def test_forgot_password_is_silent_and_reset_burns_sessions() -> None:
@@ -108,7 +108,7 @@ def test_forgot_password_is_silent_and_reset_burns_sessions() -> None:
         service.reset_password(EMAIL, "000000", "Bb2@secure")
     service.reset_password(EMAIL, code, "Bb2@secure")
     with pytest.raises(InvalidCredentialsError):
-        service.refresh(pair.refresh_token)
+        service.refresh(pair.refresh_token, "127.0.0.1")
     fresh = service.login(EMAIL, "Bb2@secure", "127.0.0.1")
     assert fresh.access_token != pair.access_token
 
@@ -161,8 +161,8 @@ def test_change_password_spares_current_session() -> None:
     with pytest.raises(InvalidCredentialsError):
         service.change_password(user.id, "Wrong1!xx", "Bb2@secure", current_digest)
     service.change_password(user.id, PASSWORD, "Bb2@secure", current_digest)
-    rotated = service.refresh(pair.refresh_token)
+    rotated = service.refresh(pair.refresh_token, "127.0.0.1")
     assert rotated.refresh_token != pair.refresh_token
     with pytest.raises(InvalidCredentialsError):
-        service.refresh(other.refresh_token)
+        service.refresh(other.refresh_token, "127.0.0.1")
     assert isinstance(datetime.now(), datetime)

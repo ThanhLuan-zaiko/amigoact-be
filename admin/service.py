@@ -161,8 +161,8 @@ class AdminService:
             org_id,
             "verified",
             "org.verify",
-            "Tổ chức đã được xác minh",
-            "Hồ sơ pháp lý của tổ chức đã được ban quản trị phê duyệt.",
+            "T\u1ed5 ch\u1ee9c \u0111\u00e3 \u0111\u01b0\u1ee3c x\u00e1c minh",
+            "H\u1ed3 s\u01a1 ph\u00e1p l\u00fd c\u1ee7a t\u1ed5 ch\u1ee9c \u0111\u00e3 \u0111\u01b0\u1ee3c ban qu\u1ea3n tr\u1ecb ph\u00ea duy\u1ec7t.",
         )
 
     def reject_org(
@@ -175,8 +175,8 @@ class AdminService:
             org_id,
             "rejected",
             "org.reject",
-            "Tổ chức chưa được xác minh",
-            reason or "Hồ sơ pháp lý chưa đạt yêu cầu, vui lòng cập nhật.",
+            "T\u1ed5 ch\u1ee9c ch\u01b0a \u0111\u01b0\u1ee3c x\u00e1c minh",
+            reason or "H\u1ed3 s\u01a1 ph\u00e1p l\u00fd ch\u01b0a \u0111\u1ea1t y\u00eau c\u1ea7u, vui l\u00f2ng c\u1eadp nh\u1eadt.",
         )
 
     def list_admins(

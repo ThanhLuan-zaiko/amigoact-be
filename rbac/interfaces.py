@@ -6,7 +6,7 @@ from abc import ABC, abstractmethod
 from datetime import datetime
 from uuid import UUID
 
-from rbac.model import Role, UserPermissionGrant, UserRole
+from rbac.model import AccessAuditLog, Role, UserPermissionGrant, UserRole
 
 
 class RoleRepository(ABC):
@@ -56,6 +56,16 @@ class GrantRepository(ABC):
         self, org_id: UUID, user_id: UUID, permission_code: str
     ) -> UserPermissionGrant | None:
         """Load one direct grant row."""
+
+
+class AuditReader(ABC):
+    """Read side of the append-only authorization trail."""
+
+    @abstractmethod
+    def list_for_org(
+        self, org_id: UUID, limit: int
+    ) -> list[AccessAuditLog]:
+        """Newest-first audit rows for one org partition."""
 
 
 class AuditWriter(ABC):

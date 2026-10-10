@@ -111,6 +111,7 @@ app.add_middleware(
 from activities.detail_router import router as activity_detail_router  # noqa: E402
 from activities.router import router as activities_router  # noqa: E402
 from admin.router import router as admin_router  # noqa: E402
+from audit.router import router as audit_router  # noqa: E402
 from auth.router import router as auth_router  # noqa: E402
 from certificates.router import router as certificates_router  # noqa: E402
 from hours.router import router as hours_router  # noqa: E402
@@ -137,6 +138,7 @@ app.include_router(hours_router)
 app.include_router(certificates_router)
 app.include_router(reviews_router)
 app.include_router(stats_router)
+app.include_router(audit_router)
 
 
 @app.get("/")

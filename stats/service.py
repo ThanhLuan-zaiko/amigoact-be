@@ -1,7 +1,7 @@
 """Org dashboard statistics computed live over existing feed tables.
 
 Reads stay partition-local (per-activity feeds capped), so this is an
-MVP projection — pre-aggregated org_monthly_stats can replace it once
+MVP projection - pre-aggregated org_monthly_stats can replace it once
 write-path counters land, without changing the HTTP contract.
 """
 

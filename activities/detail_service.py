@@ -164,7 +164,7 @@ class ActivityDetailService:
             rows.append(
                 PartnerDetail(
                     org_id=edge.org_id,
-                    name=getattr(org, "name", "Tổ chức") if org else "?",
+                    name=getattr(org, "name", "T\u1ed5 ch\u1ee9c") if org else "?",
                     role=edge.role,
                     note=edge.note,
                 )
@@ -179,7 +179,7 @@ class ActivityDetailService:
                 StaffDetail(
                     user_id=edge.user_id,
                     full_name=(
-                        brief.full_name if brief else "Thành viên"
+                        brief.full_name if brief else "Th\u00e0nh vi\u00ean"
                     ),
                     staff_role=edge.staff_role,
                     assigned_at=edge.assigned_at,
@@ -258,8 +258,8 @@ class ActivityDetailService:
                 self._notifications.notify(
                     user_id,
                     "staff",
-                    "Bạn được phân công sự kiện",
-                    f"Vai trò {staff_role} trong một hoạt động mới.",
+                    "B\u1ea1n \u0111\u01b0\u1ee3c ph\u00e2n c\u00f4ng s\u1ef1 ki\u1ec7n",
+                    f"Vai tr\u00f2 {staff_role} trong m\u1ed9t ho\u1ea1t \u0111\u1ed9ng m\u1edbi.",
                     f'{{"activity_id": "{activity_id}"}}',
                 )
         return self.detail(org_id, activity_id, actor_id)

@@ -137,8 +137,8 @@ class CertificateService:
             )
             self._notify(
                 student_id,
-                "Chứng nhận mới",
-                f"Bạn nhận được chứng nhận từ {activity.title}.",
+                "Ch\u1ee9ng nh\u1eadn m\u1edbi",
+                f"B\u1ea1n nh\u1eadn \u0111\u01b0\u1ee3c ch\u1ee9ng nh\u1eadn t\u1eeb {activity.title}.",
             )
             return row
         assert last_error is not None
@@ -193,7 +193,7 @@ class CertificateService:
                 activity.title if activity is not None else ""
             ),
             student_name=(
-                brief.full_name if brief is not None else "Người dùng"
+                brief.full_name if brief is not None else "Ng\u01b0\u1eddi d\u00f9ng"
             ),
             issued_at=issued,
         )

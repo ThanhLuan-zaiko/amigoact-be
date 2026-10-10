@@ -190,11 +190,11 @@ class HourService(HourRecorder):
             activity.org_id, staff_id, f"hours.{status}",
             "hour_entry", entry_id, "allowed",
         )
-        label = "được duyệt" if status == "approved" else "bị từ chối"
+        label = "\u0111\u01b0\u1ee3c duy\u1ec7t" if status == "approved" else "b\u1ecb t\u1eeb ch\u1ed1i"
         self._notify(
             entry.student_id,
-            f"Giờ tình nguyện {label}",
-            f"{entry.hours} giờ của bạn {label}.",
+            f"Gi\u1edd t\u00ecnh nguy\u1ec7n {label}",
+            f"{entry.hours} gi\u1edd c\u1ee7a b\u1ea1n {label}.",
         )
         return updated
 

@@ -19,7 +19,7 @@ def slugify(value: str) -> str:
     import unicodedata
 
     text = unicodedata.normalize("NFKD", value)
-    text = text.replace("đ", "d").replace("Đ", "D")
+    text = text.replace("\u0111", "d").replace("\u0110", "D")
     text = "".join(ch for ch in text if not unicodedata.combining(ch))
     text = re.sub(r"[^a-zA-Z0-9]+", "-", text).strip("-").lower()
     return re.sub(r"-{2,}", "-", text) or "hoat-dong"

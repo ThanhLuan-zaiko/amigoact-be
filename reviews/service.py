@@ -97,8 +97,8 @@ class ReviewService:
             self._notifications.notify(
                 org.owner_id,
                 "review",
-                "Đánh giá mới",
-                f'"{activity_title}" nhận {rating}/5 sao.',
+                "\u0110\u00e1nh gi\u00e1 m\u1edbi",
+                f'"{activity_title}" nh\u1eadn {rating}/5 sao.',
                 None,
             )
         except Exception:  # noqa: BLE001 - notifications are best-effort

@@ -1,7 +1,7 @@
 """cqlengine persistence for registration + attendance projections.
 
 The (activity, student, slot) uniqueness claim uses raw CQL LWT because
-cqlengine cannot surface `[applied]` from an ORM create — same
+cqlengine cannot surface `[applied]` from an ORM create - same
 justification as org slug claims.
 """
 

@@ -99,7 +99,7 @@ def verify(
     serial_no: str,
     service: CertificateService = Depends(get_certificate_service),
 ) -> VerifyResponse:
-    """Public serial verification — no auth required."""
+    """Public serial verification - no auth required."""
     result = service.verify(serial_no)
     return VerifyResponse(
         serial_no=result.serial_no,

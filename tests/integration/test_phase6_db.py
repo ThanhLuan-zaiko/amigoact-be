@@ -46,7 +46,7 @@ async def test_reviews_flow(client: AsyncClient) -> None:
     )
     created = await client.post(
         f"/activities/{aid}/reviews",
-        json={"rating": 5, "comment": "Rất ý nghĩa"},
+        json={"rating": 5, "comment": "R\u1ea5t \u00fd ngh\u0129a"},
         headers=student,
     )
     assert created.status_code == 201, created.text
@@ -57,7 +57,7 @@ async def test_reviews_flow(client: AsyncClient) -> None:
     body = listing.json()
     assert body["count"] == 1
     assert body["average_rating"] == 5.0
-    assert body["items"][0]["comment"] == "Rất ý nghĩa"
+    assert body["items"][0]["comment"] == "R\u1ea5t \u00fd ngh\u0129a"
 
     authed = await client.get(
         f"/activities/{aid}/reviews", headers=student
