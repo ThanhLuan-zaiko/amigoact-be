@@ -140,3 +140,18 @@ class AttendanceStore(ABC):
         self, student_id: UUID, limit: int = 100
     ) -> list[AttendanceRecord]:
         """One student's check-ins across activities."""
+
+
+class AttendanceEvents(ABC):
+    """Fan-out port: one live event per committed attendance mutation."""
+
+    @abstractmethod
+    def attendance_changed(
+        self,
+        activity_id: UUID,
+        action: str,
+        record_id: UUID,
+        student_id: UUID,
+        actor_id: UUID,
+    ) -> None:
+        """Publish check-in/out onto the attendance:{activity_id} channel."""

@@ -72,7 +72,6 @@ class RealtimeService:
         if channel.kind in ("activities", "members"):
             return self._membership.is_member(channel.subject, user_id)
         if channel.kind == "attendance":
-            # Activities store lands later: deny until a real port exists.
             return (
                 self._attendance.can_view(channel.subject, user_id)
                 if self._attendance is not None

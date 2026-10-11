@@ -161,9 +161,18 @@ class ConnectionManager:
     def __init__(self) -> None:
         self._connections: dict[WebSocket, ConnectionState] = {}
         self._by_channel: dict[str, set[WebSocket]] = {}
+        self._loop: asyncio.AbstractEventLoop | None = None
 
     def register(self, websocket: WebSocket, user_id: UUID) -> ConnectionState:
-        """Track an authenticated socket under its user id."""
+        """Track an authenticated socket under its user id.
+
+        Called from the async socket handler, so it also binds the app
+        loop that schedule_publish needs for threadpool callers.
+        """
+        try:
+            self._loop = asyncio.get_running_loop()
+        except RuntimeError:
+            pass
         state = ConnectionState(websocket=websocket, user_id=user_id)
         self._connections[websocket] = state
         return state
@@ -251,19 +260,28 @@ class ConnectionManager:
     def schedule_publish(
         self, channel: str, payload: dict[str, Any] | None = None
     ) -> bool:
-        """Fire-and-forget publish for sync callers inside the loop.
+        """Fire-and-forget publish for sync callers.
 
-        Member mutations run in sync services called from async
-        endpoints, so they cannot await publish(); the send is queued
-        on the running loop instead. Callers without a running loop
-        (unit tests, scripts) get False and no delivery attempt.
+        Sync `def` endpoints run in the threadpool where no loop is
+        running, so the send is scheduled onto the app loop bound at
+        register() via run_coroutine_threadsafe. Callers with neither a
+        running loop nor a bound one (scripts) get False and no attempt.
         """
+        coro = self.publish(channel, payload)
         try:
-            loop = asyncio.get_running_loop()
+            asyncio.get_running_loop().create_task(coro)
+            return True
         except RuntimeError:
-            return False
-        loop.create_task(self.publish(channel, payload))
-        return True
+            pass
+        loop = self._loop
+        if loop is not None and not loop.is_closed():
+            try:
+                asyncio.run_coroutine_threadsafe(coro, loop)
+                return True
+            except RuntimeError:
+                pass
+        coro.close()
+        return False
 
 
 async def heartbeat_loop(

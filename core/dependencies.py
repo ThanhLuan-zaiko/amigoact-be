@@ -259,27 +259,22 @@ def get_connection_manager(websocket: WebSocket) -> ConnectionManager:
 
 def get_realtime_service(
     settings: Settings = Depends(get_settings),
+    access: AccessControl = Depends(get_access_control),
 ) -> RealtimeService:
     """Build one RealtimeService per ticket/socket request."""
+    from activities.repository import CqlActivityStore
     from orgs.repository import CqlOrgRepository
-    from realtime.interfaces import OrgMembership
+    from realtime.access import OrgAttendanceAccess, OrgChannelMembership
     from realtime.repository import CqlWsTicketStore
     from realtime.service import RealtimeService
-
-    class _OrgMembership(OrgMembership):
-        """Channel ACL reads delegate to the orgs membership table."""
-
-        def __init__(self, orgs: CqlOrgRepository) -> None:
-            self._orgs = orgs
-
-        def is_member(self, org_id: UUID, user_id: UUID) -> bool:
-            return self._orgs.is_member(org_id, user_id)
 
     orgs = CqlOrgRepository(settings.scylla_keyspace)
     return RealtimeService(
         tickets=CqlWsTicketStore(settings.scylla_keyspace),
-        membership=_OrgMembership(orgs),
-        attendance=None,
+        membership=OrgChannelMembership(orgs),
+        attendance=OrgAttendanceAccess(
+            CqlActivityStore(settings.scylla_keyspace), orgs, access
+        ),
         ticket_ttl_seconds=settings.ws_ticket_ttl_seconds,
     )
 

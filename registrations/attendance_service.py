@@ -55,6 +55,10 @@ class AttendanceService(_RegistrationBase):
             activity.org_id, staff_id, "attendance.checkin",
             "registration", row.registration_id, "allowed",
         )
+        self._publish(
+            "checked_in", activity_id, record.record_id,
+            row.student_id, staff_id,
+        )
         return record
 
     def check_in_manual(
@@ -112,6 +116,10 @@ class AttendanceService(_RegistrationBase):
                     guard.registration_id if guard is not None else None,
                     credited, staff_id,
                 )
+        self._publish(
+            "checked_out", activity_id, record.record_id,
+            record.student_id, staff_id,
+        )
         return updated
 
     def list_attendance(
@@ -129,3 +137,21 @@ class AttendanceService(_RegistrationBase):
     ) -> list[AttendanceRecord]:
         """One student's check-in history across activities."""
         return self._attendance.list_by_student(student_id)
+
+    def _publish(
+        self,
+        action: str,
+        activity_id: UUID,
+        record_id: UUID,
+        student_id: UUID,
+        actor_id: UUID,
+    ) -> None:
+        """Best-effort live fan-out; a dead port never breaks writes."""
+        if self._events is None:
+            return
+        try:
+            self._events.attendance_changed(
+                activity_id, action, record_id, student_id, actor_id
+            )
+        except Exception:  # noqa: BLE001 - fan-out is best-effort
+            pass

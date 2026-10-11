@@ -4,17 +4,20 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from fastapi import Depends
+from fastapi import Depends, Request
 
 from core.config import Settings, get_settings
 from core.dependencies import get_access_control, get_media_store
 from core.dependencies import get_notification_service, user_directory
 
 if TYPE_CHECKING:
+    from uuid import UUID
+
     from activities.detail_service import ActivityDetailService
     from activities.service import ActivityService
     from admin.service import AdminService
     from certificates.service import CertificateService
+    from core.realtime import ConnectionManager
     from hours.service import HourService
     from notifications.service import NotificationService
     from profiles.service import ProfileService
@@ -120,6 +123,7 @@ def get_registration_service(
 
 
 def get_attendance_service(
+    request: Request,
     settings: Settings = Depends(get_settings),
     access: AccessControl = Depends(get_access_control),
     notifications: NotificationService = Depends(get_notification_service),
@@ -131,7 +135,33 @@ def get_attendance_service(
     from orgs.repository import CqlOrgRepository
     from registrations.attendance_repository import CqlAttendanceStore
     from registrations.attendance_service import AttendanceService
+    from registrations.interfaces import AttendanceEvents
     from registrations.repository import CqlRegistrationStore
+
+    class _WsAttendanceEvents(AttendanceEvents):
+        """Fan check-in/out events onto the socket registry (best-effort)."""
+
+        def __init__(self, manager: ConnectionManager | None) -> None:
+            self._manager = manager
+
+        def attendance_changed(
+            self,
+            activity_id: UUID,
+            action: str,
+            record_id: UUID,
+            student_id: UUID,
+            actor_id: UUID,
+        ) -> None:
+            if self._manager is not None:
+                self._manager.schedule_publish(
+                    f"attendance:{activity_id}",
+                    {
+                        "action": action,
+                        "record_id": str(record_id),
+                        "student_id": str(student_id),
+                        "actor_id": str(actor_id),
+                    },
+                )
 
     return AttendanceService(
         registrations=CqlRegistrationStore(settings.scylla_keyspace),
@@ -141,6 +171,9 @@ def get_attendance_service(
         users=user_directory(settings),
         access=access,
         notifications=notifications,
+        events=_WsAttendanceEvents(
+            getattr(request.app.state, "ws_manager", None)
+        ),
         hours=HourService(
             ledger=CqlHourLedgerStore(settings.scylla_keyspace),
             activities=CqlActivityStore(settings.scylla_keyspace),

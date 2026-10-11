@@ -19,7 +19,11 @@ from hours.interfaces import HourRecorder
 from notifications.interfaces import NotificationPort
 from orgs.interfaces import OrgRepository, UserDirectory
 from rbac.interfaces import AccessControl
-from registrations.interfaces import AttendanceStore, RegistrationStore
+from registrations.interfaces import (
+    AttendanceEvents,
+    AttendanceStore,
+    RegistrationStore,
+)
 from registrations.model import Registration
 
 APPLYABLE_STATUSES = {"published", "ongoing"}
@@ -55,6 +59,7 @@ class _RegistrationBase:
         access: AccessControl,
         notifications: NotificationPort | None = None,
         hours: HourRecorder | None = None,
+        events: AttendanceEvents | None = None,
     ) -> None:
         self._registrations = registrations
         self._attendance = attendance
@@ -64,6 +69,7 @@ class _RegistrationBase:
         self._access = access
         self._notifications = notifications
         self._hours = hours
+        self._events = events
 
     def _activity(self, activity_id: UUID) -> object:
         row = self._activities.get(activity_id)

@@ -16,7 +16,9 @@ from core.exceptions import (
     NotFoundError,
     RegistrationClosedError,
 )
+from registrations.attendance_service import AttendanceService
 from tests.unit.registration_fakes import (
+    FakeAttendanceEvents,
     make_reg_services,
     published_activity,
 )
@@ -221,3 +223,48 @@ def test_attendance_list_requires_manager() -> None:
     assert len(rows) == 1
     with pytest.raises(ForbiddenError):
         att_svc.list_attendance(activity.id, uuid_utils.uuid7())
+
+
+def test_checkin_checkout_publish_live_events() -> None:
+    """Committed mutations fan out once on attendance:{activity_id}."""
+    (svc, _a, regs, att, activities, orgs, access, users, notes,
+     _org, activity, owner, student) = _setup()
+    events = FakeAttendanceEvents()
+    att_svc = AttendanceService(
+        registrations=regs, attendance=att, activities=activities,
+        orgs=orgs, users=users, access=access, notifications=notes,
+        events=events,
+    )
+    row = svc.apply(activity.id, student, None)
+    svc.review(activity.id, row.registration_id, owner, "approved", None)
+    record = att_svc.check_in(activity.id, row.checkin_token, owner)
+    assert events.sent == [
+        (activity.id, "checked_in", record.record_id, student, owner)
+    ]
+    att_svc.check_out(activity.id, record.record_id, owner, 2.0)
+    assert events.sent[-1] == (
+        activity.id, "checked_out", record.record_id, student, owner
+    )
+
+
+def test_failed_mutations_publish_nothing() -> None:
+    """Rejected check-in/out must never emit a live event."""
+    (svc, _a, regs, att, activities, orgs, access, users, notes,
+     _org, activity, owner, student) = _setup()
+    events = FakeAttendanceEvents()
+    att_svc = AttendanceService(
+        registrations=regs, attendance=att, activities=activities,
+        orgs=orgs, users=users, access=access, notifications=notes,
+        events=events,
+    )
+    row = svc.apply(activity.id, student, None)
+    with pytest.raises(InvalidRegistrationStateError):
+        att_svc.check_in(activity.id, row.checkin_token, owner)
+    svc.review(activity.id, row.registration_id, owner, "approved", None)
+    record = att_svc.check_in_manual(activity.id, row.registration_id, owner)
+    att_svc.check_out(activity.id, record.record_id, owner, None)
+    with pytest.raises(AlreadyCheckedInError):
+        att_svc.check_in(activity.id, row.checkin_token, owner)
+    with pytest.raises(InvalidRegistrationStateError):
+        att_svc.check_out(activity.id, record.record_id, owner, None)
+    assert [e[1] for e in events.sent] == ["checked_in", "checked_out"]

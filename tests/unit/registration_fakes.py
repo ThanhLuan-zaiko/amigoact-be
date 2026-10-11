@@ -9,7 +9,11 @@ from uuid import UUID
 import uuid_utils
 
 from registrations.attendance_service import AttendanceService
-from registrations.interfaces import AttendanceStore, RegistrationStore
+from registrations.interfaces import (
+    AttendanceEvents,
+    AttendanceStore,
+    RegistrationStore,
+)
 from registrations.service import RegistrationService
 from tests.unit.activity_fakes import FakeActivities
 from tests.unit.member_fakes import FakeAccess, FakeUsers
@@ -149,6 +153,18 @@ class FakeNotifications:
 
     def notify(self, user_id, type, title, body="", data_json=None):  # noqa: ANN001, ANN202, A002
         self.sent.append((user_id, type, title))
+
+
+class FakeAttendanceEvents(AttendanceEvents):
+    """Captures live attendance events instead of publishing them."""
+
+    def __init__(self) -> None:
+        self.sent: list[tuple] = []
+
+    def attendance_changed(self, activity_id, action, record_id, student_id, actor_id):  # noqa: ANN001, ANN202
+        self.sent.append(
+            (activity_id, action, record_id, student_id, actor_id)
+        )
 
 
 def make_reg_services() -> tuple[

@@ -49,7 +49,7 @@ Mọi frame là JSON `{"type": "<tên có version>", "data": {...}}`.
 | `notifications:{user_id}` | Chỉ chủ nhân (`subject == user_id`); server tự join sau handshake |
 | `activities:{org_id}` | Phải là member của org (`members_by_user`) |
 | `members:{org_id}` | Phải là member `active` của org; nhận `event.v1` mọi thay đổi roster |
-| `attendance:{activity_id}` | Staff của org sở hữu activity — port `AttendanceAccess`; hiện từ chối tất cả vì bảng activities chưa tồn tại |
+| `attendance:{activity_id}` | Manager của org sở hữu activity — port `AttendanceAccess`: owner hoặc quyền `activity:manage` (khớp `GET /activities/{id}/attendance`) |
 
 Đăng ký bị từ chối: server gửi `error.v1` `FORBIDDEN` rồi đóng `4403`.
 Tên kênh sai cú pháp: `error.v1` `INVALID_CHANNEL`, kết nối vẫn sống.
@@ -97,6 +97,19 @@ Tên kênh sai cú pháp: `error.v1` `INVALID_CHANNEL`, kết nối vẫn sống
 Kênh `notifications` cho người được mời/bị đổi — họ chưa (hoặc không
 còn) là member nên không subscribe được `members:{org_id}`. Client chỉ
 invalidate TanStack Query khi nhận event; không tin payload làm sự thật.
+
+### Sự kiện attendance (registrations)
+
+`AttendanceService` phát qua port `AttendanceEvents` sau mỗi mutation
+check-in/check-out thành công (kể cả `check_in_manual`, vì nó ủy quyền
+cho `check_in`):
+
+| Kênh | `payload.action` | `payload` còn lại |
+|---|---|---|
+| `attendance:{activity_id}` | `checked_in`/`checked_out` | `record_id`, `student_id`, `actor_id` |
+
+Màn điểm danh của manager subscribe kênh này để danh sách tự cập nhật
+khi staff khác quét vé. Client chỉ invalidate query, không tin payload.
 
 ## 6. Cấu hình
 

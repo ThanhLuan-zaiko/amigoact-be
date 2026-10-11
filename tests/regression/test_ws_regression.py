@@ -100,3 +100,101 @@ def test_expired_ticket_closes_4401(app_client) -> None:  # noqa: ANN001
         with pytest.raises(WebSocketDisconnect) as closed:
             ws.receive_json()
         assert closed.value.code == 4401
+
+
+def test_attendance_event_contract_locked(app_client) -> None:  # noqa: ANN001
+    """Freeze the attendance:{id} event.v1 payload shape for the FE."""
+    client = TestClient(app_client)
+    owner = client.post(
+        "/auth/register",
+        json={
+            "email": "att.own@example.com",
+            "phone": "0912345697",
+            "password": PASSWORD,
+            "full_name": "Att Owner",
+        },
+    )
+    assert owner.status_code == 201, owner.text
+    owner = client.post(
+        "/auth/login",
+        json={"email": "att.own@example.com", "password": PASSWORD},
+    ).json()["access_token"]
+    student = client.post(
+        "/auth/register",
+        json={
+            "email": "att.stu@example.com",
+            "phone": "0912345696",
+            "password": PASSWORD,
+            "full_name": "Att Student",
+        },
+    )
+    assert student.status_code == 201, student.text
+    student = client.post(
+        "/auth/login",
+        json={"email": "att.stu@example.com", "password": PASSWORD},
+    ).json()["access_token"]
+    oh = {"Authorization": f"Bearer {owner}"}
+    sh = {"Authorization": f"Bearer {student}"}
+
+    org = client.post(
+        "/orgs",
+        json={
+            "name": "Contract Club",
+            "slug": "contract-club",
+            "description": "",
+            "kind": "club",
+        },
+        headers=oh,
+    ).json()
+    aid = client.post(
+        f"/orgs/{org['id']}/activities",
+        json={"title": "Run", "start_at": "2030-06-01T08:00:00Z"},
+        headers=oh,
+    ).json()["id"]
+    client.post(
+        f"/orgs/{org['id']}/activities/{aid}/status",
+        json={"status": "published"},
+        headers=oh,
+    )
+    rid = client.post(
+        f"/activities/{aid}/registrations", json={}, headers=sh
+    ).json()["registration_id"]
+    client.post(
+        f"/activities/{aid}/registrations/{rid}/review",
+        json={"status": "approved"},
+        headers=oh,
+    )
+    token = client.get(
+        f"/activities/{aid}/registrations/{rid}/ticket", headers=sh
+    ).json()["checkin_token"]
+
+    ticket = client.post("/ws/tickets", headers=oh).json()["ticket"]
+    with client.websocket_connect(f"/ws?ticket={ticket}") as ws:
+        ws.receive_json()  # ready.v1
+        ws.send_json(
+            {
+                "type": "subscribe.v1",
+                "data": {"channel": f"attendance:{aid}"},
+            }
+        )
+        assert ws.receive_json()["type"] == "subscribed.v1"
+        client.post(
+            f"/activities/{aid}/checkin",
+            json={"checkin_token": token},
+            headers=oh,
+        )
+        event = ws.receive_json()
+        assert set(event.keys()) == {"type", "data"}
+        assert event["type"] == "event.v1"
+        assert set(event["data"].keys()) == {"channel", "payload"}
+        assert event["data"]["channel"] == f"attendance:{aid}"
+        assert set(event["data"]["payload"].keys()) == {
+            "action",
+            "record_id",
+            "student_id",
+            "actor_id",
+        }
+        assert event["data"]["payload"]["action"] in {
+            "checked_in",
+            "checked_out",
+        }

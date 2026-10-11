@@ -133,3 +133,116 @@ def test_subscribe_forbidden_closes_4403(app_client) -> None:  # noqa: ANN001
         with pytest.raises(WebSocketDisconnect) as closed:
             ws.receive_json()
         assert closed.value.code == 4403
+
+
+def _published_activity(client: TestClient, owner: dict, slug: str) -> str:
+    created = client.post(
+        "/orgs",
+        json={
+            "name": f"Club {slug}",
+            "slug": slug,
+            "description": "",
+            "kind": "club",
+        },
+        headers=owner,
+    )
+    assert created.status_code == 201, created.text
+    org_id = created.json()["id"]
+    activity = client.post(
+        f"/orgs/{org_id}/activities",
+        json={
+            "title": "Cleanup Day",
+            "start_at": "2030-06-01T08:00:00Z",
+            "hours_awarded": 3.0,
+        },
+        headers=owner,
+    )
+    assert activity.status_code == 201, activity.text
+    aid = activity.json()["id"]
+    published = client.post(
+        f"/orgs/{org_id}/activities/{aid}/status",
+        json={"status": "published"},
+        headers=owner,
+    )
+    assert published.status_code == 200, published.text
+    return aid
+
+
+def test_attendance_channel_acl_and_live_events(app_client) -> None:  # noqa: ANN001
+    """attendance:{id} opens for org managers and fans check-in/out."""
+    client = TestClient(app_client)
+    owner = _access(client, "wsa.own@example.com", "0912345620")
+    student = _access(client, "wsa.stu@example.com", "0912345621")
+    outsider = _access(client, "wsa.out@example.com", "0912345622")
+    oh = {"Authorization": f"Bearer {owner}"}
+    sh = {"Authorization": f"Bearer {student}"}
+    aid = _published_activity(client, oh, "att-club")
+
+    applied = client.post(
+        f"/activities/{aid}/registrations", json={}, headers=sh
+    )
+    assert applied.status_code == 201, applied.text
+    rid = applied.json()["registration_id"]
+    approved = client.post(
+        f"/activities/{aid}/registrations/{rid}/review",
+        json={"status": "approved"},
+        headers=oh,
+    )
+    assert approved.status_code == 200, approved.text
+    ticket = client.get(
+        f"/activities/{aid}/registrations/{rid}/ticket", headers=sh
+    )
+    checkin_token = ticket.json()["checkin_token"]
+
+    # An outsider cannot open the live check-in feed.
+    denied = client.post(
+        "/ws/tickets", headers={"Authorization": f"Bearer {outsider}"}
+    ).json()["ticket"]
+    with client.websocket_connect(f"/ws?ticket={denied}") as ws:
+        ws.receive_json()  # ready.v1
+        ws.send_json(
+            {
+                "type": "subscribe.v1",
+                "data": {"channel": f"attendance:{aid}"},
+            }
+        )
+        assert ws.receive_json()["data"]["code"] == "FORBIDDEN"
+        with pytest.raises(WebSocketDisconnect) as closed:
+            ws.receive_json()
+        assert closed.value.code == 4403
+
+    # The org manager subscribes, then watches check-in/out land live.
+    granted = client.post("/ws/tickets", headers=oh).json()["ticket"]
+    with client.websocket_connect(f"/ws?ticket={granted}") as ws:
+        assert ws.receive_json()["type"] == "ready.v1"
+        ws.send_json(
+            {
+                "type": "subscribe.v1",
+                "data": {"channel": f"attendance:{aid}"},
+            }
+        )
+        assert ws.receive_json()["type"] == "subscribed.v1"
+
+        checkin = client.post(
+            f"/activities/{aid}/checkin",
+            json={"checkin_token": checkin_token},
+            headers=oh,
+        )
+        assert checkin.status_code == 201, checkin.text
+        record_id = checkin.json()["record_id"]
+
+        event = ws.receive_json()
+        assert event["type"] == "event.v1"
+        assert event["data"]["channel"] == f"attendance:{aid}"
+        assert event["data"]["payload"]["action"] == "checked_in"
+        assert event["data"]["payload"]["record_id"] == record_id
+
+        checkout = client.post(
+            f"/activities/{aid}/attendance/{record_id}/checkout",
+            json={"actual_hours": 2.0},
+            headers=oh,
+        )
+        assert checkout.status_code == 200, checkout.text
+        event = ws.receive_json()
+        assert event["type"] == "event.v1"
+        assert event["data"]["payload"]["action"] == "checked_out"

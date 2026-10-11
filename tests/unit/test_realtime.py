@@ -4,16 +4,10 @@ from __future__ import annotations
 
 import json
 from datetime import timedelta
-from types import SimpleNamespace
-from typing import Any, cast
-from uuid import UUID
 
 import pytest
-import uuid_utils
-from fastapi import WebSocket, WebSocketDisconnect
-from fastapi.testclient import TestClient
+from fastapi import WebSocketDisconnect
 
-from core.config import Settings
 from core.realtime import (
     BadFrameError,
     Channel,
@@ -28,12 +22,16 @@ from core.realtime import (
     parse_client_frame,
 )
 from core.security import utcnow
-from realtime.interfaces import OrgMembership, WsTicketStore
-from realtime.service import RealtimeService
-
-
-def _uid() -> UUID:
-    return UUID(str(uuid_utils.uuid7()))
+from tests.unit.realtime_fakes import (
+    FakeMembership,
+    FakeSocket,
+    MemTickets,
+    clear_overrides,
+    make_service,
+    uid,
+    ws,
+    ws_app,
+)
 
 
 def test_parse_valid_frames() -> None:
@@ -81,65 +79,30 @@ def test_encode_envelope_shape() -> None:
 
 
 def test_parse_channel() -> None:
-    uid = _uid()
-    channel = parse_channel(f"notifications:{uid}")
-    assert channel == Channel(kind="notifications", subject=uid)
-    assert parse_channel(f"attendance:{uid}").kind == "attendance"  # type: ignore[union-attr]
-    assert parse_channel(f"activities:{uid}").kind == "activities"  # type: ignore[union-attr]
-    assert parse_channel(f"members:{uid}").kind == "members"  # type: ignore[union-attr]
+    subject = uid()
+    channel = parse_channel(f"notifications:{subject}")
+    assert channel == Channel(kind="notifications", subject=subject)
+    assert parse_channel(f"attendance:{subject}").kind == "attendance"  # type: ignore[union-attr]
+    assert parse_channel(f"activities:{subject}").kind == "activities"  # type: ignore[union-attr]
+    assert parse_channel(f"members:{subject}").kind == "members"  # type: ignore[union-attr]
     assert parse_channel("weird") is None
     assert parse_channel("admins:x") is None
     assert parse_channel("notifications:not-a-uuid") is None
 
 
-class _MemTickets(WsTicketStore):
-    """In-memory single-use ticket rows."""
-
-    def __init__(self) -> None:
-        self.rows: dict[str, SimpleNamespace] = {}
-
-    def create(self, ticket_hash, user_id, expires_at, now) -> None:  # noqa: ANN001, ANN202
-        self.rows[ticket_hash] = SimpleNamespace(
-            ticket_hash=ticket_hash,
-            user_id=user_id,
-            expires_at=expires_at,
-            created_at=now,
-        )
-
-    def consume(self, ticket_hash):  # noqa: ANN001, ANN202
-        return self.rows.pop(ticket_hash, None)
-
-
-class _Membership(OrgMembership):
-    def __init__(self, pairs: set[tuple[UUID, UUID]] | None = None) -> None:
-        self._pairs = pairs or set()
-
-    def is_member(self, org_id: UUID, user_id: UUID) -> bool:
-        return (org_id, user_id) in self._pairs
-
-
-def _service(store: _MemTickets | None = None, members=None) -> RealtimeService:
-    return RealtimeService(
-        tickets=store or _MemTickets(),
-        membership=members or _Membership(),
-        attendance=None,
-        ticket_ttl_seconds=60,
-    )
-
-
 def test_ticket_single_use_and_expiry() -> None:
-    store = _MemTickets()
-    service = _service(store)
-    uid = _uid()
-    issued = service.issue_ticket(uid)
+    store = MemTickets()
+    service = make_service(store)
+    user_id = uid()
+    issued = service.issue_ticket(user_id)
     assert issued.expires_in == 60
     assert len(store.rows) == 1
     assert issued.token not in store.rows  # hash only, never plaintext
 
-    assert service.consume_ticket(issued.token) == uid
+    assert service.consume_ticket(issued.token) == user_id
     assert service.consume_ticket(issued.token) is None  # single use
 
-    spent = service.issue_ticket(uid)
+    spent = service.issue_ticket(user_id)
     row = next(iter(store.rows.values()))
     row.expires_at = utcnow() - timedelta(seconds=1)
     assert service.consume_ticket(spent.token) is None
@@ -147,199 +110,121 @@ def test_ticket_single_use_and_expiry() -> None:
 
 
 def test_authorize_channels() -> None:
-    uid, other, org = _uid(), _uid(), _uid()
-    service = _service(members=_Membership({(org, uid)}))
-    assert service.authorize(Channel("notifications", uid), uid)
-    assert not service.authorize(Channel("notifications", other), uid)
-    assert service.authorize(Channel("activities", org), uid)
+    user_id, other, org = uid(), uid(), uid()
+    service = make_service(members=FakeMembership({(org, user_id)}))
+    assert service.authorize(Channel("notifications", user_id), user_id)
+    assert not service.authorize(Channel("notifications", other), user_id)
+    assert service.authorize(Channel("activities", org), user_id)
     assert not service.authorize(Channel("activities", org), other)
-    assert service.authorize(Channel("members", org), uid)
+    assert service.authorize(Channel("members", org), user_id)
     assert not service.authorize(Channel("members", org), other)
-    assert not service.authorize(Channel("attendance", org), uid)
-
-
-class _Socket:
-    """Duck-typed WebSocket recording every frame and close code."""
-
-    def __init__(self) -> None:
-        self.sent: list[dict] = []
-        self.closed: int | None = None
-
-    async def send_text(self, text: str) -> None:
-        self.sent.append(json.loads(text))
-
-    async def close(self, code: int = 1000, reason: str = "") -> None:
-        self.closed = code
-
-
-def _ws(sock: _Socket) -> WebSocket:
-    return cast(WebSocket, sock)
+    assert not service.authorize(Channel("attendance", org), user_id)
 
 
 async def test_manager_subscribe_publish_unregister() -> None:
     manager = ConnectionManager()
-    a, b = _Socket(), _Socket()
-    uid = _uid()
-    manager.register(_ws(a), uid)
-    manager.register(_ws(b), uid)
-    channel = f"notifications:{uid}"
-    assert manager.subscribe(_ws(a), channel)
-    assert not manager.subscribe(_ws(a), channel)
-    manager.subscribe(_ws(b), channel)
+    a, b = FakeSocket(), FakeSocket()
+    user_id = uid()
+    manager.register(ws(a), user_id)
+    manager.register(ws(b), user_id)
+    channel = f"notifications:{user_id}"
+    assert manager.subscribe(ws(a), channel)
+    assert not manager.subscribe(ws(a), channel)
+    manager.subscribe(ws(b), channel)
 
     assert await manager.publish(channel, {"n": 1}) == 2
     assert a.sent[0]["type"] == "event.v1"
     assert a.sent[0]["data"]["channel"] == channel
     assert a.sent[0]["data"]["payload"] == {"n": 1}
 
-    assert manager.unsubscribe(_ws(a), channel)
-    assert not manager.unsubscribe(_ws(a), channel)
+    assert manager.unsubscribe(ws(a), channel)
+    assert not manager.unsubscribe(ws(a), channel)
     assert await manager.publish(channel) == 1
 
-    manager.unregister(_ws(b))
+    manager.unregister(ws(b))
     assert await manager.publish(channel) == 0
 
 
-_ACTIVE_USER_PATCH: Any = None
-
-
-def _ws_app(
-    members: _Membership | None = None,
-    heartbeat: int = 120,
-    pong_timeout: int = 120,
-) -> tuple[TestClient, _MemTickets, RealtimeService]:
-    """App with realtime deps swapped for in-memory fakes (no ScyllaDB)."""
-    import main
-    from core.config import get_settings
-    from core.dependencies import get_realtime_service
-    from core.realtime import ConnectionManager
-
-    global _ACTIVE_USER_PATCH
-    from unittest import mock
-
-    class _ActiveUsers:
-        """Router-level user check always sees an active account."""
-
-        def __init__(self, *_args, **_kwargs) -> None:  # noqa: ANN002, ANN003
-            pass
-
-        def get_by_id(self, user_id):  # noqa: ANN001, ANN202
-            return SimpleNamespace(id=user_id, status="active")
-
-    _ACTIVE_USER_PATCH = mock.patch(
-        "auth.repository.CqlUserRepository", _ActiveUsers
-    )
-    _ACTIVE_USER_PATCH.start()
-
-    store = _MemTickets()
-    service = RealtimeService(store, members or _Membership(), None, 60)
-    settings = Settings(
-        jwt_secret="unit-test-secret-32-bytes-padded!",
-        env="dev",
-        ws_heartbeat_seconds=heartbeat,
-        ws_pong_timeout_seconds=pong_timeout,
-    )
-    if getattr(main.app.state, "ws_manager", None) is None:
-        main.app.state.ws_manager = ConnectionManager()
-    main.app.dependency_overrides.update(
-        {
-            get_realtime_service: lambda: service,
-            get_settings: lambda: settings,
-        }
-    )
-    return TestClient(main.app), store, service
-
-
-def _clear_overrides() -> None:
-    import main
-
-    main.app.dependency_overrides.clear()
-    global _ACTIVE_USER_PATCH
-    if _ACTIVE_USER_PATCH is not None:
-        _ACTIVE_USER_PATCH.stop()
-        _ACTIVE_USER_PATCH = None
-
-
 def test_handshake_ready_and_frames() -> None:
-    client, _, service = _ws_app()
+    client, _, service = ws_app()
     try:
-        uid = _uid()
-        token = service.issue_ticket(uid).token
-        with client.websocket_connect(f"/ws?ticket={token}") as ws:
-            ready = ws.receive_json()
+        user_id = uid()
+        token = service.issue_ticket(user_id).token
+        with client.websocket_connect(f"/ws?ticket={token}") as sock:
+            ready = sock.receive_json()
             assert ready["type"] == "ready.v1"
-            assert ready["data"]["user_id"] == str(uid)
-            assert ready["data"]["channels"] == [f"notifications:{uid}"]
-            ws.send_json({"type": "future.v9", "data": {}})  # ignored
-            ws.send_json({"type": "ping.v1", "data": {}})
-            pong = ws.receive_json()
+            assert ready["data"]["user_id"] == str(user_id)
+            assert ready["data"]["channels"] == [f"notifications:{user_id}"]
+            sock.send_json({"type": "future.v9", "data": {}})  # ignored
+            sock.send_json({"type": "ping.v1", "data": {}})
+            pong = sock.receive_json()
             assert pong == {"type": "pong.v1", "data": {}}
-            ws.send_text("garbage")
-            err = ws.receive_json()
+            sock.send_text("garbage")
+            err = sock.receive_json()
             assert err["type"] == "error.v1"
             assert err["data"]["code"] == "BAD_FRAME"
             with pytest.raises(WebSocketDisconnect) as closed:
-                ws.receive_json()
+                sock.receive_json()
             assert closed.value.code == 4400
     finally:
-        _clear_overrides()
+        clear_overrides()
 
 
 def test_handshake_denies_bad_ticket() -> None:
-    client, _, _ = _ws_app()
+    client, _, _ = ws_app()
     try:
-        with client.websocket_connect("/ws?ticket=wrong") as ws:
+        with client.websocket_connect("/ws?ticket=wrong") as sock:
             with pytest.raises(WebSocketDisconnect) as closed:
-                ws.receive_json()
+                sock.receive_json()
             assert closed.value.code == 4401
     finally:
-        _clear_overrides()
+        clear_overrides()
 
 
 def test_subscribe_acl() -> None:
-    uid, other, org = _uid(), _uid(), _uid()
-    client, _, service = _ws_app(members=_Membership({(org, uid)}))
+    user_id, other, org = uid(), uid(), uid()
+    client, _, service = ws_app(members=FakeMembership({(org, user_id)}))
     try:
-        token = service.issue_ticket(uid).token
-        with client.websocket_connect(f"/ws?ticket={token}") as ws:
-            ws.receive_json()  # ready.v1
-            ws.send_json(
+        token = service.issue_ticket(user_id).token
+        with client.websocket_connect(f"/ws?ticket={token}") as sock:
+            sock.receive_json()  # ready.v1
+            sock.send_json(
                 {
                     "type": "subscribe.v1",
                     "data": {"channel": f"activities:{org}"},
                 }
             )
-            ack = ws.receive_json()
+            ack = sock.receive_json()
             assert ack["type"] == "subscribed.v1"
             assert ack["data"]["channel"] == f"activities:{org}"
-            ws.send_json(
+            sock.send_json(
                 {
                     "type": "subscribe.v1",
                     "data": {"channel": f"notifications:{other}"},
                 }
             )
-            err = ws.receive_json()
+            err = sock.receive_json()
             assert err["data"]["code"] == "FORBIDDEN"
             with pytest.raises(WebSocketDisconnect) as closed:
-                ws.receive_json()
+                sock.receive_json()
             assert closed.value.code == 4403
     finally:
-        _clear_overrides()
+        clear_overrides()
 
 
 def test_heartbeat_closes_silent_client() -> None:
-    client, _, service = _ws_app(heartbeat=1, pong_timeout=1)
+    client, _, service = ws_app(heartbeat=1, pong_timeout=1)
     try:
-        uid = _uid()
-        token = service.issue_ticket(uid).token
-        with client.websocket_connect(f"/ws?ticket={token}") as ws:
-            assert ws.receive_json()["type"] == "ready.v1"
+        user_id = uid()
+        token = service.issue_ticket(user_id).token
+        with client.websocket_connect(f"/ws?ticket={token}") as sock:
+            assert sock.receive_json()["type"] == "ready.v1"
             saw_ping = False
             with pytest.raises(WebSocketDisconnect) as closed:
                 for _ in range(6):
-                    frame = ws.receive_json()
+                    frame = sock.receive_json()
                     saw_ping = saw_ping or frame["type"] == "ping.v1"
             assert saw_ping
             assert closed.value.code == 4408
     finally:
-        _clear_overrides()
+        clear_overrides()
