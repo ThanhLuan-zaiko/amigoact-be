@@ -10,7 +10,13 @@ import uuid_utils
 
 from core.exceptions import SlugTakenError
 from core.media import MediaStore
-from orgs.interfaces import MediaRepository, OrgRepository
+from orgs.interfaces import (
+    ActivityDirectory,
+    MediaRepository,
+    OrgActivityListing,
+    OrgDirectoryEvents,
+    OrgRepository,
+)
 from orgs.media_service import MediaService
 from orgs.service import OrgService
 
@@ -98,6 +104,12 @@ class FakeOrgs(OrgRepository):
             if (o.legal_status or "none") == legal_status
             and o.deleted_at is None
         ][:limit]
+
+    def list_public(self):  # noqa: ANN001, ANN202
+        return [
+            o for o in self.orgs.values()
+            if o.deleted_at is None and (o.status or "active") == "active"
+        ]
 
     def set_legal_status(self, org_id, legal_status, verified_at, verified_by, now):  # noqa: ANN001, ANN202
         org = self.orgs.get(org_id)
@@ -196,6 +208,28 @@ class FakeStore(MediaStore):
 
     def delete_user_dir(self, user_id):  # noqa: ANN001, ANN202
         return False
+
+
+class FakeActivityDirectory(ActivityDirectory):
+    """Canned per-org public listings for detail-page unit tests."""
+
+    def __init__(self) -> None:
+        self.listings: dict[UUID, OrgActivityListing] = {}
+
+    def list_public(self, org_id, limit=6):  # noqa: ANN001, ANN202
+        return self.listings.get(
+            org_id, OrgActivityListing(total=0, items=[])
+        )
+
+
+class FakeDirectoryEvents(OrgDirectoryEvents):
+    """Records every public directory fan-out call."""
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, UUID, str]] = []
+
+    def directory_changed(self, action, org_id, slug):  # noqa: ANN001, ANN202
+        self.calls.append((action, org_id, slug))
 
 
 def make_media_services() -> (

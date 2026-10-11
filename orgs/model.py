@@ -78,6 +78,23 @@ class OrganizationsByLegalStatus(models.Model):
     slug = columns.Text(required=True)
 
 
+class OrganizationsPublic(models.Model):
+    """Public directory feed partitioned by kind, newest first.
+
+    Carries only the join fields (like the legal-status queue); the
+    canonical Organization row is re-read per item at request time.
+    """
+
+    __table_name__ = "organizations_public"
+    __keyspace__ = "amigoact"
+
+    kind = columns.Text(primary_key=True, partition_key=True)
+    created_at = columns.DateTime(primary_key=True, clustering_order="DESC")
+    org_id = columns.UUID(primary_key=True, clustering_order="ASC")
+    name = columns.Text(required=True)
+    slug = columns.Text(required=True)
+
+
 class OrganizationMember(models.Model):
     """Membership rows partitioned by org."""
 

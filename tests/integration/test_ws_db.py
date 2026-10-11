@@ -246,3 +246,62 @@ def test_attendance_channel_acl_and_live_events(app_client) -> None:  # noqa: AN
         event = ws.receive_json()
         assert event["type"] == "event.v1"
         assert event["data"]["payload"]["action"] == "checked_out"
+
+
+def test_guest_watches_public_directory_events(app_client) -> None:  # noqa: ANN001
+    """Ticketless socket joins orgs:directory and sees live removals."""
+    client = TestClient(app_client)
+    owner = _access(client, "wsd.own@example.com", "0912345630")
+    oh = {"Authorization": f"Bearer {owner}"}
+
+    with client.websocket_connect("/ws") as ws:
+        ready = ws.receive_json()
+        assert ready["type"] == "ready.v1"
+        assert ready["data"]["user_id"] is None
+        assert ready["data"]["channels"] == []
+
+        ws.send_json(
+            {"type": "subscribe.v1", "data": {"channel": "orgs:directory"}}
+        )
+        assert ws.receive_json()["type"] == "subscribed.v1"
+
+        created = client.post(
+            "/orgs",
+            json={
+                "name": "Rt Club",
+                "slug": "rt-club",
+                "description": "",
+                "kind": "club",
+            },
+            headers=oh,
+        )
+        assert created.status_code == 201, created.text
+        org_id = created.json()["id"]
+
+        event = ws.receive_json()
+        assert event["type"] == "event.v1"
+        assert event["data"]["channel"] == "orgs:directory"
+        assert event["data"]["payload"] == {
+            "action": "created",
+            "org_id": org_id,
+            "slug": "rt-club",
+        }
+
+        deleted = client.delete(f"/orgs/{org_id}", headers=oh)
+        assert deleted.status_code == 200, deleted.text
+        event = ws.receive_json()
+        assert event["data"]["payload"]["action"] == "removed"
+        assert event["data"]["payload"]["org_id"] == org_id
+        assert event["data"]["payload"]["slug"] == "rt-club"
+
+        # Guests still cannot reach subject-scoped private channels.
+        ws.send_json(
+            {
+                "type": "subscribe.v1",
+                "data": {"channel": f"members:{org_id}"},
+            }
+        )
+        assert ws.receive_json()["data"]["code"] == "FORBIDDEN"
+        with pytest.raises(WebSocketDisconnect) as closed:
+            ws.receive_json()
+        assert closed.value.code == 4403

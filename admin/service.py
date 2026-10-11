@@ -15,7 +15,7 @@ from core.exceptions import (
 )
 from core.security import utcnow
 from notifications.interfaces import NotificationPort
-from orgs.interfaces import OrgRepository, UserDirectory
+from orgs.interfaces import OrgDirectoryEvents, OrgRepository, UserDirectory
 from rbac.catalog import PLATFORM_ADMIN_ROLE_ID
 from rbac.interfaces import AccessControl
 
@@ -61,6 +61,7 @@ class AdminService:
         notifications: NotificationPort,
         access: AccessControl,
         admin_emails: frozenset[str] = frozenset(),
+        directory_events: OrgDirectoryEvents | None = None,
     ) -> None:
         self._orgs = orgs
         self._roles = platform_roles
@@ -68,6 +69,7 @@ class AdminService:
         self._notifications = notifications
         self._access = access
         self._emails = admin_emails
+        self._directory_events = directory_events
 
     def is_admin(self, user_id: UUID, email: str) -> bool:
         """Env bootstrap list or a live platform_admin grant."""
@@ -140,6 +142,10 @@ class AdminService:
             now=now,
         )
         assert fresh is not None
+        if self._directory_events is not None:
+            self._directory_events.directory_changed(
+                "updated", org_id, fresh.slug
+            )
         self._access.record(
             org_id, actor_id, action, "organization", org_id, "allowed"
         )

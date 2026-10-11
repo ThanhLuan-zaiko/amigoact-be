@@ -208,6 +208,17 @@ CREATE TABLE IF NOT EXISTS organizations_by_legal_status (
     PRIMARY KEY ((legal_status), created_at, org_id)
 ) WITH CLUSTERING ORDER BY (created_at ASC, org_id ASC);
 
+// Guest-readable org directory, partitioned by kind, newest first. Rows
+// join back to the canonical organizations row at read time.
+CREATE TABLE IF NOT EXISTS organizations_public (
+    kind text, // organization | club | group | business
+    created_at timestamp,
+    org_id uuid,
+    name text,
+    slug text,
+    PRIMARY KEY ((kind), created_at, org_id)
+) WITH CLUSTERING ORDER BY (created_at DESC, org_id ASC);
+
 // Org-kind lookup — a table (not a hard-coded enum) so new kinds ship with
 // data instead of schema churn. Seed: school, youth_union, ngo, nonprofit,
 // business, government, community.

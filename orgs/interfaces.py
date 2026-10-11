@@ -10,6 +10,10 @@ from uuid import UUID
 from orgs.model import MediaAsset, MemberByUser, Organization, OrganizationMember
 
 
+ORG_KINDS: tuple[str, ...] = ("organization", "club", "group", "business")
+"""Every org kind; also the partition set of the public directory feed."""
+
+
 @dataclass(frozen=True)
 class UserBrief:
     """Minimal user fields other features may render (auth owns users)."""
@@ -109,6 +113,10 @@ class OrgRepository(ABC):
         self, legal_status: str, limit: int = 100
     ) -> list[Organization]:
         """Verification queue read: orgs under one legal_status, oldest first."""
+
+    @abstractmethod
+    def list_public(self) -> list[Organization]:
+        """Public directory read: every live org across all kind feeds."""
 
     @abstractmethod
     def set_legal_status(
@@ -229,6 +237,34 @@ class UserDirectory(ABC):
         """Resolve an account by email (invite lookups)."""
 
 
+@dataclass(frozen=True)
+class OrgActivityBrief:
+    """Public card fields of one org activity (activities owns the rows)."""
+
+    id: UUID
+    slug: str
+    title: str
+    status: str
+    city: str | None
+    start_at: datetime | None
+
+
+@dataclass(frozen=True)
+class OrgActivityListing:
+    """Public-status activity briefs plus their exact total count."""
+
+    total: int
+    items: list[OrgActivityBrief]
+
+
+class ActivityDirectory(ABC):
+    """Read-only bridge onto the activities context (activities owns rows)."""
+
+    @abstractmethod
+    def list_public(self, org_id: UUID, limit: int = 6) -> OrgActivityListing:
+        """Newest public-status activities of one org, sliced, plus total."""
+
+
 class MemberEvents(ABC):
     """Realtime fan-out port for roster and invitation changes (best-effort)."""
 
@@ -241,3 +277,12 @@ class MemberEvents(ABC):
     @abstractmethod
     def inbox_changed(self, user_id: UUID, action: str, org_id: UUID) -> None:
         """Push to notifications:{user_id} so an invitee updates live."""
+
+
+class OrgDirectoryEvents(ABC):
+    """Public directory fan-out for guests on orgs:directory (best-effort)."""
+
+    @abstractmethod
+    def directory_changed(self, action: str, org_id: UUID, slug: str) -> None:
+        """Broadcast a visibility-affecting change; action is one of
+        created/updated/restored/removed and the payload stays public-only."""

@@ -71,12 +71,16 @@ async def websocket_endpoint(
     manager: ConnectionManager = Depends(get_connection_manager),
     settings: Settings = Depends(get_settings),
 ) -> None:
-    """Bind a one-time ticket to a socket, then serve frames (16)."""
-    if not ticket or not ticket.strip():
-        await websocket.accept()
-        await websocket.close(code=CLOSE_UNAUTHORIZED)
-        return
+    """Bind a one-time ticket to a socket, then serve frames (16).
+
+    A missing ticket opens an anonymous guest socket that may only
+    subscribe to public channels; a present-but-invalid ticket still
+    closes 4401 so bad credentials are never silently downgraded.
+    """
     await websocket.accept()
+    if not ticket or not ticket.strip():
+        await _serve(websocket, None, service, manager, settings)
+        return
     user_id = await asyncio.to_thread(service.consume_ticket, ticket)
     if user_id is None:
         await websocket.close(code=CLOSE_UNAUTHORIZED)
@@ -117,14 +121,15 @@ async def _serve(
     manager: ConnectionManager,
     settings: Settings,
 ) -> None:
-    """Frame loop for one authenticated socket until disconnect."""
+    """Frame loop for one socket until disconnect (user_id may be None)."""
     state = manager.register(websocket, user_id)
-    manager.subscribe(websocket, f"notifications:{user_id}")
+    if user_id is not None:
+        manager.subscribe(websocket, f"notifications:{user_id}")
     await manager.send(
         websocket,
         "ready.v1",
         {
-            "user_id": str(user_id),
+            "user_id": str(user_id) if user_id is not None else None,
             "channels": sorted(state.channels),
             "heartbeat_seconds": settings.ws_heartbeat_seconds,
         },

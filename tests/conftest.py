@@ -121,6 +121,7 @@ def test_db() -> str:
         org_models.OrganizationsBySlug,
         org_models.OrganizationsByTaxCode,
         org_models.OrganizationsByLegalStatus,
+        org_models.OrganizationsPublic,
         org_models.OrganizationMember,
         org_models.MemberByUser,
         org_models.MediaAsset,
@@ -230,7 +231,7 @@ def clean_tables(test_db: str) -> str:
     TRUNCATE is a schema operation (~0.4s per table, serialized cluster-
     wide), so wiping all 70+ tables before every test dominated the suite.
     Instead: a LIMIT 1 read per table pipelines to ~50ms total, then rows in
-    dirty tables are deleted by partition key — plain writes that run
+    dirty tables are deleted by partition key - plain writes that run
     concurrently and never wait on schema agreement. Counter tables still
     get a real TRUNCATE because increments on tombstoned counters are
     inconsistent. The post-fixture guarantee is unchanged: every table
@@ -281,7 +282,7 @@ def clean_tables(test_db: str) -> str:
     for future in deletes:
         future.result()
     # Deleting wipes the seeded catalog; re-seed so role checks work. The
-    # three seeders write disjoint tables — run them in parallel since the
+    # three seeders write disjoint tables - run them in parallel since the
     # driver session is thread-safe.
     from concurrent.futures import ThreadPoolExecutor
 
@@ -302,7 +303,7 @@ def app_client(clean_tables: str):
     from core.realtime import ConnectionManager
 
     # The app under test still exercises real Argon2id hash/verify, just
-    # with the cheap documented test params — full-cost hashing is covered
+    # with the cheap documented test params - full-cost hashing is covered
     # by tests/unit/test_hashing.py.
     prod_hasher = hashing._default_hasher
     hashing._default_hasher = hashing.build_hasher(for_tests=True)

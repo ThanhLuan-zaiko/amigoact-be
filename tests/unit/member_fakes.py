@@ -75,6 +75,9 @@ class FakeOrgs(OrgRepository):
     def list_by_legal_status(self, legal_status, limit=100):  # noqa: ANN001, ANN202
         return []
 
+    def list_public(self):  # noqa: ANN001, ANN202
+        return []
+
     def set_legal_status(self, org_id, legal_status, verified_at, verified_by, now):  # noqa: ANN001, ANN202
         return None
 

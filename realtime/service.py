@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import timedelta, timezone
 from uuid import UUID
 
-from core.realtime import Channel
+from core.realtime import PUBLIC_CHANNEL_SUBJECTS, Channel
 from core.security import hash_token, new_opaque_token, utcnow
 from realtime.interfaces import AttendanceAccess, OrgMembership, WsTicketStore
 
@@ -65,8 +65,16 @@ class RealtimeService:
             return None
         return row.user_id
 
-    def authorize(self, channel: Channel, user_id: UUID) -> bool:
-        """Channel ACLs (8: authentication is not authorization)."""
+    def authorize(self, channel: Channel, user_id: UUID | None) -> bool:
+        """Channel ACLs (8: authentication is not authorization).
+
+        Public kinds are open to everyone including guest sockets whose
+        user_id is None; every subject-scoped kind requires a user.
+        """
+        if channel.kind in PUBLIC_CHANNEL_SUBJECTS:
+            return True
+        if channel.subject is None or user_id is None:
+            return False
         if channel.kind == "notifications":
             return channel.subject == user_id
         if channel.kind in ("activities", "members"):

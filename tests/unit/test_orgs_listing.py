@@ -6,7 +6,13 @@ from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 from core.ids import uuid7
-from orgs.listing import fold_search_text, paginate_mine, status_bucket
+from orgs.listing import (
+    PublicOrgSnapshot,
+    fold_search_text,
+    paginate_mine,
+    paginate_public,
+    status_bucket,
+)
 from orgs.service import OrgSnapshot
 
 
@@ -110,3 +116,71 @@ def test_sort_orders_and_paging_keeps_total() -> None:
     assert [o.slug for o in second.items] == ["c"]
     assert second.total == 3
     assert paginate_mine(rows, limit=2, offset=9).items == []
+
+
+def _pub(
+    name: str,
+    slug: str,
+    *,
+    kind: str = "club",
+    members: int = 1,
+    age_days: int = 0,
+) -> PublicOrgSnapshot:
+    now = datetime.now(timezone.utc) - timedelta(days=age_days)
+    return PublicOrgSnapshot(
+        id=uuid7(),
+        name=name,
+        slug=slug,
+        description="",
+        kind=kind,
+        member_count=members,
+        join_policy="invite",
+        city=None,
+        country=None,
+        verified_at=None,
+        logo_url=None,
+        cover_url=None,
+        created_at=now,
+    )
+
+
+def test_public_q_matches_name_and_slug_without_diacritics() -> None:
+    rows = [_pub("H\u1ed9i An", "hoi-an"), _pub("Da Nang", "da-nang")]
+    assert [o.slug for o in paginate_public(rows, q="hoi an").items] == ["hoi-an"]
+    assert paginate_public(rows, q="hue").total == 0
+
+
+def test_public_kind_filter_and_counts_stay_prefilter() -> None:
+    rows = [
+        _pub("Biz", "biz", kind="business"),
+        _pub("Club A", "club-a"),
+        _pub("Club B", "club-b"),
+    ]
+    page = paginate_public(rows, kind="club", sort="name")
+    assert [o.slug for o in page.items] == ["club-a", "club-b"]
+    assert page.total == 2
+    # Counts describe the searched set so chips keep all kind totals.
+    assert page.counts == [("club", 2), ("business", 1)]
+    assert paginate_public(rows, kind="group").items == []
+    assert paginate_public(rows, kind="all").total == 3
+
+
+def test_public_sort_orders_and_paging_keeps_total() -> None:
+    rows = [
+        _pub("Charlie", "c", members=1, age_days=0),
+        _pub("Alpha", "a", members=3, age_days=2),
+        _pub("Bravo", "b", members=2, age_days=1),
+    ]
+    assert [o.slug for o in paginate_public(rows).items] == ["c", "b", "a"]
+    assert [o.slug for o in paginate_public(rows, sort="name").items] == [
+        "a", "b", "c",
+    ]
+    assert [o.slug for o in paginate_public(rows, sort="members").items] == [
+        "a", "b", "c",
+    ]
+    first = paginate_public(rows, sort="name", limit=2, offset=0)
+    assert [o.slug for o in first.items] == ["a", "b"]
+    assert first.total == 3
+    second = paginate_public(rows, sort="name", limit=2, offset=2)
+    assert [o.slug for o in second.items] == ["c"]
+    assert second.total == 3

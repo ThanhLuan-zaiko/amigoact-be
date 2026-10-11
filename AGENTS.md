@@ -326,11 +326,13 @@ A task is done only when:
 Realtime features use WebSocket from day one. No polling-first, no SSE-first, no Socket.IO / Pusher / Ably / third-party realtime SaaS.
 
 1. Transport: FastAPI `WebSocket` only. `websockets` is the single allowed extra package (FastAPI requires it for WS support). Never add Socket.IO or another realtime framework.
-2. Authentication: browsers cannot set headers on the WS handshake, so auth uses a short-lived one-time ticket. Client calls `POST /ws/tickets` (authenticated REST), then opens `GET /ws?ticket=<one-time-ticket>`. Server validates the ticket (SHA-256 hash stored in ScyllaDB, single use, expires in ~60s), binds the user, and closes with `4401` on invalid/expired tickets. Never put JWT access tokens or refresh tokens in the URL. Never log tickets or tokens.
+2. Authentication: browsers cannot set headers on the WS handshake, so auth uses a short-lived one-time ticket. Client calls `POST /ws/tickets` (authenticated REST), then opens `GET /ws?ticket=<one-time-ticket>`. Server validates the ticket (SHA-256 hash stored in ScyllaDB, single use, expires in ~60s), binds the user, and closes with `4401` on invalid/expired tickets. Never put JWT access tokens or refresh tokens in the URL. Never log tickets or tokens. A missing ticket instead opens an anonymous guest socket (`user_id: null` in ready.v1); guests may only subscribe to the public kinds below — subject-scoped channels stay closed to them.
 3. Channels (authorize every subscription against §8 RBAC — authentication is not authorization):
    - `notifications:{user_id}` — personal inbox live updates.
    - `attendance:{activity_id}` — live QR check-in feed for staff screens.
    - `activities:{org_id}` — org activity feed updates.
+   - `members:{org_id}` — roster and invitation changes.
+   - `orgs:directory` — PUBLIC channel (guests allowed): `{action, org_id, slug}` visibility events (`created`/`updated`/`restored`/`removed`) emitted after the organizations_public projection commits. Payload is public-only; consumers treat it as a refetch hint, never a fact source.
    New channels require a documented owner, query table, and tests.
 4. Protocol: JSON envelopes only: `{"type": "<versioned-name>", "data": {...}}`. Server heartbeat ping every 25s; client must pong or be closed. Unknown `type` values are ignored and logged, never crash the connection. Use explicit close codes (`4401` unauthorized, `4403` forbidden, `4400` bad frame).
 5. No RAM state (§12, schemas.cql §14): the connection registry is ephemeral transport only, never authoritative. Reconnect/resume always replays from ScyllaDB (scan logs, notifications, outbox rows). Fan-out coordination uses `job_leases`-style DB leases, never in-process locks. A restarted worker loses zero business facts.

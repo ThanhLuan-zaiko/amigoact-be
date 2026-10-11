@@ -198,3 +198,67 @@ def test_attendance_event_contract_locked(app_client) -> None:  # noqa: ANN001
             "checked_in",
             "checked_out",
         }
+
+
+def test_orgs_directory_event_contract_locked(app_client) -> None:  # noqa: ANN001
+    """Freeze the public orgs:directory guest contract for the FE."""
+    client = TestClient(app_client)
+    client.post(
+        "/auth/register",
+        json={
+            "email": "dirlock@example.com",
+            "phone": "0912345697",
+            "password": PASSWORD,
+            "full_name": "Dir Lock",
+        },
+    )
+    logged = client.post(
+        "/auth/login",
+        json={"email": "dirlock@example.com", "password": PASSWORD},
+    )
+    headers = {"Authorization": f"Bearer {logged.json()['access_token']}"}
+
+    with client.websocket_connect("/ws") as ws:
+        ready = ws.receive_json()
+        assert set(ready.keys()) == {"type", "data"}
+        assert ready["type"] == "ready.v1"
+        assert set(ready["data"].keys()) == {
+            "user_id",
+            "channels",
+            "heartbeat_seconds",
+        }
+        assert ready["data"]["user_id"] is None
+        assert ready["data"]["channels"] == []
+        ws.send_json(
+            {"type": "subscribe.v1", "data": {"channel": "orgs:directory"}}
+        )
+        assert ws.receive_json()["type"] == "subscribed.v1"
+
+        created = client.post(
+            "/orgs",
+            json={
+                "name": "Lock Club",
+                "slug": "lock-club",
+                "description": "",
+                "kind": "club",
+            },
+            headers=headers,
+        )
+        assert created.status_code == 201, created.text
+
+        event = ws.receive_json()
+        assert set(event.keys()) == {"type", "data"}
+        assert event["type"] == "event.v1"
+        assert set(event["data"].keys()) == {"channel", "payload"}
+        assert event["data"]["channel"] == "orgs:directory"
+        assert set(event["data"]["payload"].keys()) == {
+            "action",
+            "org_id",
+            "slug",
+        }
+        assert event["data"]["payload"]["action"] in {
+            "created",
+            "updated",
+            "restored",
+            "removed",
+        }

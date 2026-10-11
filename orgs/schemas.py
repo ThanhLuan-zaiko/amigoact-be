@@ -162,7 +162,7 @@ class OrgResponse(BaseModel):
 
 
 class BucketCount(BaseModel):
-    """One status facet for the mine filter chips."""
+    """One status/kind facet for the mine/public filter chips."""
 
     bucket: str
     count: int
@@ -174,6 +174,72 @@ class OrgListPage(BaseModel):
     items: list[OrgResponse]
     total: int
     counts: list[BucketCount] = []
+
+
+class PublicOrgResponse(BaseModel):
+    """Guest-facing org card: no legal, contact or ownership fields."""
+
+    id: UUID
+    name: str
+    slug: str
+    description: str = ""
+    kind: OrgKind
+    member_count: int = 1
+    join_policy: JoinPolicy = "invite"
+    city: str | None = None
+    country: str | None = None
+    verified_at: datetime | None = None
+    logo_url: str | None = None
+    cover_url: str | None = None
+    created_at: datetime
+
+
+class PublicOrgPage(BaseModel):
+    """One public-directory page: items plus kind chips and pager totals."""
+
+    items: list[PublicOrgResponse]
+    total: int
+    counts: list[BucketCount] = []
+
+
+class PublicOrgActivityItem(BaseModel):
+    """One recent public activity teaser on the org profile."""
+
+    id: UUID
+    slug: str
+    title: str
+    status: str
+    city: str | None = None
+    start_at: datetime | None = None
+
+
+class PublicOrgDetailResponse(BaseModel):
+    """Guest-facing org profile; owner and legal-rep fields stay out."""
+
+    id: UUID
+    name: str
+    slug: str
+    description: str = ""
+    kind: OrgKind
+    member_count: int = 1
+    join_policy: JoinPolicy = "invite"
+    email: str | None = None
+    phone: str | None = None
+    website: str | None = None
+    address: str | None = None
+    city: str | None = None
+    country: str | None = None
+    legal_status: str = "none"
+    legal_name: str | None = None
+    license_number: str | None = None
+    tax_code: str | None = None
+    verified_at: datetime | None = None
+    logo_url: str | None = None
+    cover_url: str | None = None
+    gallery: list[str] = []
+    activity_count: int = 0
+    activities: list[PublicOrgActivityItem] = []
+    created_at: datetime
 
 
 class UpdateOrgRequest(BaseModel):

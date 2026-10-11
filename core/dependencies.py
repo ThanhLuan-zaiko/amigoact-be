@@ -71,9 +71,11 @@ def get_auth_service(
 
 
 def get_org_service(
+    request: Request,
     settings: Settings = Depends(get_settings),
 ) -> OrgService:
     """Build one OrgService per request from the org repository."""
+    from orgs.directory_events import WsOrgDirectoryEvents
     from orgs.media_repository import CqlMediaRepository
     from orgs.repository import CqlOrgRepository
     from orgs.service import OrgService
@@ -82,6 +84,9 @@ def get_org_service(
         orgs=CqlOrgRepository(settings.scylla_keyspace),
         media=CqlMediaRepository(),
         store=get_media_store(settings),
+        events=WsOrgDirectoryEvents(
+            getattr(request.app.state, "ws_manager", None)
+        ),
     )
 
 

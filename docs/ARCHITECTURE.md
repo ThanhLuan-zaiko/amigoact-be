@@ -22,7 +22,11 @@ Mục tiêu: rõ ràng theo bounded context, tuân thủ SOLID, dễ tách file 
 | `router.py` | HTTP, mã trạng thái, Depends | Cấm gọi `cqlengine` trực tiếp |
 | `interfaces.py` | ABC cho repository/service | Cấm cài đặt cụ thể |
 
-Giao tiếp liên tính năng chỉ qua ABC + `core/dependencies.py`.
+Giao tiếp liên tính năng chỉ qua ABC + `core/dependencies.py`. Khi một file
+chạm ngưỡng 350 dòng thì tách theo trách nhiệm thay vì nhồi thêm — ví dụ
+`orgs/` có thêm `public_router.py`/`public_service.py` (bề mặt guest),
+`members_router.py`/`member_service.py` (vòng đời thành viên),
+`activity_directory.py`/`directory_events.py` (adapter liên-context).
 
 ## 3. Runtime và cấu hình
 

@@ -54,7 +54,35 @@ rác và khôi phục. Org không tồn tại trả `404`.
 mời của owner/admin, `open` cho bất kỳ ai `POST /join` vào thẳng `active`.
 Vòng đời thành viên, phân quyền RBAC và API members: xem `docs/MEMBERS.md`.
 
-## 4. Thư viện ảnh/video
+## 4. Bề mặt công khai (`orgs/public_router.py` + `public_service.py`)
+
+Hai endpoint guest (không auth), phục vụ trang khám phá `/orgs` bên FE:
+
+| Thao tác | Endpoint | Trạng thái |
+|---|---|---|
+| Thư mục công khai | `GET /orgs?q=&kind=&sort=&limit=&offset=` | `200` `{items, total, counts}` |
+| Hồ sơ công khai | `GET /orgs/{slug}` | `200`, slug lạ/xóa/không active `404` |
+
+- Router public được include **sau** `orgs_router` trong `main.py` nên
+  `GET /orgs/mine` luôn thắng `{slug}` — regression test khóa thứ tự này.
+- `GET /orgs` đọc bảng denormalized `organizations_public` rồi rehydrate
+  canonical rows; mọi mutation trong `CqlOrgRepository` (create/update/
+  mark_deleted/mark_restored/delete_everything) dual-write feed này nên
+  org ẩn/xóa biến mất khỏi đọc tiếp theo ngay, không `ALLOW FILTERING`.
+- `PublicOrgService` chỉ trả field public: card giấu `owner_id`,
+  `legal_rep_*`, contact, `deleted_at`; detail trả tín hiệu tin cậy
+  (`verified_at`, `legal_status`, `legal_name`, `license_number`,
+  `tax_code`, contact, `member_count`, `activity_count`, 6 activity
+  public gần nhất, gallery ảnh) nhưng vẫn giấu `owner_id`/`legal_rep_*`/
+  `previous_slug`.
+- Hoạt động đi qua port `ActivityDirectory` → adapter
+  `CqlOrgActivityDirectory` đọc `activities_by_org`, chỉ giữ status public
+  (`published`/`ongoing`/`completed`), đếm đủ và hydrate 6 item gần nhất.
+- Realtime: mutation ảnh hưởng hiển thị phát `event.v1` lên kênh public
+  `orgs:directory` qua port `OrgDirectoryEvents` — chi tiết ở
+  `docs/REALTIME.md` §5.
+
+## 5. Thư viện ảnh/video
 
 | Thao tác | Endpoint | Ghi chú |
 |---|---|---|
@@ -82,7 +110,7 @@ Vòng đời thành viên, phân quyền RBAC và API members: xem `docs/MEMBERS
 - Xóa cứng gọi `delete_org_dir` rồi `sweep_orphans` (xóa thư mục không còn
   org nào trỏ tới). Thư mục `media/` đã gitignore, không bao giờ commit.
 
-## 5. Mở rộng lên cloud
+## 6. Mở rộng lên cloud
 
 `core/media.py` định nghĩa port `MediaStore` (`save`, `resolve`,
 `delete_file`, `delete_org_dir`, `sweep_orphans`); `LocalMediaStore` là
@@ -91,7 +119,7 @@ trong `core/dependencies.py:get_media_store`, giữ nguyên service, router,
 test (viết fake `MediaStore` như test media hiện tại). Đường dẫn tương đối
 `orgs/<org_id>/...` giữ nguyên nên `file_url` không phải migrate.
 
-## 6. Bảng liên quan (`schemas.cql`)
+## 7. Bảng liên quan (`schemas.cql`)
 
 - `organizations`: thêm `deleted_at` (`null` = đang sống; có giá trị =
   thùng rác, khôi phục được). Các cột pháp lý: `owner_id`, `tax_code`,
@@ -100,17 +128,21 @@ test (viết fake `MediaStore` như test media hiện tại). Đường dẫn t�
   xóa cứng nên slug được tái sử dụng.
 - `organization_members` + `members_by_user`: thành viên hai chiều, xóa
   cứng dọn cả hai phía.
+- `organizations_public`: feed denormalized của thư mục guest — partition
+  theo `visibility` cho quét không lọc; repository dual-write trên mọi
+  mutation nên tự đồng bộ (org cũ trước bảng này cần backfill một lần,
+  `CREATE TABLE IF NOT EXISTS` không đụng data hiện có).
 - `media_assets` + `media_by_owner`: metadata (`role` = `gallery`/`cover`/
   `logo`) và feed mới-nhất-trước của từng org.
 
-## 7. Quy tắc quyền
+## 8. Quy tắc quyền
 
 - Mọi mutation tổ chức và xóa tệp: chỉ chủ (`owner_id`). Trái chủ `403`.
 - Upload và xem thư viện: thành viên của org đó.
 - Tải tệp qua `/media/...`: công khai bằng UUID (ảnh sự kiện vốn bán công
   khai). Muốn kín hoàn toàn thì chuyển sang URL ký trong `MediaStore` mới.
 
-## 8. Kiểm thử
+## 9. Kiểm thử
 
 - `tests/unit/test_orgs_service.py`: vòng đời sửa → xóa mềm → ẩn → khôi
   phục → xóa cứng, chặn trái chủ.
@@ -120,4 +152,13 @@ test (viết fake `MediaStore` như test media hiện tại). Đường dẫn t�
   phục vụ tệp, xóa cứng dọn thư mục đĩa thật.
 - `tests/regression/test_orgs_regression.py`: khóa hợp đồng thùng rác
   (`deleted_at`, `ORG_DELETED`, `204` xóa cứng) và media (`kind`, `role`,
-  một `cover` duy nhất, mã lỗi `INVALID_MEDIA_ROLE`).
+  một `cover` duy nhất, mã lỗi `INVALID_MEDIA_ROLE`), khóa thứ tự route
+  `/orgs/mine` vs `/orgs/{slug}`.
+- Bề mặt public: `test_orgs_service.py` (ẩn org thùng rác, không rò
+  PII, gallery/trust signals, emit `OrgDirectoryEvents` đúng action),
+  `test_orgs_db.py` (`GET /orgs` + `GET /orgs/{slug}` end-to-end).
+- Realtime public: `tests/unit/test_realtime.py` (parse `orgs:directory`,
+  `authorize` cho guest), `tests/integration/test_ws_db.py` (socket ẩn
+  danh subscribe + nhận `created`/`removed` trực tiếp, kênh private
+  `4403`), `tests/regression/test_ws_regression.py` (khóa payload
+  `{action, org_id, slug}`).

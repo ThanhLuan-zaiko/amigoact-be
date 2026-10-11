@@ -90,6 +90,14 @@ def test_parse_channel() -> None:
     assert parse_channel("notifications:not-a-uuid") is None
 
 
+def test_parse_channel_public_directory() -> None:
+    channel = parse_channel("orgs:directory")
+    assert channel == Channel(kind="orgs", subject=None)
+    assert parse_channel("orgs:other") is None
+    assert parse_channel(f"orgs:{uid()}") is None
+    assert parse_channel("orgs:") is None
+
+
 def test_ticket_single_use_and_expiry() -> None:
     store = MemTickets()
     service = make_service(store)
@@ -119,6 +127,17 @@ def test_authorize_channels() -> None:
     assert service.authorize(Channel("members", org), user_id)
     assert not service.authorize(Channel("members", org), other)
     assert not service.authorize(Channel("attendance", org), user_id)
+
+
+def test_authorize_public_channel_open_including_guests() -> None:
+    service = make_service()
+    channel = Channel("orgs", None)
+    assert service.authorize(channel, None)
+    assert service.authorize(channel, uid())
+    # Subject-scoped kinds still demand a real user, guest or not.
+    assert not service.authorize(Channel("notifications", uid()), None)
+    assert not service.authorize(Channel("activities", uid()), None)
+    assert not service.authorize(Channel("members", uid()), None)
 
 
 async def test_manager_subscribe_publish_unregister() -> None:
@@ -201,6 +220,39 @@ def test_subscribe_acl() -> None:
                 {
                     "type": "subscribe.v1",
                     "data": {"channel": f"notifications:{other}"},
+                }
+            )
+            err = sock.receive_json()
+            assert err["data"]["code"] == "FORBIDDEN"
+            with pytest.raises(WebSocketDisconnect) as closed:
+                sock.receive_json()
+            assert closed.value.code == 4403
+    finally:
+        clear_overrides()
+
+
+def test_guest_socket_subscribes_public_channel_only() -> None:
+    """Ticketless sockets are anonymous: public channel yes, private 4403."""
+    client, _, _ = ws_app()
+    try:
+        with client.websocket_connect("/ws") as sock:
+            ready = sock.receive_json()
+            assert ready["type"] == "ready.v1"
+            assert ready["data"]["user_id"] is None
+            assert ready["data"]["channels"] == []
+            sock.send_json(
+                {
+                    "type": "subscribe.v1",
+                    "data": {"channel": "orgs:directory"},
+                }
+            )
+            ack = sock.receive_json()
+            assert ack["type"] == "subscribed.v1"
+            assert ack["data"]["channel"] == "orgs:directory"
+            sock.send_json(
+                {
+                    "type": "subscribe.v1",
+                    "data": {"channel": f"members:{uid()}"},
                 }
             )
             err = sock.receive_json()

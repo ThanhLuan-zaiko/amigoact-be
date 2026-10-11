@@ -20,6 +20,7 @@ if TYPE_CHECKING:
     from core.realtime import ConnectionManager
     from hours.service import HourService
     from notifications.service import NotificationService
+    from orgs.public_service import PublicOrgService
     from profiles.service import ProfileService
     from rbac.interfaces import AccessControl
     from registrations.attendance_service import AttendanceService
@@ -30,6 +31,7 @@ if TYPE_CHECKING:
 
 
 def get_admin_service(
+    request: Request,
     settings: Settings = Depends(get_settings),
     access: AccessControl = Depends(get_access_control),
     notifications: NotificationService = Depends(get_notification_service),
@@ -37,6 +39,7 @@ def get_admin_service(
     """Build one AdminService per request over org plus platform tables."""
     from admin.repository import CqlPlatformRoleStore
     from admin.service import AdminService
+    from orgs.directory_events import WsOrgDirectoryEvents
     from orgs.repository import CqlOrgRepository
 
     return AdminService(
@@ -46,6 +49,25 @@ def get_admin_service(
         notifications=notifications,
         access=access,
         admin_emails=settings.platform_admin_emails_set,
+        directory_events=WsOrgDirectoryEvents(
+            getattr(request.app.state, "ws_manager", None)
+        ),
+    )
+
+
+def get_public_org_service(
+    settings: Settings = Depends(get_settings),
+) -> PublicOrgService:
+    """Build the read-only guest surface over org, media and activity rows."""
+    from orgs.activity_directory import CqlOrgActivityDirectory
+    from orgs.media_repository import CqlMediaRepository
+    from orgs.public_service import PublicOrgService
+    from orgs.repository import CqlOrgRepository
+
+    return PublicOrgService(
+        orgs=CqlOrgRepository(settings.scylla_keyspace),
+        media=CqlMediaRepository(),
+        activities=CqlOrgActivityDirectory(settings.scylla_keyspace),
     )
 
 

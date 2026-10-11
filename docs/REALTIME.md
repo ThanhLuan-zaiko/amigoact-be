@@ -16,12 +16,19 @@ POST /ws/tickets (Authorization: Bearer <jwt>)
     -> 201 {"ticket": "<opaque>", "expires_in": 60}
 WS  /ws?ticket=<opaque>
     -> {"type": "ready.v1", "data": {"user_id", "channels", "heartbeat_seconds"}}
+WS  /ws                  # khách, không ticket
+    -> ready.v1 với user_id = null, channels = []
 ```
 
 - Ticket là chuỗi opaque 256-bit (`secrets.token_urlsafe(32)`); chỉ lưu
   SHA-256 trong bảng `ws_tickets` (`default_time_to_live = 300`).
 - Dùng một lần: consume bằng `DELETE ... IF EXISTS` (LWT). Hết hạn hoặc đã
   dùng đều đóng `4401`. Không bao giờ log ticket.
+- **Socket ẩn danh**: thiếu ticket mở socket khách — `user_id` là `None`,
+  server không tự join kênh nào, và `authorize()` chỉ cho phép các kênh
+  public (§3). Ticket *có nhưng sai/hết hạn* vẫn `4401`: credential xấu
+  không bao giờ bị hạ thầm lặng thành guest. Socket ẩn danh vẫn chịu mọi
+  giới hạn frame/subscribe như socket thường.
 
 ## 2. Envelope và frame
 
@@ -50,6 +57,7 @@ Mọi frame là JSON `{"type": "<tên có version>", "data": {...}}`.
 | `activities:{org_id}` | Phải là member của org (`members_by_user`) |
 | `members:{org_id}` | Phải là member `active` của org; nhận `event.v1` mọi thay đổi roster |
 | `attendance:{activity_id}` | Manager của org sở hữu activity — port `AttendanceAccess`: owner hoặc quyền `activity:manage` (khớp `GET /activities/{id}/attendance`) |
+| `orgs:directory` | **Public** — mở cho mọi socket kể cả ẩn danh; subject cố định `directory` (không phải UUID) |
 
 Đăng ký bị từ chối: server gửi `error.v1` `FORBIDDEN` rồi đóng `4403`.
 Tên kênh sai cú pháp: `error.v1` `INVALID_CHANNEL`, kết nối vẫn sống.
@@ -59,7 +67,7 @@ Tên kênh sai cú pháp: `error.v1` `INVALID_CHANNEL`, kết nối vẫn sống
 | Code | Nghĩa |
 |---|---|
 | `4400` | Bad frame: JSON hỏng hoặc payload sai (kèm `error.v1` `BAD_FRAME`) |
-| `4401` | Ticket sai/hết hạn/đã dùng lúc handshake |
+| `4401` | Ticket sai/hết hạn/đã dùng lúc handshake (thiếu ticket → socket ẩn danh, không đóng) |
 | `4403` | Subscribe bị từ chối quyền (kèm `error.v1` `FORBIDDEN`) |
 | `4408` | Client bỏ lỡ `pong.v1` quá `WS_PONG_TIMEOUT_SECONDS` |
 
@@ -110,6 +118,27 @@ cho `check_in`):
 
 Màn điểm danh của manager subscribe kênh này để danh sách tự cập nhật
 khi staff khác quét vé. Client chỉ invalidate query, không tin payload.
+
+### Sự kiện thư mục công khai (orgs)
+
+`OrgService` phát qua port `OrgDirectoryEvents` sau khi mutation +
+projection `organizations_public` commit; `AdminService` phát `updated`
+sau `set_legal_status` (verify/reject). Adapter `WsOrgDirectoryEvents`
+(`orgs/directory_events.py`) chỉ là `schedule_publish` mỏng — registry
+chết cũng không làm hỏng request.
+
+| Kênh | `payload.action` | `payload` còn lại |
+|---|---|---|
+| `orgs:directory` | `created`/`updated`/`restored`/`removed` | `org_id`, `slug` |
+
+Phát sinh từ: `create_org` → `created`, `update_org` → `updated`,
+`soft_delete_org` → `removed`, `restore_org` → `restored`,
+`hard_delete_org` → `removed` (slug chụp trước khi xóa).
+
+Payload chỉ chứa field vốn public — guest nào cũng nghe được nên không
+được đưa dữ liệu riêng vào đây. Client coi event là gợi ý refetch và
+gọi lại `GET /orgs` / `GET /orgs/{slug}`: REST mới là fact source nên
+event giả hay cũ không thể "hồi sinh" org đã ẩn.
 
 ## 6. Cấu hình
 

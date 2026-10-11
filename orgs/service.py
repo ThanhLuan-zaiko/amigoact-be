@@ -15,14 +15,20 @@ from core.exceptions import (
 )
 from core.media import MediaStore
 from core.security import utcnow
-from orgs.interfaces import MediaRepository, OrgContactDetails, OrgRepository
+from orgs.interfaces import (
+    ORG_KINDS,
+    MediaRepository,
+    OrgContactDetails,
+    OrgDirectoryEvents,
+    OrgRepository,
+)
 from orgs.listing import OrgListResult, paginate_mine
 from orgs.repository import generate_org_id
 
 if TYPE_CHECKING:
     from orgs.model import Organization
 
-_ORG_KINDS = ("organization", "club", "group", "business")
+_ORG_KINDS = ORG_KINDS
 _JOIN_POLICIES = ("invite", "open")
 _CONTACT_LIMITS = {
     "email": 254,
@@ -79,10 +85,17 @@ class OrgService:
         orgs: OrgRepository,
         media: MediaRepository | None = None,
         store: MediaStore | None = None,
+        events: OrgDirectoryEvents | None = None,
     ) -> None:
         self._orgs = orgs
         self._media = media
         self._store = store
+        self._events = events
+
+    def _emit(self, action: str, org_id: UUID, slug: str) -> None:
+        """Best-effort public directory fan-out after a mutation commits."""
+        if self._events is not None:
+            self._events.directory_changed(action, org_id, slug)
 
     def _snapshot(self, org_id: UUID) -> OrgSnapshot:
         org = self._orgs.get_by_id(org_id)
@@ -183,6 +196,7 @@ class OrgService:
             now,
             self._clean_contact(contact),
         )
+        self._emit("created", org.id, org.slug)
         return self._snapshot(org.id)
 
     @staticmethod
@@ -251,6 +265,7 @@ class OrgService:
             self._clean_contact(contact),
         )
         assert org is not None
+        self._emit("updated", org_id, org.slug)
         return self._snapshot(org_id)
 
     def soft_delete_org(self, org_id: UUID, user_id: UUID) -> OrgSnapshot:
@@ -258,6 +273,7 @@ class OrgService:
         self._require_live(org_id, user_id)
         org = self._orgs.mark_deleted(org_id, utcnow())
         assert org is not None
+        self._emit("removed", org_id, org.slug)
         return self._snapshot(org_id)
 
     def restore_org(self, org_id: UUID, user_id: UUID) -> OrgSnapshot:
@@ -267,12 +283,15 @@ class OrgService:
             raise InvalidBusinessProfileError("Organization is not deleted.")
         restored = self._orgs.mark_restored(org_id, utcnow())
         assert restored is not None
+        self._emit("restored", org_id, restored.slug)
         return self._snapshot(org_id)
 
     def hard_delete_org(self, org_id: UUID, user_id: UUID) -> int:
         """Owner erases everything: rows plus the org folder and orphans."""
-        self._require_owner(org_id, user_id)
+        org = self._require_owner(org_id, user_id)
         removed = self._orgs.delete_everything(org_id)
+        if removed:
+            self._emit("removed", org_id, org.slug)
         swept = 0
         if self._store is not None:
             self._store.delete_org_dir(org_id)

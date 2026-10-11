@@ -27,7 +27,16 @@ CLOSE_UNAUTHORIZED = 4401
 CLOSE_FORBIDDEN = 4403
 CLOSE_PONG_TIMEOUT = 4408
 
-CHANNEL_KINDS = ("notifications", "attendance", "activities", "members")
+CHANNEL_KINDS = (
+    "notifications",
+    "attendance",
+    "activities",
+    "members",
+    "orgs",
+)
+
+# Public kinds carry a fixed literal subject instead of a UUID.
+PUBLIC_CHANNEL_SUBJECTS = {"orgs": "directory"}
 
 
 class BadFrameError(Exception):
@@ -126,10 +135,10 @@ def parse_client_frame(raw: str) -> ClientFrame:
 
 @dataclass(frozen=True)
 class Channel:
-    """Parsed 'kind:{uuid}' channel name (AGENTS.md 16.3)."""
+    """Parsed 'kind:{uuid}' name; public kinds get subject=None (16.3)."""
 
     kind: str
-    subject: UUID
+    subject: UUID | None
 
 
 def parse_channel(raw: str) -> Channel | None:
@@ -137,6 +146,10 @@ def parse_channel(raw: str) -> Channel | None:
     kind, sep, subject = raw.partition(":")
     if not sep or kind not in CHANNEL_KINDS:
         return None
+    if kind in PUBLIC_CHANNEL_SUBJECTS:
+        if subject != PUBLIC_CHANNEL_SUBJECTS[kind]:
+            return None
+        return Channel(kind=kind, subject=None)
     try:
         return Channel(kind=kind, subject=UUID(subject))
     except ValueError:
@@ -145,10 +158,14 @@ def parse_channel(raw: str) -> Channel | None:
 
 @dataclass
 class ConnectionState:
-    """One live socket: owner plus subscribed channels (ephemeral)."""
+    """One live socket: owner plus subscribed channels (ephemeral).
+
+    user_id is None for anonymous guest sockets, which may only ever
+    hold public channels per the service-level authorize() gate.
+    """
 
     websocket: WebSocket
-    user_id: UUID
+    user_id: UUID | None
     channels: set[str] = field(default_factory=set)
     pong_pending: bool = False
     subscribe_times: list[float] = field(default_factory=list)
@@ -163,8 +180,10 @@ class ConnectionManager:
         self._by_channel: dict[str, set[WebSocket]] = {}
         self._loop: asyncio.AbstractEventLoop | None = None
 
-    def register(self, websocket: WebSocket, user_id: UUID) -> ConnectionState:
-        """Track an authenticated socket under its user id.
+    def register(
+        self, websocket: WebSocket, user_id: UUID | None
+    ) -> ConnectionState:
+        """Track a socket under its user id (None for guest sockets).
 
         Called from the async socket handler, so it also binds the app
         loop that schedule_publish needs for threadpool callers.
