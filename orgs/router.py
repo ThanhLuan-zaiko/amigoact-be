@@ -86,7 +86,23 @@ def _media_schema(item: MediaSnapshot) -> MediaResponse:
         original_name=item.original_name,
         upload_status=item.upload_status,
         created_at=item.created_at,
+        updated_at=item.updated_at,
     )
+
+
+async def _read_limited(file: UploadFile, limit: int) -> bytes:
+    """Stream a multipart upload in 1MB chunks, capping the byte count."""
+    parts: list[bytes] = []
+    total = 0
+    while True:
+        chunk = await file.read(1024 * 1024)
+        if not chunk:
+            break
+        total += len(chunk)
+        if total > limit:
+            raise MediaTooLargeError("File exceeds the size limit.")
+        parts.append(chunk)
+    return b"".join(parts)
 
 
 def _contact_of(body: CreateOrgRequest | UpdateOrgRequest) -> OrgContactDetails:
@@ -213,24 +229,11 @@ async def upload_org_media(
     import asyncio
 
     guessed = media_kind(file.content_type or "application/octet-stream")
-    if guessed == "image":
-        limit = settings.media_max_image_mb * 1024 * 1024
-    elif guessed == "video":
-        limit = settings.media_max_video_mb * 1024 * 1024
-    else:
-        limit = max(settings.media_max_image_mb, settings.media_max_video_mb)
-        limit = limit * 1024 * 1024
-    parts: list[bytes] = []
-    total = 0
-    while True:
-        chunk = await file.read(1024 * 1024)
-        if not chunk:
-            break
-        total += len(chunk)
-        if total > limit:
-            raise MediaTooLargeError("File exceeds the size limit.")
-        parts.append(chunk)
-    content = b"".join(parts)
+    max_mb = {
+        "image": settings.media_max_image_mb,
+        "video": settings.media_max_video_mb,
+    }.get(guessed or "", max(settings.media_max_image_mb, settings.media_max_video_mb))
+    content = await _read_limited(file, max_mb * 1024 * 1024)
     # Sync Pillow transcode plus disk write runs off the event loop.
     snapshot = await asyncio.to_thread(
         service.upload_media,
@@ -240,6 +243,33 @@ async def upload_org_media(
         file.content_type or "application/octet-stream",
         content,
         role,
+    )
+    return _media_schema(snapshot)
+
+
+@router.put("/orgs/{org_id}/media/{media_id}/file", response_model=MediaResponse)
+async def replace_org_media_file(
+    org_id: UUID,
+    media_id: UUID,
+    file: UploadFile,
+    current: CurrentUser = Depends(get_current_user),
+    service: MediaService = Depends(get_media_service),
+    settings: Settings = Depends(get_settings),
+) -> MediaResponse:
+    """Owner rewrites an image's bytes in place; id, role, URL stay put."""
+    import asyncio
+
+    content = await _read_limited(
+        file, settings.media_max_image_mb * 1024 * 1024
+    )
+    snapshot = await asyncio.to_thread(
+        service.replace_media,
+        org_id,
+        current.id,
+        media_id,
+        file.filename or "upload",
+        file.content_type or "application/octet-stream",
+        content,
     )
     return _media_schema(snapshot)
 

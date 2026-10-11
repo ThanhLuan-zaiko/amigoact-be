@@ -43,6 +43,7 @@ class MediaSnapshot:
     original_name: str | None
     upload_status: str
     created_at: datetime
+    updated_at: datetime | None
 
 
 class MediaService:
@@ -91,6 +92,7 @@ class MediaService:
             original_name=getattr(row, "original_name", None),
             upload_status=getattr(row, "upload_status", None) or "active",
             created_at=row.created_at,
+            updated_at=getattr(row, "updated_at", None),
         )
 
     def _demote_role(
@@ -220,6 +222,55 @@ class MediaService:
             self._media_snapshot(org_id, row)
             for row in self._media.list_by_org(org_id)
         ]
+
+    def replace_media(
+        self,
+        org_id: UUID,
+        user_id: UUID,
+        media_id: UUID,
+        filename: str,
+        mime: str,
+        content: bytes,
+    ) -> MediaSnapshot:
+        """Owner rewrites an image's bytes in place (re-crop/re-filter).
+
+        Keeps asset_id, role and brand pointers untouched; only the stored
+        file plus its metadata change. New file is written before the row
+        updates, old file is swept best-effort when the path moves.
+        """
+        self._require_live(org_id, user_id)
+        row = self._media.get_asset(media_id)
+        if row is None or row.owner_id != org_id:
+            raise NotFoundError("Media not found.")
+        if media_kind(row.mime) != "image":
+            raise UnsupportedMediaError("Only image assets can be re-edited.")
+        if media_kind(mime) != "image":
+            raise UnsupportedMediaError("Only images can replace an image.")
+        if len(content) > self._max_image_bytes:
+            raise MediaTooLargeError("File exceeds the size limit.")
+        try:
+            mime, content = normalize_image(content, mime)
+        except ValueError as exc:
+            raise MediaTooLargeError(
+                "Image exceeds the pixel limit."
+            ) from exc
+        old_relative = row.file_url
+        new_relative = self._store.save_typed(
+            org_id, media_id, mime, filename, content
+        )
+        updated = self._media.replace_content(
+            media_id,
+            new_relative,
+            mime,
+            len(content),
+            hashlib.sha256(content).hexdigest(),
+            filename,
+            utcnow(),
+        )
+        assert updated is not None
+        if old_relative != new_relative:
+            self._store.delete_file(old_relative)
+        return self._media_snapshot(org_id, updated)
 
     def delete_media(self, org_id: UUID, user_id: UUID, media_id: UUID) -> None:
         """Owner removes one gallery file: metadata row plus bytes."""

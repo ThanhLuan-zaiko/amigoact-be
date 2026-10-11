@@ -226,3 +226,65 @@ async def test_delete_all_media_wipes_gallery(client: AsyncClient) -> None:
     gallery = await client.get(f"/orgs/{org_id}/media", headers=headers)
     assert gallery.json() == []
     assert list(org_dir.iterdir()) == []
+
+
+async def test_replace_media_file_rewrites_in_place(client: AsyncClient) -> None:
+    """PUT .../file swaps bytes under the same asset id, role and URL."""
+    access = await _token(client, "replace@example.com", "0912345015")
+    headers = {"Authorization": f"Bearer {access}"}
+    org_id = await _make_org(client, headers, "replace-club")
+    payload = b"\x89PNG" + b"1" * 200
+
+    uploaded = await client.post(
+        f"/orgs/{org_id}/media",
+        files={"file": ("pic.png", payload, "image/png")},
+        data={"role": "cover"},
+        headers=headers,
+    )
+    assert uploaded.status_code == 201, uploaded.text
+    body = uploaded.json()
+
+    fresh = b"\x89PNG" + b"2" * 300
+    replaced = await client.put(
+        f"/orgs/{org_id}/media/{body['id']}/file",
+        files={"file": ("pic2.png", fresh, "image/png")},
+        headers=headers,
+    )
+    assert replaced.status_code == 200, replaced.text
+    out = replaced.json()
+    assert out["id"] == body["id"]
+    assert out["role"] == "cover"
+    assert out["file_url"] == body["file_url"]
+    assert out["size_bytes"] == len(fresh)
+    assert out["original_name"] == "pic2.png"
+    assert out["updated_at"] is not None
+
+    served = await client.get(out["file_url"])
+    assert served.status_code == 200
+    assert served.content == fresh
+
+    # The brand pointer still targets the same asset.
+    mine = await client.get("/orgs/mine", headers=headers)
+    assert mine.json()["items"][0]["cover_media_id"] == body["id"]
+
+    stranger = await _token(client, "replace2@example.com", "0912345016")
+    denied = await client.put(
+        f"/orgs/{org_id}/media/{body['id']}/file",
+        files={"file": ("x.png", fresh, "image/png")},
+        headers={"Authorization": f"Bearer {stranger}"},
+    )
+    assert denied.status_code == 403
+
+    clip = await client.post(
+        f"/orgs/{org_id}/media",
+        files={"file": ("v.mp4", b"\x00\x00" + b"3" * 64, "video/mp4")},
+        headers=headers,
+    )
+    assert clip.status_code == 201, clip.text
+    rejected = await client.put(
+        f"/orgs/{org_id}/media/{clip.json()['id']}/file",
+        files={"file": ("v2.mp4", b"\x00\x00" + b"4" * 64, "video/mp4")},
+        headers=headers,
+    )
+    assert rejected.status_code == 415
+    assert rejected.json()["code"] == "UNSUPPORTED_MEDIA"

@@ -132,6 +132,7 @@ async def test_media_role_contract_locked(client: AsyncClient) -> None:
     assert set(plain.json().keys()) == {
         "id", "org_id", "kind", "role", "mime", "size_bytes", "file_url",
         "uploader_id", "original_name", "upload_status", "created_at",
+        "updated_at",
     }
     assert plain.json()["role"] == "gallery"
 
@@ -231,6 +232,52 @@ async def test_media_normalization_contract_locked(client: AsyncClient) -> None:
 
     served = await client.get(exotic.json()["file_url"])
     assert served.status_code == 200
+
+
+async def test_media_replace_contract_locked(client: AsyncClient) -> None:
+    """PUT /orgs/{id}/media/{id}/file keeps the asset id and returns media."""
+    await client.post(
+        "/auth/register",
+        json={
+            "email": "reedit@example.com", "phone": "0366123456",
+            "password": PASSWORD, "full_name": "Reeditor",
+        },
+    )
+    logged = await client.post(
+        "/auth/login", json={"email": "reedit@example.com", "password": PASSWORD}
+    )
+    headers = {"Authorization": f"Bearer {logged.json()['access_token']}"}
+    created = await client.post(
+        "/orgs",
+        json={"name": "Re", "slug": "re-club", "description": "", "kind": "club"},
+        headers=headers,
+    )
+    org_id = created.json()["id"]
+    png = b"\x89PNG" + b"4" * 80
+
+    uploaded = await client.post(
+        f"/orgs/{org_id}/media",
+        files={"file": ("p.png", png, "image/png")},
+        headers=headers,
+    )
+    assert uploaded.status_code == 201
+    media_id = uploaded.json()["id"]
+
+    replaced = await client.put(
+        f"/orgs/{org_id}/media/{media_id}/file",
+        files={"file": ("p.png", b"\x89PNG" + b"5" * 90, "image/png")},
+        headers=headers,
+    )
+    assert replaced.status_code == 200
+    body = replaced.json()
+    assert set(body.keys()) == {
+        "id", "org_id", "kind", "role", "mime", "size_bytes", "file_url",
+        "uploader_id", "original_name", "upload_status", "created_at",
+        "updated_at",
+    }
+    assert body["id"] == media_id
+    assert body["role"] == "gallery"
+    assert body["kind"] == "image"
 
 
 async def test_mine_page_envelope_contract_locked(client: AsyncClient) -> None:

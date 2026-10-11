@@ -21,95 +21,27 @@ from core.config import Settings, get_settings
 os.environ["MEDIA_ROOT"] = tempfile.mkdtemp(prefix="amigoact-test-media-")
 
 
-TEST_KEYSPACE = "amigoact_test"
+# Each pytest-xdist worker owns an isolated keyspace so parallel runs never
+# truncate data another worker is using.
+_WORKER = os.environ.get("PYTEST_XDIST_WORKER", "")
+TEST_KEYSPACE = "amigoact_test" + (f"_{_WORKER}" if _WORKER else "")
 TEST_JWT_SECRET = "integration-test-secret-32-bytes!"
 
 # Bare Settings() reads env (TestClient lifespan resolves get_settings());
 # guarantee the required secret exists on CI runners without .env.
 os.environ["JWT_SECRET"] = TEST_JWT_SECRET
 
-TABLES = [
-    "users",
-    "users_by_email",
-    "users_by_phone",
-    "auth_refresh_tokens",
-    "refresh_tokens_by_user",
-    "refresh_tokens_by_family",
-    "email_verifications",
-    "password_resets",
-    "auth_rate_limits",
-    "organizations",
-    "organizations_by_slug",
-    "organizations_by_tax_code",
-    "organizations_by_legal_status",
-    "organization_members",
-    "members_by_user",
-    "media_assets",
-    "media_by_owner",
-    "media_by_hash",
-    "media_by_uploader",
-    "roles",
-    "roles_by_org",
-    "permissions",
-    "role_permissions",
-    "user_roles",
-    "roles_by_user",
-    "user_permission_grants",
-    "access_audit_logs",
-    "access_audit_by_resource",
-    "platform_user_roles",
-    "platform_role_roster",
-    "notifications",
-    "notifications_by_user",
-    "ws_tickets",
-    "student_profiles",
-    "emergency_contacts",
-    "skills",
-    "skills_by_slug",
-    "user_skills",
-    "users_by_skill",
-    "activities",
-    "activities_by_org",
-    "activities_by_status",
-    "activities_by_category",
-    "activities_by_slug",
-    "activity_categories",
-    "activity_skills",
-    "activity_partners",
-    "partner_activities_by_org",
-    "activity_schedules",
-    "schedules_by_activity",
-    "activity_staff",
-    "activity_announcements",
-    "registrations",
-    "registrations_by_activity",
-    "registrations_by_student",
-    "registrations_by_activity_student",
-    "registrations_by_token",
-    "registration_status_history",
-    "attendance_records",
-    "attendance_by_registration",
-    "attendance_by_activity",
-    "attendance_by_student",
-    "volunteer_hour_ledger",
-    "hours_by_student",
-    "hour_entries_by_student",
-    "hours_by_activity",
-    "pending_hours_by_org",
-    "hour_adjustments",
-    "certificates",
-    "certificates_by_student",
-    "certificates_by_serial",
-    "certificate_revocations",
-    "leaderboard_by_term",
-    "leaderboard_terms",
-    "reviews_by_activity",
-    "reviews_by_student",
-    "notification_preferences",
-]
-
-
 TEST_ADMIN_EMAIL = "root@amigoact.test"
+
+# Table map filled once by test_db from cluster metadata: every table in the
+# keyspace with its partition-key columns. clean_tables deletes dirty rows
+# by partition key (write path) instead of TRUNCATE (a schema op serialized
+# cluster-wide at ~0.4s per table).
+TABLE_PK: dict[str, list[str]] = {}
+
+# Counter tables must not be row-deleted: increments on tombstoned counters
+# return inconsistent values, so they still get a real TRUNCATE.
+COUNTER_TABLES: set[str] = set()
 
 
 def _test_settings() -> Settings:
@@ -268,6 +200,23 @@ def test_db() -> str:
             " bucket text, window_start timestamp, hits counter,"
             " PRIMARY KEY ((bucket), window_start))"
         )
+        raw.cluster.refresh_keyspace_metadata(TEST_KEYSPACE)
+        tables_meta = raw.cluster.metadata.keyspaces[TEST_KEYSPACE].tables
+        TABLE_PK.update(
+            {
+                name: [column.name for column in table.partition_key]
+                for name, table in tables_meta.items()
+                if "$" not in name  # Scylla LWT side-tables are not CQL-legal
+            }
+        )
+        COUNTER_TABLES.update(
+            name
+            for name, table in tables_meta.items()
+            if any(
+                column.cql_type == "counter"
+                for column in table.columns.values()
+            )
+        )
         yield TEST_KEYSPACE
     finally:
         for model, keyspace in saved.items():
@@ -276,36 +225,94 @@ def test_db() -> str:
 
 @pytest.fixture()
 def clean_tables(test_db: str) -> str:
-    """Truncate every auth table so tests never depend on order."""
+    """Empty every table that actually holds rows.
+
+    TRUNCATE is a schema operation (~0.4s per table, serialized cluster-
+    wide), so wiping all 70+ tables before every test dominated the suite.
+    Instead: a LIMIT 1 read per table pipelines to ~50ms total, then rows in
+    dirty tables are deleted by partition key — plain writes that run
+    concurrently and never wait on schema agreement. Counter tables still
+    get a real TRUNCATE because increments on tombstoned counters are
+    inconsistent. The post-fixture guarantee is unchanged: every table
+    starts empty.
+    """
     del test_db
+    if not TABLE_PK:
+        raise RuntimeError("test_db ran but no table metadata was captured")
     from cassandra.cqlengine.connection import get_session
 
     session = get_session()
-    for table in TABLES:
-        session.execute(f"TRUNCATE {TEST_KEYSPACE}.{table}")
-    # Truncating wipes the seeded catalog; re-seed so role checks work.
+    probes = {
+        table: session.execute_async(
+            f"SELECT * FROM {TEST_KEYSPACE}.{table} LIMIT 1"
+        )
+        for table in TABLE_PK
+    }
+    deletes = []
+    key_reads = []
+    for table, probe in probes.items():
+        if not probe.result().current_rows:
+            continue
+        if table in COUNTER_TABLES:
+            # Never row-delete counters (increments on tombstoned counters
+            # resurrect stale shards); a dirty probe means a real TRUNCATE.
+            session.execute(f"TRUNCATE {TEST_KEYSPACE}.{table}")
+            continue
+        columns = TABLE_PK[table]
+        key_reads.append(
+            (
+                table,
+                session.execute_async(
+                    f"SELECT {', '.join(columns)}"
+                    f" FROM {TEST_KEYSPACE}.{table}"
+                ),
+            )
+        )
+    for table, future in key_reads:
+        columns = TABLE_PK[table]
+        where = " AND ".join(f"{column} = %s" for column in columns)
+        for row in future.result():
+            deletes.append(
+                session.execute_async(
+                    f"DELETE FROM {TEST_KEYSPACE}.{table} WHERE {where}",
+                    tuple(row[column] for column in columns),
+                )
+            )
+    for future in deletes:
+        future.result()
+    # Deleting wipes the seeded catalog; re-seed so role checks work. The
+    # three seeders write disjoint tables — run them in parallel since the
+    # driver session is thread-safe.
+    from concurrent.futures import ThreadPoolExecutor
+
     from activities.seed import seed_categories
     from profiles.seed import seed_skills
     from rbac.seed import seed_rbac
 
-    seed_rbac()
-    seed_skills()
-    seed_categories()
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        list(pool.map(lambda fn: fn(), (seed_rbac, seed_skills, seed_categories)))
     return TEST_KEYSPACE
 
 
 @pytest.fixture()
 def app_client(clean_tables: str):
     """FastAPI app with test settings (overrides cleared after each test)."""
+    import core.hashing as hashing
     import main
     from core.realtime import ConnectionManager
 
+    # The app under test still exercises real Argon2id hash/verify, just
+    # with the cheap documented test params — full-cost hashing is covered
+    # by tests/unit/test_hashing.py.
+    prod_hasher = hashing._default_hasher
+    hashing._default_hasher = hashing.build_hasher(for_tests=True)
     main.app.dependency_overrides[get_settings] = _test_settings
     if getattr(main.app.state, "ws_manager", None) is None:
         main.app.state.ws_manager = ConnectionManager()
     try:
         yield main.app
     finally:
+        hashing._default_hasher = prod_hasher
         main.app.dependency_overrides.clear()
 
 

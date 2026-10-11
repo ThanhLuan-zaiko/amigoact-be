@@ -223,3 +223,4 @@ class MediaResponse(BaseModel):
     original_name: str | None = None
     upload_status: str = "active"
     created_at: datetime
+    updated_at: datetime | None = None

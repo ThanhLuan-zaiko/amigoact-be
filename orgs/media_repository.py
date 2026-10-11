@@ -103,6 +103,48 @@ class CqlMediaRepository(MediaRepository):
         )
         return self.get_asset(asset_id)
 
+    def replace_content(
+        self,
+        asset_id: UUID,
+        file_url: str,
+        mime: str,
+        size_bytes: int,
+        file_hash: str | None,
+        original_name: str | None,
+        now: datetime,
+    ) -> MediaAsset | None:
+        row = self.get_asset(asset_id)
+        if row is None:
+            return None
+        old_hash = getattr(row, "file_hash", None)
+        MediaAsset.objects(asset_id=asset_id).update(
+            file_url=file_url,
+            storage_key=file_url,
+            mime=mime,
+            size_bytes=size_bytes,
+            file_hash=file_hash,
+            original_name=original_name,
+            updated_at=now,
+        )
+        # Denormalized feeds keep file_url/mime for fan-out rendering.
+        MediaByOwner.objects(
+            owner_id=row.owner_id, created_at=row.created_at, asset_id=asset_id
+        ).update(file_url=file_url, mime=mime)
+        if row.uploader_id is not None:
+            MediaByUploader.objects(
+                uploader_id=row.uploader_id,
+                created_at=row.created_at,
+                asset_id=asset_id,
+            ).update(file_url=file_url, mime=mime)
+        # Hash index is keyed by content: re-point it at this asset.
+        # Two assets with identical bytes share one row; last writer wins.
+        if old_hash != file_hash:
+            if old_hash:
+                MediaByHash.objects(file_hash=old_hash).delete()
+            if file_hash:
+                MediaByHash.create(file_hash=file_hash, asset_id=asset_id)
+        return self.get_asset(asset_id)
+
     def delete_asset(self, asset_id: UUID) -> MediaAsset | None:
         row = self.get_asset(asset_id)
         if row is None:

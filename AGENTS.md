@@ -256,6 +256,9 @@ Every feature/fix MUST ship with all three levels. No tests = no merge.
   uv run pytest tests/regression -q
   uv run pytest -q
   ```
+- Fast full-suite run via pytest-xdist: `uv run pytest -n 4 --dist loadfile -q`. Each worker owns an isolated `amigoact_test_<worker>` keyspace (see `tests/conftest.py`), and `--dist loadfile` keeps each file on one worker. Do NOT push `-n` higher on a single-node ScyllaDB: `-n 8` oversaturates it (LWT/DELETE timeouts) and `-n 6` is already slower than `-n 4`. If `-n 4` ever flakes, retry with `-n 2`.
+- Per-test cleanup: `clean_tables` probes every table (`LIMIT 1`, pipelined) and deletes only dirty rows by partition key — plain writes, never per-test TRUNCATE schema storms. Counter tables are the exception: they are never row-deleted (increments on tombstoned counters return inconsistent values); a dirty probe gives them a real TRUNCATE. `test_db` discovers the table list from cluster metadata, so new tables are cleaned automatically.
+- The app under test hashes passwords with the cheap `build_hasher(for_tests=True)` params via `app_client`; production Argon2id parameters are still covered by `tests/unit/test_hashing.py`.
 - Rules:
   - Use fixtures/factories, isolated test keyspace, cleanup per test. No tests depending on execution order.
   - Never commit real secrets, real password hashes, or production hosts. Use test settings.

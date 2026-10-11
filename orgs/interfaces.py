@@ -158,6 +158,19 @@ class MediaRepository(ABC):
         """Update the gallery/cover/logo role, return the fresh row."""
 
     @abstractmethod
+    def replace_content(
+        self,
+        asset_id: UUID,
+        file_url: str,
+        mime: str,
+        size_bytes: int,
+        file_hash: str | None,
+        original_name: str | None,
+        now: datetime,
+    ) -> MediaAsset | None:
+        """Swap stored file metadata after a byte rewrite; feeds stay in sync."""
+
+    @abstractmethod
     def delete_asset(self, asset_id: UUID) -> MediaAsset | None:
         """Remove metadata rows, return the removed row for file cleanup."""
 

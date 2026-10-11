@@ -145,6 +145,18 @@ class FakeMedia(MediaRepository):
         row.role = role
         return row
 
+    def replace_content(self, asset_id, file_url, mime, size_bytes, file_hash, original_name, now):  # noqa: ANN001, ANN202
+        row = self.assets.get(asset_id)
+        if row is None:
+            return None
+        row.file_url = file_url
+        row.mime = mime
+        row.size_bytes = size_bytes
+        row.file_hash = file_hash
+        row.original_name = original_name
+        row.updated_at = now
+        return row
+
     def delete_asset(self, asset_id):  # noqa: ANN001, ANN202
         return self.assets.pop(asset_id, None)
 
@@ -153,17 +165,25 @@ class FakeMedia(MediaRepository):
 
 
 class FakeStore(MediaStore):
+    def __init__(self) -> None:
+        self.files: dict[str, bytes] = {}
+
     def save(self, org_id, media_id, filename, content):  # noqa: ANN001, ANN202
-        return f"orgs/{org_id}/{media_id}"
+        path = f"orgs/{org_id}/{media_id}"
+        self.files[path] = content
+        return path
 
     def save_typed(self, org_id, media_id, mime, filename, content):  # noqa: ANN001, ANN202
-        return f"orgs/{org_id}/{media_id}"
+        ext = {"image/png": ".png", "image/jpeg": ".jpg"}.get(mime.split(";")[0], "")
+        path = f"orgs/{org_id}/{media_id}{ext}"
+        self.files[path] = content
+        return path
 
     def resolve(self, relative_path):  # noqa: ANN001, ANN202
         raise ValueError("no disk")
 
     def delete_file(self, relative_path):  # noqa: ANN001, ANN202
-        return False
+        return self.files.pop(relative_path, None) is not None
 
     def delete_org_dir(self, org_id):  # noqa: ANN001, ANN202
         return False
@@ -178,13 +198,16 @@ class FakeStore(MediaStore):
         return False
 
 
-def make_media_services() -> tuple[OrgService, MediaService, FakeOrgs, FakeMedia]:
-    orgs, media = FakeOrgs(), FakeMedia()
+def make_media_services() -> (
+    tuple[OrgService, MediaService, FakeOrgs, FakeMedia, FakeStore]
+):
+    orgs, media, store = FakeOrgs(), FakeMedia(), FakeStore()
     return (
-        OrgService(orgs, media, FakeStore()),
-        MediaService(orgs, media, FakeStore()),
+        OrgService(orgs, media, store),
+        MediaService(orgs, media, store),
         orgs,
         media,
+        store,
     )
 
 
