@@ -9,6 +9,7 @@ from cassandra.cqlengine.connection import get_session
 
 from core.exceptions import SlugTakenError, TaxCodeTakenError
 from core.ids import uuid7
+from orgs.directory_feed import delete_public_feed, write_public_feed
 from orgs.interfaces import ORG_KINDS, OrgContactDetails, OrgRepository
 from orgs.media_repository import media_feeds_delete
 from orgs.model import (
@@ -58,26 +59,6 @@ def _queue_delete(org: Organization) -> None:
     """Drop the org's verification-queue row (trash or hard delete)."""
     OrganizationsByLegalStatus.objects(
         legal_status=org.legal_status or "none",
-        created_at=org.created_at,
-        org_id=org.id,
-    ).delete()
-
-
-def _public_write(org: Organization) -> None:
-    """Mirror the org into the public directory feed under its kind."""
-    OrganizationsPublic.create(
-        kind=org.org_type or "organization",
-        created_at=org.created_at,
-        org_id=org.id,
-        name=org.name,
-        slug=org.slug,
-    )
-
-
-def _public_delete(org: Organization) -> None:
-    """Pull the org out of the public directory (trash or hard delete)."""
-    OrganizationsPublic.objects(
-        kind=org.org_type or "organization",
         created_at=org.created_at,
         org_id=org.id,
     ).delete()
@@ -143,7 +124,7 @@ class CqlOrgRepository(OrgRepository):
             **_contact_fields(contact),
         )
         _queue_write(org)
-        _public_write(org)
+        write_public_feed(org)
         OrganizationMember.create(
             org_id=org_id, user_id=owner_id, status="active", joined_at=now
         )
@@ -227,7 +208,7 @@ class CqlOrgRepository(OrgRepository):
         # sits in trash; restore reclaims it (suffix fallback on clashes).
         OrganizationsBySlug.objects(slug=org.slug).delete()
         _queue_delete(org)
-        _public_delete(org)
+        delete_public_feed(org)
         Organization.objects(id=org_id).update(deleted_at=now, updated_at=now)
         return self.get_by_id(org_id)
 
@@ -258,7 +239,7 @@ class CqlOrgRepository(OrgRepository):
         fresh = self.get_by_id(org_id)
         assert fresh is not None
         _queue_write(fresh)
-        _public_write(fresh)
+        write_public_feed(fresh)
         return fresh
 
     def set_brand_media(
@@ -344,7 +325,7 @@ class CqlOrgRepository(OrgRepository):
         if org.tax_code:
             OrganizationsByTaxCode.objects(tax_code=org.tax_code).delete()
         _queue_delete(org)
-        _public_delete(org)
+        delete_public_feed(org)
         org.delete()
         return True
 
