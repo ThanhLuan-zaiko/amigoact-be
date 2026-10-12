@@ -39,7 +39,7 @@ Mọi frame là JSON `{"type": "<tên có version>", "data": {...}}`.
 | server → client | `ready.v1` | Socket đã bind user; kèm `heartbeat_seconds` |
 | server → client | `ping.v1` | Heartbeat mỗi `WS_HEARTBEAT_SECONDS` |
 | server → client | `subscribed.v1` | Join kênh thành công (`channel`, `channels`) |
-| server → client | `unsubscribed.v1` | Rời kênh thành công |
+| server → client | `unsubscribed.v1` | Rời kênh thành công; server tự gửi kèm `reason: "ACCESS_REVOKED"` khi thu hồi quyền (§3) |
 | server → client | `event.v1` | Dữ liệu live: `{"channel", "payload"}` |
 | server → client | `error.v1` | Lỗi frame: `{"code", "message", "channel"?}` |
 | client → server | `pong.v1` | Trả lời heartbeat trong `WS_PONG_TIMEOUT_SECONDS` |
@@ -62,6 +62,15 @@ Mọi frame là JSON `{"type": "<tên có version>", "data": {...}}`.
 Đăng ký bị từ chối: server gửi `error.v1` `FORBIDDEN` rồi đóng `4403`.
 Tên kênh sai cú pháp: `error.v1` `INVALID_CHANNEL`, kết nối vẫn sống.
 
+**Thu hồi quyền**: quyền chỉ được kiểm tra lúc subscribe, nên khi member
+bị `suspended`/`removed` hoặc tự `left`, adapter `WsMemberEvents`
+(`orgs/member_events.py`) gỡ `members:{org_id}` và `activities:{org_id}`
+khỏi mọi socket đang mở của người đó, gửi `unsubscribed.v1`
+`{"channel", "reason": "ACCESS_REVOKED"}` (sau event roster giải thích).
+Client đánh dấu kênh là bị từ chối và không join lại khi reconnect
+(tránh bị đóng `4403` cả socket). Kênh `attendance:{activity_id}` chưa
+được thu hồi chủ động — quyền được kiểm lại ở lần subscribe sau.
+
 ## 4. Mã đóng kết nối
 
 | Code | Nghĩa |
@@ -75,12 +84,16 @@ Tên kênh sai cú pháp: `error.v1` `INVALID_CHANNEL`, kết nối vẫn sống
 
 - `core/realtime.py` (§16.6): codec envelope, parse kênh, `ConnectionManager`
   (registry socket trong RAM — ephemeral transport, không bao giờ là fact
-  source §16.5), `heartbeat_loop`, hằng số close code.
+  source §16.5; cũng đếm socket theo user cho presence), hằng số close code.
+  `heartbeat_loop` nằm ở `core/realtime_heartbeat.py` (tách vì giới hạn 350
+  dòng — §4).
 - `realtime/` theo chuẩn 6 file: `model.py` (bảng `ws_tickets`),
   `repository.py` (`CqlWsTicketStore`, LWT consume), `interfaces.py`
-  (`WsTicketStore`, `OrgMembership`, `AttendanceAccess`), `service.py`
-  (`RealtimeService`: issue/consume ticket + `authorize`), `router.py`
-  (REST ticket + `/ws` mỏng), `schemas.py` (`WsTicketResponse`).
+  (`WsTicketStore`, `OrgMembership`, `AttendanceAccess`,
+  `PresenceDirectory`), `service.py`
+  (`RealtimeService`: issue/consume ticket + `authorize` + presence reads),
+  `router.py` (REST ticket + `/ws` mỏng), `schemas.py`
+  (`WsTicketResponse`), `presence.py` (fan-out/snapshot online).
 - Wiring: `core/dependencies.py` (`get_realtime_service`,
   `get_connection_manager` — registry tạo ở lifespan/`app.state`).
 - DB call đồng bộ (cqlengine) được bọc `asyncio.to_thread` trong handler
@@ -89,9 +102,10 @@ Tên kênh sai cú pháp: `error.v1` `INVALID_CHANNEL`, kết nối vẫn sống
   mọi socket của kênh. Resume sau reconnect đọc lại từ ScyllaDB (không
   replay RAM).
 - Publish từ code đồng bộ (service sync chạy trong endpoint async):
-  `schedule_publish(channel, payload)` xếp task lên loop đang chạy, trả
-  `False` nếu không có loop (unit test) — publish là best-effort, không
-  bao giờ làm hỏng request.
+  `schedule_publish(channel, payload)` (bọc `schedule(coro)`) xếp task
+  lên loop đang chạy, trả `False` nếu không có loop (unit test) — publish
+  là best-effort, không bao giờ làm hỏng request. `ConnectionManager`
+  giữ tham chiếu tới task cho tới khi xong (loop chỉ giữ weak reference).
 
 ### Sự kiện membership (orgs)
 
@@ -105,6 +119,43 @@ Tên kênh sai cú pháp: `error.v1` `INVALID_CHANNEL`, kết nối vẫn sống
 Kênh `notifications` cho người được mời/bị đổi — họ chưa (hoặc không
 còn) là member nên không subscribe được `members:{org_id}`. Client chỉ
 invalidate TanStack Query khi nhận event; không tin payload làm sự thật.
+
+### Sự kiện presence (online/offline)
+
+Presence đi chung kênh `members:{org_id}` nhưng payload dùng khóa
+`presence` thay vì `action`, nên client phân biệt được mutation roster
+với trạng thái kết nối:
+
+| Kênh | `payload.presence` | `payload` còn lại |
+|---|---|---|
+| `members:{org_id}` | `snapshot` | `online`: mảng `user_id` đang online |
+| `members:{org_id}` | `online` / `offline` | `user_id` |
+
+- `snapshot`: frame kế tiếp ngay sau `subscribed.v1` của lần join đầu
+  tiên vào `members:{org_id}` (chỉ member active). Roster được đọc từ DB
+  *trước* khi join; tập online được đọc ngay trước khi gửi, nên snapshot
+  không bao giờ ghi đè một transition client vừa nhận.
+- `online`: user vừa mở socket **đầu tiên** (connect/reconnect). Fan-out
+  này được `await` trước `ready.v1`, nên socket vừa kết nối không bao
+  giờ nhận transition của chính mình chen trước snapshot.
+- `offline`: user vừa đóng socket **cuối cùng** (nhiều tab không làm
+  flap — đếm theo socket trong `ConnectionManager._online`, kể cả
+  socket chết giữa `publish`). Hook offline gắn theo từng socket lúc
+  `register(..., on_offline=...)`, không phải thuộc tính chung.
+- Payload phản ánh **trạng thái hiện tại** trong registry tại thời điểm
+  publish (không phải loại transition kích hoạt): hai fan-out chạy đua
+  khi reconnect nhanh đều publish cùng trạng thái cuối, không đảo thứ tự.
+- Chỉ membership `active` tham gia cả hai phía: member `invited` hay
+  `suspended` không publish cũng không xuất hiện trong snapshot — tránh
+  lộ trạng thái socket của người chưa/ không còn trong roster. Link
+  thiếu `status` (dữ liệu cũ) được coi là `active`, khớp `is_member`.
+- Presence chỉ đến `members:{org_id}` nên chỉ member của org (đã qua
+  `authorize`) mới thấy; khi mất quyền, kênh bị thu hồi ngay (§3).
+- Giới hạn: registry nằm trong RAM của process, nên presence chỉ đúng
+  khi chạy một worker (mặc định của `fastapi run`). Scale ngang cần
+  fan-out liên process trước khi bật nhiều worker. Mỗi snapshot đọc toàn
+  bộ roster của org (không phân trang) — chấp nhận được với quy mô hiện
+  tại, cần xem lại nếu org có hàng nghìn thành viên.
 
 ### Sự kiện attendance (registrations)
 

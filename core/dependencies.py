@@ -260,8 +260,13 @@ def get_realtime_service(
 ) -> RealtimeService:
     """Build one RealtimeService per ticket/socket request."""
     from activities.repository import CqlActivityStore
+    from orgs.member_repository import CqlMemberRepository
     from orgs.repository import CqlOrgRepository
-    from realtime.access import OrgAttendanceAccess, OrgChannelMembership
+    from realtime.access import (
+        MemberPresenceDirectory,
+        OrgAttendanceAccess,
+        OrgChannelMembership,
+    )
     from realtime.repository import CqlWsTicketStore
     from realtime.service import RealtimeService
 
@@ -273,6 +278,7 @@ def get_realtime_service(
             CqlActivityStore(settings.scylla_keyspace), orgs, access
         ),
         ticket_ttl_seconds=settings.ws_ticket_ttl_seconds,
+        presence=MemberPresenceDirectory(CqlMemberRepository()),
     )
 
 

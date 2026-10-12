@@ -8,7 +8,12 @@ from uuid import UUID
 
 from core.realtime import PUBLIC_CHANNEL_SUBJECTS, Channel
 from core.security import hash_token, new_opaque_token, utcnow
-from realtime.interfaces import AttendanceAccess, OrgMembership, WsTicketStore
+from realtime.interfaces import (
+    AttendanceAccess,
+    OrgMembership,
+    PresenceDirectory,
+    WsTicketStore,
+)
 
 
 @dataclass(frozen=True)
@@ -28,11 +33,13 @@ class RealtimeService:
         membership: OrgMembership,
         attendance: AttendanceAccess | None,
         ticket_ttl_seconds: int,
+        presence: PresenceDirectory | None = None,
     ) -> None:
         self._tickets = tickets
         self._membership = membership
         self._attendance = attendance
         self._ticket_ttl = ticket_ttl_seconds
+        self._presence = presence
 
     def issue_ticket(self, user_id: UUID) -> IssuedTicket:
         """Mint an opaque ticket; only its SHA-256 hash is persisted."""
@@ -86,3 +93,19 @@ class RealtimeService:
                 else False
             )
         return False
+
+    def presence_orgs_of(self, user_id: UUID) -> list[UUID]:
+        """Orgs that observe this user's presence transitions.
+
+        Empty when the directory port is unwired, so presence silently
+        no-ops instead of failing sockets in minimal deployments.
+        """
+        if self._presence is None:
+            return []
+        return self._presence.orgs_of(user_id)
+
+    def presence_member_ids(self, org_id: UUID) -> list[UUID]:
+        """Active members of one org (the snapshot intersects online ids)."""
+        if self._presence is None:
+            return []
+        return self._presence.member_ids_of(org_id)

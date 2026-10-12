@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 
@@ -28,10 +29,11 @@ from core.realtime import (
     SubscribeFrame,
     UnknownFrame,
     UnsubscribeFrame,
-    heartbeat_loop,
     parse_channel,
     parse_client_frame,
 )
+from core.realtime_heartbeat import heartbeat_loop
+from realtime.presence import fan_presence, read_roster, send_presence_snapshot
 from realtime.schemas import WsTicketResponse
 from realtime.service import RealtimeService
 
@@ -122,27 +124,40 @@ async def _serve(
     settings: Settings,
 ) -> None:
     """Frame loop for one socket until disconnect (user_id may be None)."""
-    state = manager.register(websocket, user_id)
-    if user_id is not None:
-        manager.subscribe(websocket, f"notifications:{user_id}")
-    await manager.send(
+    was_online = user_id is not None and manager.is_online(user_id)
+    # This socket's own service fans the offline state out if it is the
+    # user's last one (scheduled: it may fire inside publish()).
+    state = manager.register(
         websocket,
-        "ready.v1",
-        {
-            "user_id": str(user_id) if user_id is not None else None,
-            "channels": sorted(state.channels),
-            "heartbeat_seconds": settings.ws_heartbeat_seconds,
-        },
+        user_id,
+        on_offline=lambda uid: manager.schedule(fan_presence(manager, service, uid)),
     )
-    heartbeat = asyncio.create_task(
-        heartbeat_loop(
-            manager,
-            websocket,
-            settings.ws_heartbeat_seconds,
-            settings.ws_pong_timeout_seconds,
-        )
-    )
+    heartbeat: asyncio.Task[None] | None = None
     try:
+        if user_id is not None:
+            manager.subscribe(websocket, f"notifications:{user_id}")
+            if not was_online:
+                # Awaited before ready.v1: the client has joined no roster
+                # channel yet, so it never sees its own transition ahead of
+                # a members:{org} snapshot.
+                await fan_presence(manager, service, user_id)
+        await manager.send(
+            websocket,
+            "ready.v1",
+            {
+                "user_id": str(user_id) if user_id is not None else None,
+                "channels": sorted(state.channels),
+                "heartbeat_seconds": settings.ws_heartbeat_seconds,
+            },
+        )
+        heartbeat = asyncio.create_task(
+            heartbeat_loop(
+                manager,
+                websocket,
+                settings.ws_heartbeat_seconds,
+                settings.ws_pong_timeout_seconds,
+            )
+        )
         while True:
             raw = await websocket.receive_text()
             if not await _dispatch(websocket, raw, state, service, manager, settings):
@@ -150,13 +165,12 @@ async def _serve(
     except WebSocketDisconnect:
         pass
     finally:
-        heartbeat.cancel()
-        try:
-            await heartbeat
-        except asyncio.CancelledError:
-            pass
-        except Exception:
-            pass
+        if heartbeat is not None:
+            heartbeat.cancel()
+            try:
+                await heartbeat
+            except (asyncio.CancelledError, Exception):
+                pass
         manager.unregister(websocket)
 
 
@@ -261,12 +275,26 @@ async def _subscribe(
         )
         await websocket.close(code=CLOSE_FORBIDDEN)
         return False
-    manager.subscribe(websocket, name)
+    # First-time members:{org} joins get the online roster snapshot so
+    # clients render presence without waiting for the next transition.
+    # The roster is read before joining: no DB wait separates
+    # subscribed.v1 from the snapshot.
+    roster: list[UUID] | None = None
+    if (
+        channel.kind == "members"
+        and channel.subject is not None
+        and state.user_id is not None
+        and name not in state.channels
+    ):
+        roster = await read_roster(service, channel.subject)
+    joined = manager.subscribe(websocket, name)
     await manager.send(
         websocket,
         "subscribed.v1",
         {"channel": name, "channels": sorted(state.channels)},
     )
+    if joined and roster is not None:
+        await send_presence_snapshot(manager, websocket, name, roster)
     return True
 
 

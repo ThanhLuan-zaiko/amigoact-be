@@ -16,6 +16,7 @@ from core.realtime import ConnectionManager
 from realtime.interfaces import (
     AttendanceAccess,
     OrgMembership,
+    PresenceDirectory,
     WsTicketStore,
 )
 from realtime.service import RealtimeService
@@ -63,17 +64,32 @@ class FakeAttendance(AttendanceAccess):
         return (activity_id, user_id) in self._pairs
 
 
+class FakePresence(PresenceDirectory):
+    """Active-membership pairs for presence fan-out and snapshots."""
+
+    def __init__(self, pairs: set[tuple[UUID, UUID]] | None = None) -> None:
+        self._pairs = pairs or set()
+
+    def orgs_of(self, user_id: UUID) -> list[UUID]:
+        return sorted(org for org, user in self._pairs if user == user_id)
+
+    def member_ids_of(self, org_id: UUID) -> list[UUID]:
+        return sorted(user for org, user in self._pairs if org == org_id)
+
+
 def make_service(
     store: MemTickets | None = None,
     members: OrgMembership | None = None,
     attendance: AttendanceAccess | None = None,
     ticket_ttl_seconds: int = 60,
+    presence: PresenceDirectory | None = None,
 ) -> RealtimeService:
     return RealtimeService(
         tickets=store or MemTickets(),
         membership=members or FakeMembership(),
         attendance=attendance,
         ticket_ttl_seconds=ticket_ttl_seconds,
+        presence=presence,
     )
 
 
@@ -103,6 +119,7 @@ def ws_app(
     attendance: AttendanceAccess | None = None,
     heartbeat: int = 120,
     pong_timeout: int = 120,
+    presence: PresenceDirectory | None = None,
 ) -> tuple[TestClient, MemTickets, RealtimeService]:
     """App with realtime deps swapped for in-memory fakes (no ScyllaDB)."""
     import main
@@ -129,7 +146,7 @@ def ws_app(
 
     store = MemTickets()
     service = RealtimeService(
-        store, members or FakeMembership(), attendance, 60
+        store, members or FakeMembership(), attendance, 60, presence
     )
     settings = Settings(
         jwt_secret="unit-test-secret-32-bytes-padded!",

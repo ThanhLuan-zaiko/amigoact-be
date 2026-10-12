@@ -2,12 +2,22 @@
 
 from __future__ import annotations
 
+from typing import Any
 from uuid import UUID
 
 from activities.interfaces import ActivityStore
-from orgs.interfaces import OrgRepository
+from orgs.interfaces import MemberRepository, OrgRepository
 from rbac.interfaces import AccessControl
-from realtime.interfaces import AttendanceAccess, OrgMembership
+from realtime.interfaces import (
+    AttendanceAccess,
+    OrgMembership,
+    PresenceDirectory,
+)
+
+
+def _is_active(row: Any) -> bool:
+    """A missing status reads as active, matching OrgRepository.is_member."""
+    return (getattr(row, "status", None) or "active") == "active"
 
 
 class OrgChannelMembership(OrgMembership):
@@ -18,6 +28,32 @@ class OrgChannelMembership(OrgMembership):
 
     def is_member(self, org_id: UUID, user_id: UUID) -> bool:
         return self._orgs.is_member(org_id, user_id)
+
+
+class MemberPresenceDirectory(PresenceDirectory):
+    """Presence reads over the org member tables.
+
+    Presence mirrors the visible roster: only members whose link is
+    "active" publish or appear in online snapshots, so suspended and
+    invited rows never leak a socket state.
+    """
+
+    def __init__(self, members: MemberRepository) -> None:
+        self._members = members
+
+    def orgs_of(self, user_id: UUID) -> list[UUID]:
+        return [
+            link.org_id
+            for link in self._members.list_links_by_user(user_id)
+            if _is_active(link)
+        ]
+
+    def member_ids_of(self, org_id: UUID) -> list[UUID]:
+        return [
+            member.user_id
+            for member in self._members.list_by_org(org_id)
+            if _is_active(member)
+        ]
 
 
 class OrgAttendanceAccess(AttendanceAccess):

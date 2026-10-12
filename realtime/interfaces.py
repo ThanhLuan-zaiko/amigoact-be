@@ -41,3 +41,20 @@ class AttendanceAccess(ABC):
     @abstractmethod
     def can_view(self, activity_id: UUID, user_id: UUID) -> bool:
         """True for staff of the org owning the activity."""
+
+
+class PresenceDirectory(ABC):
+    """Read port: org rosters for presence fan-out and snapshots.
+
+    Presence is org-scoped: transitions publish to every org the user
+    belongs to, and subscribing to members:{org} yields the online ids
+    of that roster only. Only active memberships count for either side.
+    """
+
+    @abstractmethod
+    def orgs_of(self, user_id: UUID) -> list[UUID]:
+        """Org ids where the user holds an active membership."""
+
+    @abstractmethod
+    def member_ids_of(self, org_id: UUID) -> list[UUID]:
+        """User ids holding an active membership in one org."""

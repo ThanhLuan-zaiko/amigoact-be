@@ -1,6 +1,7 @@
-"""Shared WebSocket plumbing: envelopes, channels, registry, heartbeat.
+"""Shared WebSocket plumbing: envelopes, channels, socket registry.
 
-AGENTS.md 16.6: shared handshake/ticket/heartbeat code lives here only.
+AGENTS.md 16.6: shared handshake/ticket code lives here; the heartbeat
+coroutine sits next door in core/realtime_heartbeat.py (350-line split).
 The registry is ephemeral transport state (16.5) - never authoritative;
 business facts always replay from ScyllaDB after reconnect.
 """
@@ -10,14 +11,13 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from collections.abc import Callable, Coroutine
 from dataclasses import dataclass, field
 from typing import Any, Literal
 from uuid import UUID
 
 from fastapi import WebSocket
 from pydantic import BaseModel, Field, ValidationError
-
-from core.security import utcnow
 
 logger = logging.getLogger("amigoact.realtime")
 
@@ -162,6 +162,7 @@ class ConnectionState:
 
     user_id is None for anonymous guest sockets, which may only ever
     hold public channels per the service-level authorize() gate.
+    on_offline fires if this socket turns out to be the user's last one.
     """
 
     websocket: WebSocket
@@ -170,6 +171,7 @@ class ConnectionState:
     pong_pending: bool = False
     subscribe_times: list[float] = field(default_factory=list)
     frame_times: list[float] = field(default_factory=list)
+    on_offline: Callable[[UUID], object] | None = None
 
 
 class ConnectionManager:
@@ -179,25 +181,36 @@ class ConnectionManager:
         self._connections: dict[WebSocket, ConnectionState] = {}
         self._by_channel: dict[str, set[WebSocket]] = {}
         self._loop: asyncio.AbstractEventLoop | None = None
+        # user_id -> live socket count; presence transitions derive from it.
+        self._online: dict[UUID, int] = {}
+        # The loop keeps only weak task references; hold them until done.
+        self._tasks: set[asyncio.Task[Any]] = set()
 
     def register(
-        self, websocket: WebSocket, user_id: UUID | None
+        self,
+        websocket: WebSocket,
+        user_id: UUID | None,
+        on_offline: Callable[[UUID], object] | None = None,
     ) -> ConnectionState:
         """Track a socket under its user id (None for guest sockets).
 
         Called from the async socket handler, so it also binds the app
-        loop that schedule_publish needs for threadpool callers.
+        loop that schedule() needs for threadpool callers.
         """
         try:
             self._loop = asyncio.get_running_loop()
         except RuntimeError:
             pass
-        state = ConnectionState(websocket=websocket, user_id=user_id)
+        state = ConnectionState(
+            websocket=websocket, user_id=user_id, on_offline=on_offline
+        )
         self._connections[websocket] = state
+        if user_id is not None:
+            self._online[user_id] = self._online.get(user_id, 0) + 1
         return state
 
     def unregister(self, websocket: WebSocket) -> None:
-        """Drop a socket and all of its channel subscriptions."""
+        """Drop a socket, its channels, and its presence share."""
         state = self._connections.pop(websocket, None)
         if state is None:
             return
@@ -208,6 +221,33 @@ class ConnectionManager:
             sockets.discard(websocket)
             if not sockets:
                 del self._by_channel[channel]
+        user_id = state.user_id
+        if user_id is None:
+            return
+        remaining = self._online.get(user_id, 0) - 1
+        if remaining > 0:
+            self._online[user_id] = remaining
+            return
+        self._online.pop(user_id, None)
+        if state.on_offline is not None:
+            try:
+                state.on_offline(user_id)
+            except Exception:
+                logger.debug("on_offline hook raised for %s", user_id)
+
+    def is_online(self, user_id: UUID) -> bool:
+        """True while at least one socket is bound to the user."""
+        return self._online.get(user_id, 0) > 0
+
+    def online_user_ids(self) -> set[UUID]:
+        """Snapshot of every user with at least one live socket."""
+        return set(self._online)
+
+    def sockets_of(self, user_id: UUID) -> list[WebSocket]:
+        """Every live socket bound to one user (snapshot list)."""
+        return [
+            s.websocket for s in self._connections.values() if s.user_id == user_id
+        ]
 
     def state_of(self, websocket: WebSocket) -> ConnectionState | None:
         """Live state for one socket, or None once unregistered."""
@@ -276,22 +316,22 @@ class ConnectionManager:
                 self.unregister(websocket)
         return delivered
 
-    def schedule_publish(
-        self, channel: str, payload: dict[str, Any] | None = None
-    ) -> bool:
-        """Fire-and-forget publish for sync callers.
+    def schedule(self, coro: Coroutine[Any, Any, Any]) -> bool:
+        """Run a coroutine on the app loop (or the caller's loop).
 
         Sync `def` endpoints run in the threadpool where no loop is
-        running, so the send is scheduled onto the app loop bound at
+        running, so the work is scheduled onto the app loop bound at
         register() via run_coroutine_threadsafe. Callers with neither a
         running loop nor a bound one (scripts) get False and no attempt.
         """
-        coro = self.publish(channel, payload)
         try:
-            asyncio.get_running_loop().create_task(coro)
-            return True
+            task = asyncio.get_running_loop().create_task(coro)
         except RuntimeError:
             pass
+        else:
+            self._tasks.add(task)
+            task.add_done_callback(self._tasks.discard)
+            return True
         loop = self._loop
         if loop is not None and not loop.is_closed():
             try:
@@ -302,42 +342,8 @@ class ConnectionManager:
         coro.close()
         return False
 
-
-async def heartbeat_loop(
-    manager: ConnectionManager,
-    websocket: WebSocket,
-    interval_seconds: int,
-    pong_timeout_seconds: int,
-) -> None:
-    """Server heartbeat: ping.v1 per cycle, close 4408 on missed pong.
-
-    Each cycle sleeps interval_seconds, pings, then grants the client
-    pong_timeout_seconds to answer before closing the socket.
-    """
-    if interval_seconds < 1 or pong_timeout_seconds < 1:
-        return
-    try:
-        while True:
-            await asyncio.sleep(interval_seconds)
-            state = manager.state_of(websocket)
-            if state is None:
-                return
-            state.pong_pending = True
-            try:
-                await manager.send(
-                    websocket, "ping.v1", {"ts": utcnow().isoformat()}
-                )
-            except Exception:
-                return
-            await asyncio.sleep(pong_timeout_seconds)
-            state = manager.state_of(websocket)
-            if state is None:
-                return
-            if state.pong_pending:
-                try:
-                    await websocket.close(code=CLOSE_PONG_TIMEOUT)
-                except Exception:
-                    pass
-                return
-    except asyncio.CancelledError:
-        return
+    def schedule_publish(
+        self, channel: str, payload: dict[str, Any] | None = None
+    ) -> bool:
+        """Fire-and-forget publish for sync callers."""
+        return self.schedule(self.publish(channel, payload))
