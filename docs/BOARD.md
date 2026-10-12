@@ -1,0 +1,73 @@
+# Bảng tin bài viết — `posts/`
+
+## 1. Tổng quan
+
+Bảng tin tổ chức là không gian viết bài dạng báo/blog: nội dung là danh sách
+`blocks` có kiểu (đoạn văn, tiêu đề phụ, trích dẫn, danh sách, ảnh, video,
+đường kẻ), kèm `title`, `cover_media_id` và `kind` (`discussion` mặc định,
+`announcement` cần `post:announce`).
+
+Vòng đời bài viết giống CRUD tổ chức: tạo/sửa/đăng, chuyển về nháp, xóa mềm
+vào thùng rác, khôi phục, xóa cứng. Hai trục trạng thái độc lập:
+
+- `status`: `draft` (nháp riêng tư của tác giả) ↔ `active` (đã đăng; API trả
+  `published`).
+- `deleted_at`: khác `None` nghĩa là đang ở thùng rác — trùng được với cả hai
+  trạng thái trên và khôi phục sẽ trả về đúng trạng thái cũ.
+
+Bảng canonical `org_posts` cộng ba projection: `org_posts_feed` (đã đăng,
+mới nhất trước), `org_posts_pinned` (rail ghim), `org_post_drafts`
+(nháp của từng tác giả), `org_posts_trash` (toàn org). Media đính kèm ở
+`org_post_media`; comment ở `org_post_comments` + `org_post_comment_counts`.
+
+## 2. Khối nội dung (`posts/blocks.py`)
+
+| `type` | Trường bắt buộc | Ghi chú |
+|---|---|---|
+| `paragraph` | `text` | Đoạn văn thường |
+| `heading` | `text`, `level` ∈ {2,3} | Tiêu đề phụ trong bài |
+| `quote` | `text`, `cite` | Trích dẫn + nguồn (có thể rỗng) |
+| `list` | `ordered`, `items[]` | Danh sách gạch đầu dòng/đánh số |
+| `image` | `asset_id`, `caption` | asset phải là media của org |
+| `video` | `asset_id`, `caption` | asset phải là media của org |
+| `divider` | — | Đường kẻ ngang |
+
+Khối media chỉ giữ `asset_id`; URL file phân giải lúc đọc qua `media[]` của
+response (role `attachment`, không vào gallery). Tương thích ngược: bài cũ
+`body` + `media_ids` vẫn hợp lệ — `blocks` rỗng thì client render `body` và
+dải ảnh như trước. Giới hạn: tối đa `MAX_BLOCKS` khối, media block ≤ 4.
+
+## 3. API
+
+Route tĩnh `/posts/drafts`, `/posts/trash` khai trước `/{post_id}` để không
+bị shadow. Phân trang số trang `limit` + `page` (mặc định 1), response kèm
+`total`; trang đầu của feed kèm `pinned[]` và `viewer_permissions`. Comment
+vẫn phân trang cursor `next_cursor`.
+
+| Thao tác | Endpoint | Quyền / trạng thái |
+|---|---|---|
+| Feed đã đăng | `GET /orgs/{id}/posts?kind=&page=` | member |
+| Nháp của tôi | `GET /orgs/{id}/posts/drafts` | member (chỉ bài mình) |
+| Thùng rác | `GET /orgs/{id}/posts/trash` | member thấy bài mình; manager thấy hết |
+| Chi tiết | `GET /orgs/{id}/posts/{post}` | member; nháp chỉ tác giả đọc |
+| Tạo | `POST /orgs/{id}/posts` | member; `status=draft` cho nháp |
+| Sửa | `PATCH /orgs/{id}/posts/{post}` | chỉ tác giả; `kind` đổi được khi còn nháp |
+| Đăng nháp | `POST .../publish` | tác giả (announcement cần `post:announce`) |
+| Về nháp | `POST .../unpublish` | tác giả |
+| Ghim/bỏ ghim | `POST .../pin` `POST .../unpin` | manager |
+| Xóa mềm | `DELETE .../posts/{post}` | tác giả hoặc manager → `204` |
+| Khôi phục | `POST .../restore` | tác giả hoặc manager |
+| Xóa cứng | `DELETE .../posts/{post}?hard=true` | tác giả hoặc manager → `204`, xóa luôn comment + media link |
+| Comment | `GET/POST/DELETE .../comments` | member; xóa bởi tác giả comment hoặc manager |
+
+Lỗi riêng: `INVALID_POST_STATE` (đăng bài đã đăng, khôi phục bài không ở thùng
+rác…), `POST_CONTENT_REQUIRED`, `POST_TITLE_REQUIRED` (announcement đăng cần
+tiêu đề). Validate nội dung: đã đăng bắt buộc có nội dung; nháp chỉ cần
+không rỗng hoàn toàn (title/cover/khối bất kỳ).
+
+## 4. Realtime
+
+Mọi thay đổi bảng tin phát lên kênh `posts:{org_id}` với `action` ∈
+`post.created | post.updated | post.deleted | post.pinned | post.unpinned |
+post.unpublished | post.restored | post.purged` kèm `post_id`, `actor_id`
+(`detail` = kind khi tạo/đăng). Client invalidate query, không mutate cache.

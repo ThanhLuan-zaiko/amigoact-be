@@ -191,6 +191,8 @@ def test_db() -> str:
         post_models.OrgPost,
         post_models.OrgPostFeed,
         post_models.OrgPostPinned,
+        post_models.OrgPostDraft,
+        post_models.OrgPostTrash,
         post_models.OrgPostMedia,
         post_models.OrgPostComment,
         chat_models.OrgRoomMessage,

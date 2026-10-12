@@ -13,7 +13,11 @@ from cassandra.cqlengine import columns, models
 
 
 class OrgPost(models.Model):
-    """Canonical post row; detail/edit/delete lookups by primary key."""
+    """Canonical post row; detail/edit/delete lookups by primary key.
+
+    status is the publish state (active = published | draft); trash is
+    the orthogonal deleted_at stamp so restore returns to that state.
+    """
 
     __table_name__ = "org_posts"
     __keyspace__ = "amigoact"
@@ -23,16 +27,24 @@ class OrgPost(models.Model):
     author_id = columns.UUID(required=True)
     kind = columns.Text(required=True, default="discussion")
     title = columns.Text(required=False, default="")
-    body = columns.Text(required=True)
+    body = columns.Text(required=False, default="")
+    blocks_json = columns.Text(required=False, default="")
+    cover_media_id = columns.UUID(required=False)
     status = columns.Text(required=True, default="active")
     pinned_at = columns.DateTime(required=False)
     edited_at = columns.DateTime(required=False)
+    published_at = columns.DateTime(required=False)
+    deleted_at = columns.DateTime(required=False)
     created_at = columns.DateTime(required=True)
     updated_at = columns.DateTime(required=True)
 
 
 class OrgPostFeed(models.Model):
-    """Org board, newest first; slim rows re-read OrgPost per item."""
+    """Org board, newest first; slim rows re-read OrgPost per item.
+
+    kind is denormalized so kind-filtered page totals and windows never
+    have to load the canonical row for every scanned id.
+    """
 
     __table_name__ = "org_posts_feed"
     __keyspace__ = "amigoact"
@@ -41,6 +53,7 @@ class OrgPostFeed(models.Model):
     post_id = columns.UUID(
         primary_key=True, clustering_order="DESC", default=uuid7
     )
+    kind = columns.Text(required=True, default="discussion")
 
 
 class OrgPostPinned(models.Model):
@@ -53,6 +66,37 @@ class OrgPostPinned(models.Model):
     post_id = columns.UUID(
         primary_key=True, clustering_order="DESC", default=uuid7
     )
+
+
+class OrgPostDraft(models.Model):
+    """One author's unpublished drafts inside one org, newest first."""
+
+    __table_name__ = "org_post_drafts"
+    __keyspace__ = "amigoact"
+
+    org_id = columns.UUID(primary_key=True, partition_key=True)
+    author_id = columns.UUID(primary_key=True, partition_key=True)
+    post_id = columns.UUID(
+        primary_key=True, clustering_order="DESC", default=uuid7
+    )
+
+
+class OrgPostTrash(models.Model):
+    """Soft-deleted posts of one org; author_id lets authors see theirs.
+
+    status is the publish state at delete time so managers can skip
+    trashed drafts without loading every canonical row.
+    """
+
+    __table_name__ = "org_posts_trash"
+    __keyspace__ = "amigoact"
+
+    org_id = columns.UUID(primary_key=True, partition_key=True)
+    post_id = columns.UUID(
+        primary_key=True, clustering_order="DESC", default=uuid7
+    )
+    author_id = columns.UUID(required=True)
+    status = columns.Text(required=True, default="active")
 
 
 class OrgPostMedia(models.Model):

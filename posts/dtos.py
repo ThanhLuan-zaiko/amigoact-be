@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
+from typing import Any
 from uuid import UUID
 
 
@@ -18,7 +19,10 @@ class PostMediaBrief:
 
 @dataclass(frozen=True)
 class PostSnapshot:
-    """Post row joined with author, attachments and comment total."""
+    """Post row joined with author, attachments and comment total.
+
+    status is the public publish state ("published" | "draft").
+    """
 
     post_id: UUID
     org_id: UUID
@@ -32,15 +36,33 @@ class PostSnapshot:
     media: list[PostMediaBrief] = field(default_factory=list)
     comment_count: int = 0
     created_at: datetime | None = None
+    status: str = "published"
+    blocks: list[dict[str, Any]] = field(default_factory=list)
+    cover_media_id: UUID | None = None
+    published_at: datetime | None = None
+    deleted_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
+@dataclass(frozen=True)
+class PostContent:
+    """Validated article payload handed from the router to the service."""
+
+    title: str
+    body: str
+    blocks: list[Any] | None = None
+    cover_media_id: UUID | None = None
+    touch_cover: bool = True
+    kind: str | None = None
 
 
 @dataclass(frozen=True)
 class PostPage:
-    """One board page plus the caller's capabilities inside the org."""
+    """One numbered board page plus the caller's org capabilities."""
 
     items: list[PostSnapshot]
     pinned: list[PostSnapshot]
-    next_cursor: str | None
+    total: int
     viewer_role: str
     viewer_permissions: list[str]
 

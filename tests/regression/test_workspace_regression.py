@@ -19,9 +19,12 @@ POST_FIELDS = {
     "post_id", "org_id", "author_id", "author_name", "kind", "title",
     "body", "pinned_at", "edited_at", "media", "comment_count",
     "created_at",
+    # Article fields (block editor, drafts, trash).
+    "status", "blocks", "cover_media_id", "published_at", "deleted_at",
+    "updated_at",
 }
 PAGE_FIELDS = {
-    "items", "pinned", "next_cursor", "viewer_role", "viewer_permissions",
+    "items", "pinned", "total", "viewer_role", "viewer_permissions",
 }
 CHAT_PAGE_FIELDS = {
     "items", "next_cursor", "unread", "last_read_message_id",
@@ -45,6 +48,29 @@ async def test_post_page_contract(client: AsyncClient) -> None:
     assert set(page.json()) == PAGE_FIELDS
     assert page.json()["viewer_role"] == "owner"
     assert page.json()["viewer_permissions"] == []
+
+
+async def test_legacy_post_and_static_routes(client: AsyncClient) -> None:
+    """Body-only posts still publish; /drafts and /trash are not shadowed
+    by /posts/{post_id}; plain DELETE stays 204 + 404 on read (now soft)."""
+    org_id, owner_h, _, _ = await _org_with_member(client, "rg-art")
+    base = f"/orgs/{org_id}/posts"
+    made = await client.post(
+        base, json={"kind": "discussion", "body": "x"}, headers=owner_h
+    )
+    assert made.status_code == 201
+    assert made.json()["status"] == "published"
+    assert made.json()["blocks"] == []
+    for path in ("drafts", "trash"):
+        page = await client.get(f"{base}/{path}", headers=owner_h)
+        assert page.status_code == 200
+        assert set(page.json()) == PAGE_FIELDS
+    post_id = made.json()["post_id"]
+    deleted = await client.delete(f"{base}/{post_id}", headers=owner_h)
+    assert deleted.status_code == 204
+    ghost = await client.get(f"{base}/{post_id}", headers=owner_h)
+    assert ghost.status_code == 404
+    assert ghost.json()["code"] == "NOT_FOUND"
 
 
 async def test_chat_page_contract_and_sender_read(
@@ -90,12 +116,16 @@ async def test_member_gate_error_envelope(client: AsyncClient) -> None:
 
 
 async def test_malformed_cursors_do_not_500(client: AsyncClient) -> None:
-    """Garbage cursors degrade to a normal first page, never a crash."""
+    """Garbage params degrade cleanly: ignored extras, 422 on bad page."""
     org_id, owner_h, _, _ = await _org_with_member(client, "rg-cursor")
     posts = await client.get(
         f"/orgs/{org_id}/posts?cursor=not-a-uuid", headers=owner_h
     )
     assert posts.status_code == 200
+    bad_page = await client.get(
+        f"/orgs/{org_id}/posts?page=abc", headers=owner_h
+    )
+    assert bad_page.status_code == 422
     chat = await client.get(
         f"/orgs/{org_id}/chat/messages?cursor=bb:garbage",
         headers=owner_h,

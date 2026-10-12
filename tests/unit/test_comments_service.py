@@ -8,6 +8,7 @@ import pytest
 
 from core.exceptions import ForbiddenError, NotFoundError
 from posts.comments_service import CommentService
+from posts.lifecycle_service import PostLifecycleService
 from posts.service import PostService
 from tests.unit.member_fakes import (
     FakeAccess,
@@ -125,11 +126,19 @@ def test_comment_guards() -> None:
         svc.delete_comment(org_id, post_id, _uid(), owner)
 
 
-def test_delete_post_wipes_comment_partition() -> None:
-    (svc, posts_svc, comments, _, _, _, _, _, org_id,
-     owner) = _service()
+def test_soft_delete_keeps_thread_hard_delete_wipes_it() -> None:
+    (svc, posts_svc, comments, orgs, members, users, access, events,
+     org_id, owner) = _service()
+    lifecycle = PostLifecycleService(
+        posts_svc._posts, comments, orgs, members, users, FakeMedia(),
+        access, events,
+    )
     post_id = _post(posts_svc, org_id, owner)
     svc.add_comment(org_id, post_id, owner, "gone soon")
-    posts_svc.delete_post(org_id, post_id, owner)
+    lifecycle.soft_delete(org_id, post_id, owner)
+    assert comments.count(post_id) == 1  # trash keeps the thread
+    with pytest.raises(NotFoundError):  # but trashed posts take no comments
+        svc.add_comment(org_id, post_id, owner, "late")
+    lifecycle.hard_delete(org_id, post_id, owner)
     assert comments.count(post_id) == 0
     assert comments.comments.get(post_id) in (None, [])

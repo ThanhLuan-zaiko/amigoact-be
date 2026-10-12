@@ -11,7 +11,8 @@ import uuid_utils
 
 from chat.interfaces import ChatEvents, ChatStore
 from notifications.interfaces import NotificationPort
-from posts.interfaces import CommentStore, PostEvents, PostStore
+from posts.interfaces import CommentStore, PostEvents
+from tests.unit.post_fakes import FakePostStore  # noqa: F401 - re-export
 from tests.unit.member_fakes import (
     FakeAccess,
     FakeMembers,
@@ -41,73 +42,6 @@ def add_org(
     members.put(org_id, owner_id, "active", NOW)
     users.add(owner_id, f"owner-{str(org_id)[:4]}@example.com", "Owner")
     return org_id
-
-
-class FakePostStore(PostStore):
-    """Canonical rows plus sorted feed/pin/media projections."""
-
-    def __init__(self) -> None:
-        self.posts: dict[UUID, Any] = {}
-        self.feed: dict[UUID, list[UUID]] = {}
-        self.pinned: dict[UUID, list[UUID]] = {}
-        self.media: dict[UUID, list[Any]] = {}
-
-    def create(self, post_id, org_id, author_id, kind, title, body, media_ids, now):  # noqa: ANN001, ANN202
-        row = SimpleNamespace(
-            post_id=post_id, org_id=org_id, author_id=author_id,
-            kind=kind, title=title, body=body, status="active",
-            pinned_at=None, edited_at=None,
-            created_at=now, updated_at=now,
-        )
-        self.posts[post_id] = row
-        feed = self.feed.setdefault(org_id, [])
-        feed.append(post_id)
-        feed.sort(reverse=True)
-        self.media[post_id] = [
-            SimpleNamespace(post_id=post_id, position=i, asset_id=a)
-            for i, a in enumerate(media_ids)
-        ]
-        return row
-
-    def get(self, post_id):  # noqa: ANN001, ANN202
-        return self.posts.get(post_id)
-
-    def list_feed(self, org_id, cursor, limit):  # noqa: ANN001, ANN202
-        rows = self.feed.get(org_id, [])
-        return [
-            p for p in rows if cursor is None or p < cursor
-        ][:limit]
-
-    def list_pinned(self, org_id, limit=5):  # noqa: ANN001, ANN202
-        return self.pinned.get(org_id, [])[:limit]
-
-    def update_body(self, post, title, body, now):  # noqa: ANN001, ANN202
-        post.title = title
-        post.body = body
-        post.edited_at = now
-        post.updated_at = now
-
-    def set_pinned(self, post, pinned_at, now):  # noqa: ANN001, ANN202
-        post.pinned_at = pinned_at
-        post.updated_at = now
-        rows = self.pinned.setdefault(post.org_id, [])
-        if pinned_at is None:
-            if post.post_id in rows:
-                rows.remove(post.post_id)
-        elif post.post_id not in rows:
-            rows.append(post.post_id)
-            rows.sort(reverse=True)
-
-    def delete(self, post):  # noqa: ANN001, ANN202
-        self.posts.pop(post.post_id, None)
-        if post.org_id in self.feed and post.post_id in self.feed[post.org_id]:
-            self.feed[post.org_id].remove(post.post_id)
-        if post.org_id in self.pinned and post.post_id in self.pinned[post.org_id]:
-            self.pinned[post.org_id].remove(post.post_id)
-        self.media.pop(post.post_id, None)
-
-    def list_media(self, post_id):  # noqa: ANN001, ANN202
-        return list(self.media.get(post_id, []))
 
 
 class FakeCommentStore(CommentStore):

@@ -30,10 +30,10 @@
 //   file-registry fields on media_assets, skills matching, activity
 //   partners, legal org identity, per-registration check-in tokens, and
 //   hour approval queues. Everything is re-modeled query-first: no joins.
-// - 111 tables total: 9 auth + 11 org + 14 rbac + 7 student/skills
+// - 113 tables total: 9 auth + 11 org + 14 rbac + 7 student/skills
 //   + 13 activity + 8 registration + 9 attendance + 6 hours
 //   + 5 certificate + 6 media + 3 notification + 4 report + 2 review
-//   + 3 durability + 1 realtime + 10 feed/chat.
+//   + 3 durability + 1 realtime + 12 feed/chat.
 // =============================================================================
 
 CREATE KEYSPACE IF NOT EXISTS amigoact
@@ -1266,7 +1266,7 @@ CREATE TABLE IF NOT EXISTS ws_tickets (
 ) WITH default_time_to_live = 300;
 
 // -----------------------------------------------------------------------------
-// 16. ORG FEED & CHAT (8 tables)
+// 16. ORG FEED & CHAT (12 tables)
 // The member workspace: org-scoped posts (announcement | discussion) with
 // pins, media links and flat comments, plus one org-wide chat room. Ids are
 // UUIDv7 so clustering by the id itself gives time order; that makes the
@@ -1274,6 +1274,13 @@ CREATE TABLE IF NOT EXISTS ws_tickets (
 // -----------------------------------------------------------------------------
 
 // Canonical post row; single-partition lookups for detail/edit/delete.
+// Articles: blocks_json holds the typed block list (paragraph, heading,
+// quote, list, image, video, divider; media blocks carry asset ids only),
+// body is its plain-text projection. status is the publish state; trash
+// is the orthogonal deleted_at stamp so restore returns to that state.
+// (deployed keyspaces: ALTER TABLE org_posts ADD blocks_json text,
+//  ADD cover_media_id uuid, ADD published_at timestamp,
+//  ADD deleted_at timestamp)
 CREATE TABLE IF NOT EXISTS org_posts (
     post_id uuid PRIMARY KEY,
     org_id uuid,
@@ -1281,18 +1288,48 @@ CREATE TABLE IF NOT EXISTS org_posts (
     kind text, // announcement | discussion
     title text,
     body text,
-    status text, // active | deleted
+    blocks_json text,
+    cover_media_id uuid,
+    status text, // active (published) | draft
     pinned_at timestamp,
     edited_at timestamp,
+    published_at timestamp,
+    deleted_at timestamp, // set = in the trash (soft delete)
     created_at timestamp,
     updated_at timestamp
 );
 
+// One author's unpublished drafts inside one org, newest first. Drafts
+// never touch org_posts_feed, so the board and its realtime fan-out stay
+// silent until publish.
+CREATE TABLE IF NOT EXISTS org_post_drafts (
+    org_id uuid,
+    author_id uuid,
+    post_id uuid,
+    PRIMARY KEY ((org_id, author_id), post_id)
+) WITH CLUSTERING ORDER BY (post_id DESC);
+
+// Soft-deleted posts of one org (the trash bin), newest post first.
+// author_id lets authors list only their own rows; status is the publish
+// state at delete time so managers can skip trashed drafts (and page
+// totals) without loading the canonical rows.
+// (deployed keyspaces: ALTER TABLE org_posts_trash ADD status text)
+CREATE TABLE IF NOT EXISTS org_posts_trash (
+    org_id uuid,
+    post_id uuid,
+    author_id uuid,
+    status text,
+    PRIMARY KEY ((org_id), post_id)
+) WITH CLUSTERING ORDER BY (post_id DESC);
+
 // Org board, newest first. Rows join back to org_posts at read time;
-// post_id IS the cursor (uuid7 ordering, no timestamp ties).
+// post_id IS the cursor (uuid7 ordering, no timestamp ties). kind is
+// denormalized for filtered page windows and totals.
+// (deployed keyspaces: ALTER TABLE org_posts_feed ADD kind text)
 CREATE TABLE IF NOT EXISTS org_posts_feed (
     org_id uuid,
     post_id uuid,
+    kind text,
     PRIMARY KEY ((org_id), post_id)
 ) WITH CLUSTERING ORDER BY (post_id DESC);
 

@@ -22,14 +22,47 @@ def parse_cursor(cursor: str | None) -> UUID | None:
         return None
 
 
+def is_trashed(row: OrgPost) -> bool:
+    return getattr(row, "deleted_at", None) is not None
+
+
+def is_draft(row: OrgPost) -> bool:
+    return (row.status or "active") == "draft"
+
+
 def post_or_404(posts: PostStore, org_id: UUID, post_id: UUID) -> OrgPost:
-    """Load a live post inside one org or fail with 404."""
+    """Load a published, non-trashed post inside one org or fail with 404."""
     row = posts.get(post_id)
     if (
         row is None
         or row.org_id != org_id
         or (row.status or "active") != "active"
+        or is_trashed(row)
     ):
+        raise NotFoundError("Post not found.")
+    return row
+
+
+def visible_post_or_404(
+    posts: PostStore, org_id: UUID, post_id: UUID, viewer_id: UUID
+) -> OrgPost:
+    """Published post, or the viewer's own draft; trash reads as 404."""
+    row = posts.get(post_id)
+    if (
+        row is None
+        or row.org_id != org_id
+        or is_trashed(row)
+        or (row.status or "active") not in ("active", "draft")
+        or (is_draft(row) and row.author_id != viewer_id)
+    ):
+        raise NotFoundError("Post not found.")
+    return row
+
+
+def any_post_or_404(posts: PostStore, org_id: UUID, post_id: UUID) -> OrgPost:
+    """Any state (live, draft or trashed) inside one org, else 404."""
+    row = posts.get(post_id)
+    if row is None or row.org_id != org_id:
         raise NotFoundError("Post not found.")
     return row
 

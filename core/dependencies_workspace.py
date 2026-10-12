@@ -21,6 +21,7 @@ if TYPE_CHECKING:
     from chat.service import ChatService
     from notifications.service import NotificationService
     from posts.comments_service import CommentService
+    from posts.lifecycle_service import PostLifecycleService
     from posts.service import PostService
     from rbac.interfaces import AccessControl
 
@@ -49,6 +50,35 @@ def get_post_service(
         access=access,
         events=WsPostEvents(getattr(request.app.state, "ws_manager", None)),
         notifications=notifications,
+    )
+
+
+def get_post_lifecycle_service(
+    request: Request,
+    settings: Settings = Depends(get_settings),
+    access: AccessControl = Depends(get_access_control),
+    notifications: NotificationService = Depends(get_notification_service),
+) -> PostLifecycleService:
+    """Drafts, publish moves and the trash bin (hard delete purges files)."""
+    from core.media import LocalMediaStore
+    from orgs.media_repository import CqlMediaRepository
+    from orgs.member_repository import CqlMemberRepository
+    from orgs.repository import CqlOrgRepository
+    from posts.events import WsPostEvents
+    from posts.lifecycle_service import PostLifecycleService
+    from posts.repository import CqlCommentStore, CqlPostStore
+
+    return PostLifecycleService(
+        posts=CqlPostStore(settings.scylla_keyspace),
+        comments=CqlCommentStore(settings.scylla_keyspace),
+        orgs=CqlOrgRepository(settings.scylla_keyspace),
+        members=CqlMemberRepository(),
+        users=user_directory(settings),
+        media=CqlMediaRepository(),
+        access=access,
+        events=WsPostEvents(getattr(request.app.state, "ws_manager", None)),
+        notifications=notifications,
+        files=LocalMediaStore(settings.media_root),
     )
 
 

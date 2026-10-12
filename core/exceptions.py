@@ -227,6 +227,21 @@ class ReviewExistsError(DomainError):
     status = 409
 
 
+class InvalidPostStateError(DomainError):
+    code = "INVALID_POST_STATE"
+    status = 400
+
+
+class PostContentRequiredError(DomainError):
+    code = "POST_CONTENT_REQUIRED"
+    status = 400
+
+
+class PostTitleRequiredError(DomainError):
+    code = "POST_TITLE_REQUIRED"
+    status = 400
+
+
 async def domain_error_handler(_: Request, exc: DomainError) -> JSONResponse:
     """Render every domain failure as {"code": ..., "message": ...}."""
     return JSONResponse(
