@@ -82,9 +82,11 @@ def test_db() -> str:
     import admin.model as admin_models
     import auth.model as models
     import certificates.model as cert_models
+    import chat.model as chat_models
     import hours.model as hour_models
     import notifications.model as notification_models
     import orgs.model as org_models
+    import posts.model as post_models
     import profiles.model as profile_models
     import rbac.model as rbac_models
     import realtime.model as realtime_models
@@ -186,6 +188,15 @@ def test_db() -> str:
         cert_models.CertificatesBySerial,
         cert_models.CertificateRevocation,
         realtime_models.WsTicket,
+        post_models.OrgPost,
+        post_models.OrgPostFeed,
+        post_models.OrgPostPinned,
+        post_models.OrgPostMedia,
+        post_models.OrgPostComment,
+        chat_models.OrgRoomMessage,
+        chat_models.OrgRoomRead,
+        chat_models.OrgDmPair,
+        chat_models.OrgDmRoom,
     ]
     saved = {model: model.__keyspace__ for model in targets}
     try:
@@ -200,6 +211,11 @@ def test_db() -> str:
             f"CREATE TABLE IF NOT EXISTS {TEST_KEYSPACE}.auth_rate_limits ("
             " bucket text, window_start timestamp, hits counter,"
             " PRIMARY KEY ((bucket), window_start))"
+        )
+        raw.execute(
+            f"CREATE TABLE IF NOT EXISTS"
+            f" {TEST_KEYSPACE}.org_post_comment_counts ("
+            " post_id uuid PRIMARY KEY, comments counter)"
         )
         raw.cluster.refresh_keyspace_metadata(TEST_KEYSPACE)
         tables_meta = raw.cluster.metadata.keyspaces[TEST_KEYSPACE].tables

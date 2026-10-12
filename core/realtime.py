@@ -1,9 +1,8 @@
 """Shared WebSocket plumbing: envelopes, channels, socket registry.
 
-AGENTS.md 16.6: shared handshake/ticket code lives here; the heartbeat
-coroutine sits next door in core/realtime_heartbeat.py (350-line split).
-The registry is ephemeral transport state (16.5) - never authoritative;
-business facts always replay from ScyllaDB after reconnect.
+AGENTS.md 16.6: shared handshake/ticket code lives here (heartbeat sits
+in core/realtime_heartbeat.py). The registry is ephemeral transport
+state (16.5); business facts always replay from ScyllaDB on reconnect.
 """
 
 from __future__ import annotations
@@ -28,11 +27,8 @@ CLOSE_FORBIDDEN = 4403
 CLOSE_PONG_TIMEOUT = 4408
 
 CHANNEL_KINDS = (
-    "notifications",
-    "attendance",
-    "activities",
-    "members",
-    "orgs",
+    "notifications", "attendance", "activities", "members", "orgs",
+    "posts", "chat",
 )
 
 # Public kinds carry a fixed literal subject instead of a UUID.
@@ -80,6 +76,12 @@ class UnsubscribeFrame(SubscribeFrame):
     type: Literal["unsubscribe.v1"] = "unsubscribe.v1"
 
 
+class TypingFrame(SubscribeFrame):
+    """Ephemeral typing ping for chat channels; relayed, never stored."""
+
+    type: Literal["typing.v1"] = "typing.v1"
+
+
 @dataclass(frozen=True)
 class UnknownFrame:
     """Unrecognized type: logged and ignored, never crashes (16.4)."""
@@ -87,13 +89,15 @@ class UnknownFrame:
     frame_type: str
 
 
-ClientFrame = PingFrame | PongFrame | SubscribeFrame | UnsubscribeFrame | UnknownFrame
+ClientFrame = (PingFrame | PongFrame | SubscribeFrame | UnsubscribeFrame
+               | TypingFrame | UnknownFrame)
 
 _FRAMES: dict[str, type[_Frame]] = {
     "ping.v1": PingFrame,
     "pong.v1": PongFrame,
     "subscribe.v1": SubscribeFrame,
     "unsubscribe.v1": UnsubscribeFrame,
+    "typing.v1": TypingFrame,
 }
 
 
@@ -110,11 +114,8 @@ def encode_envelope(
 
 
 def parse_client_frame(raw: str) -> ClientFrame:
-    """Decode one client frame.
-
-    Unknown types return UnknownFrame (ignored upstream). Malformed JSON
-    or invalid known-type payloads raise BadFrameError (close 4400).
-    """
+    """Decode one frame; unknown types return UnknownFrame, malformed
+    JSON or bad payloads raise BadFrameError (close 4400)."""
     try:
         payload = json.loads(raw)
     except json.JSONDecodeError as exc:

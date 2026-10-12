@@ -18,6 +18,9 @@ PERMISSIONS: dict[str, str] = {
     "activity:view": "View draft and internal activity details.",
     "activity:create": "Create activities inside the org.",
     "activity:manage": "Publish, edit, staff, and cancel activities.",
+    "post:announce": "Publish announcements on the org board.",
+    "post:manage": "Pin, edit or remove any org post or comment.",
+    "chat:manage": "Remove chat messages of other members.",
 }
 
 # Permissions a custom org role may carry. media:upload stays out:
@@ -53,6 +56,9 @@ SYSTEM_ROLES: dict[str, dict[str, object]] = {
             "activity:view",
             "activity:create",
             "activity:manage",
+            "post:announce",
+            "post:manage",
+            "chat:manage",
         },
     },
 }

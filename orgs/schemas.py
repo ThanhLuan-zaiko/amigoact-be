@@ -19,7 +19,7 @@ _WEBSITE_SHAPE = re.compile(
 )
 
 OrgKind = Literal["organization", "club", "group", "business"]
-MediaRole = Literal["gallery", "cover", "logo"]
+MediaRole = Literal["gallery", "cover", "logo", "attachment"]
 OrgSort = Literal["newest", "name", "members"]
 JoinPolicy = Literal["invite", "open"]
 

@@ -114,11 +114,13 @@ from admin.router import router as admin_router  # noqa: E402
 from audit.router import router as audit_router  # noqa: E402
 from auth.router import router as auth_router  # noqa: E402
 from certificates.router import router as certificates_router  # noqa: E402
+from chat.router import router as chat_router  # noqa: E402
 from hours.router import router as hours_router  # noqa: E402
 from notifications.router import router as notifications_router  # noqa: E402
 from orgs.members_router import router as members_router  # noqa: E402
 from orgs.public_router import router as orgs_public_router  # noqa: E402
 from orgs.router import router as orgs_router  # noqa: E402
+from posts.router import router as posts_router  # noqa: E402
 from profiles.router import router as profiles_router  # noqa: E402
 from rbac.router import router as rbac_router  # noqa: E402
 from realtime.router import router as realtime_router  # noqa: E402
@@ -143,6 +145,8 @@ app.include_router(certificates_router)
 app.include_router(reviews_router)
 app.include_router(stats_router)
 app.include_router(audit_router)
+app.include_router(posts_router)
+app.include_router(chat_router)
 
 
 @app.get("/")

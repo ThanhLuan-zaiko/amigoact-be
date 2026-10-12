@@ -71,7 +71,12 @@ class WsMemberEvents:
                 revoke_channels(
                     self._manager,
                     target_id,
-                    (f"members:{org_id}", f"activities:{org_id}"),
+                    (
+                        f"members:{org_id}",
+                        f"activities:{org_id}",
+                        f"posts:{org_id}",
+                        f"chat:{org_id}",
+                    ),
                 )
             )
 

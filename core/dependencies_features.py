@@ -336,3 +336,7 @@ def get_profile_service(
         store=get_media_store(settings),
         max_image_bytes=settings.media_max_image_mb * 1024 * 1024,
     )
+
+
+# Member-workspace dependencies (posts/comments/chat) live in
+# core/dependencies_workspace.py (split for the 350-line rule).

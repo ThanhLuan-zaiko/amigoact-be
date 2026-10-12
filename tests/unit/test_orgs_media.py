@@ -120,6 +120,21 @@ def test_list_media_surfaces_role() -> None:
     assert listed[0].role == "cover"
 
 
+def test_attachment_role_uploads_but_stays_out_of_gallery() -> None:
+    orgs_service, service, orgs, _, _ = make_media_services()
+    owner, member = new_owner(), new_owner()
+    org = orgs_service.create_org(owner, "Club A", "club-a", "", "club")
+    orgs.members[org.id].add(member)
+
+    snap = service.upload_media(
+        org.id, member, "att.png", "image/png", b"1" * 10, "attachment"
+    )
+    assert snap.role == "attachment"
+    # Members can attach, but the asset never joins the gallery list.
+    listed = service.list_media(org.id, owner)
+    assert all(item.id != snap.id for item in listed)
+
+
 def test_delete_all_media_owner_only() -> None:
     orgs_service, service, _, media, _ = make_media_services()
     owner, stranger = new_owner(), new_owner()

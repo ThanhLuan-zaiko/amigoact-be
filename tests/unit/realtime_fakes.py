@@ -15,6 +15,7 @@ from core.config import Settings
 from core.realtime import ConnectionManager
 from realtime.interfaces import (
     AttendanceAccess,
+    ChatRoomAccess,
     OrgMembership,
     PresenceDirectory,
     WsTicketStore,
@@ -64,6 +65,16 @@ class FakeAttendance(AttendanceAccess):
         return (activity_id, user_id) in self._pairs
 
 
+class FakeChatRooms(ChatRoomAccess):
+    """Room ACL pairs: (room_id, user_id) allowed to subscribe."""
+
+    def __init__(self, pairs: set[tuple[UUID, UUID]] | None = None) -> None:
+        self._pairs = pairs or set()
+
+    def can_access(self, room_id: UUID, user_id: UUID) -> bool:
+        return (room_id, user_id) in self._pairs
+
+
 class FakePresence(PresenceDirectory):
     """Active-membership pairs for presence fan-out and snapshots."""
 
@@ -83,6 +94,7 @@ def make_service(
     attendance: AttendanceAccess | None = None,
     ticket_ttl_seconds: int = 60,
     presence: PresenceDirectory | None = None,
+    chat_rooms: ChatRoomAccess | None = None,
 ) -> RealtimeService:
     return RealtimeService(
         tickets=store or MemTickets(),
@@ -90,6 +102,7 @@ def make_service(
         attendance=attendance,
         ticket_ttl_seconds=ticket_ttl_seconds,
         presence=presence,
+        chat_rooms=chat_rooms,
     )
 
 

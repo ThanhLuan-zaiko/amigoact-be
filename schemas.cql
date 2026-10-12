@@ -30,10 +30,10 @@
 //   file-registry fields on media_assets, skills matching, activity
 //   partners, legal org identity, per-registration check-in tokens, and
 //   hour approval queues. Everything is re-modeled query-first: no joins.
-// - 101 tables total: 9 auth + 11 org + 14 rbac + 7 student/skills
+// - 111 tables total: 9 auth + 11 org + 14 rbac + 7 student/skills
 //   + 13 activity + 8 registration + 9 attendance + 6 hours
 //   + 5 certificate + 6 media + 3 notification + 4 report + 2 review
-//   + 3 durability + 1 realtime.
+//   + 3 durability + 1 realtime + 10 feed/chat.
 // =============================================================================
 
 CREATE KEYSPACE IF NOT EXISTS amigoact
@@ -1264,3 +1264,112 @@ CREATE TABLE IF NOT EXISTS ws_tickets (
     expires_at timestamp,
     created_at timestamp
 ) WITH default_time_to_live = 300;
+
+// -----------------------------------------------------------------------------
+// 16. ORG FEED & CHAT (8 tables)
+// The member workspace: org-scoped posts (announcement | discussion) with
+// pins, media links and flat comments, plus one org-wide chat room. Ids are
+// UUIDv7 so clustering by the id itself gives time order; that makes the
+// entity id the pagination cursor on every feed.
+// -----------------------------------------------------------------------------
+
+// Canonical post row; single-partition lookups for detail/edit/delete.
+CREATE TABLE IF NOT EXISTS org_posts (
+    post_id uuid PRIMARY KEY,
+    org_id uuid,
+    author_id uuid,
+    kind text, // announcement | discussion
+    title text,
+    body text,
+    status text, // active | deleted
+    pinned_at timestamp,
+    edited_at timestamp,
+    created_at timestamp,
+    updated_at timestamp
+);
+
+// Org board, newest first. Rows join back to org_posts at read time;
+// post_id IS the cursor (uuid7 ordering, no timestamp ties).
+CREATE TABLE IF NOT EXISTS org_posts_feed (
+    org_id uuid,
+    post_id uuid,
+    PRIMARY KEY ((org_id), post_id)
+) WITH CLUSTERING ORDER BY (post_id DESC);
+
+// Pinned posts of one org, newest post first. Unpin deletes the row;
+// ordering by post age (not pin time) keeps stale pins below fresh ones.
+CREATE TABLE IF NOT EXISTS org_posts_pinned (
+    org_id uuid,
+    post_id uuid,
+    PRIMARY KEY ((org_id), post_id)
+) WITH CLUSTERING ORDER BY (post_id DESC);
+
+// Gallery attachments per post; the asset itself stays owned by the org.
+CREATE TABLE IF NOT EXISTS org_post_media (
+    post_id uuid,
+    position int,
+    asset_id uuid,
+    PRIMARY KEY ((post_id), position, asset_id)
+) WITH CLUSTERING ORDER BY (position ASC, asset_id ASC);
+
+// Flat comment thread of one post, oldest first (uuid7 order).
+CREATE TABLE IF NOT EXISTS org_post_comments (
+    post_id uuid,
+    comment_id uuid,
+    author_id uuid,
+    body text,
+    created_at timestamp,
+    PRIMARY KEY ((post_id), comment_id)
+) WITH CLUSTERING ORDER BY (comment_id ASC);
+
+// Atomic comment totals; counter column, so no cqlengine model and no
+// row deletes (TRUNCATE only in tests, per the counter-table rule).
+CREATE TABLE IF NOT EXISTS org_post_comment_counts (
+    post_id uuid PRIMARY KEY,
+    comments counter
+);
+
+// Chat rooms. A room id is either the org id (general room), an activity
+// id (activity room), or a generated dm room id; the service resolves the
+// kind by lookup. Monthly bucket keeps each partition bounded;
+// message_id (uuid7) is both order and cursor.
+CREATE TABLE IF NOT EXISTS org_room_messages (
+    room_id uuid,
+    bucket text, // 'YYYYMM' of created_at
+    message_id uuid,
+    author_id uuid,
+    body text,
+    created_at timestamp,
+    PRIMARY KEY ((room_id, bucket), message_id)
+) WITH CLUSTERING ORDER BY (message_id ASC);
+
+// Per-member read pointer per room; unread = messages after the pointer.
+CREATE TABLE IF NOT EXISTS org_room_reads (
+    room_id uuid,
+    user_id uuid,
+    last_read_message_id uuid,
+    last_read_at timestamp,
+    PRIMARY KEY ((room_id), user_id)
+);
+
+// Canonical dm pair -> room. user_lo < user_hi keeps exactly one row per
+// pair; creation races resolve through IF NOT EXISTS on this partition.
+CREATE TABLE IF NOT EXISTS org_dm_pairs (
+    org_id uuid,
+    user_lo uuid,
+    user_hi uuid,
+    room_id uuid,
+    created_at timestamp,
+    PRIMARY KEY ((org_id), user_lo, user_hi)
+);
+
+// Each participant's dm inbox; the row doubles as the room lookup the
+// chat service uses to prove membership for chat:{room_id} ACL checks.
+CREATE TABLE IF NOT EXISTS org_dm_rooms (
+    user_id uuid,
+    room_id uuid,
+    org_id uuid,
+    peer_id uuid,
+    created_at timestamp,
+    PRIMARY KEY ((user_id), room_id)
+);

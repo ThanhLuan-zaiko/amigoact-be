@@ -260,6 +260,9 @@ def get_realtime_service(
 ) -> RealtimeService:
     """Build one RealtimeService per ticket/socket request."""
     from activities.repository import CqlActivityStore
+    from chat.events import WsChatEvents
+    from chat.repository import CqlChatStore
+    from chat.service import ChatService
     from orgs.member_repository import CqlMemberRepository
     from orgs.repository import CqlOrgRepository
     from realtime.access import (
@@ -271,14 +274,25 @@ def get_realtime_service(
     from realtime.service import RealtimeService
 
     orgs = CqlOrgRepository(settings.scylla_keyspace)
+    members = CqlMemberRepository()
+    activities = CqlActivityStore(settings.scylla_keyspace)
     return RealtimeService(
         tickets=CqlWsTicketStore(settings.scylla_keyspace),
         membership=OrgChannelMembership(orgs),
-        attendance=OrgAttendanceAccess(
-            CqlActivityStore(settings.scylla_keyspace), orgs, access
-        ),
+        attendance=OrgAttendanceAccess(activities, orgs, access),
         ticket_ttl_seconds=settings.ws_ticket_ttl_seconds,
-        presence=MemberPresenceDirectory(CqlMemberRepository()),
+        presence=MemberPresenceDirectory(members),
+        # The chat service doubles as the room ACL port so subscribe
+        # checks reuse the exact room-resolution rules.
+        chat_rooms=ChatService(
+            chat=CqlChatStore(settings.scylla_keyspace),
+            orgs=orgs,
+            members=members,
+            users=user_directory(settings),
+            access=access,
+            events=WsChatEvents(None),
+            activities=activities,
+        ),
     )
 
 

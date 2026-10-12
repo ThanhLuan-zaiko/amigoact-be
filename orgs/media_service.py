@@ -25,7 +25,9 @@ from rbac.interfaces import AccessControl
 if TYPE_CHECKING:
     from orgs.model import MediaAsset, Organization
 
-_MEDIA_ROLES = ("gallery", "cover", "logo")
+# "attachment" marks post-uploaded assets: members may add them and they
+# stay out of the public gallery (filtered by role at read time).
+_MEDIA_ROLES = ("gallery", "cover", "logo", "attachment")
 _BRAND_ROLES = ("cover", "logo")
 
 
@@ -244,6 +246,8 @@ class MediaService:
         return [
             self._media_snapshot(org_id, row)
             for row in self._media.list_by_org(org_id)
+            # Post attachments live outside the member gallery grid.
+            if (getattr(row, "role", None) or "gallery") != "attachment"
         ]
 
     def replace_media(

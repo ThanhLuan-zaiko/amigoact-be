@@ -332,6 +332,8 @@ Realtime features use WebSocket from day one. No polling-first, no SSE-first, no
    - `attendance:{activity_id}` — live QR check-in feed for staff screens.
    - `activities:{org_id}` — org activity feed updates.
    - `members:{org_id}` — roster and invitation changes.
+   - `posts:{org_id}` — org board updates (owner: `posts/`): `{action, post_id, actor_id}` refetch hints for `post.*`/`comment.*` actions.
+   - `chat:{room_id}` — room updates (owner: `chat/`): `{action, message_id, actor_id}` refetch hints for `message.*` actions plus ephemeral `{action:"typing", user_id}` relays. A room id is the org id (general room), an activity id (activity room), or a dm room id resolvable via `org_dm_rooms`; subscription authorization delegates to `ChatRoomAccess` (the chat service) so transport shares the exact room-resolution rules.
    - `orgs:directory` — PUBLIC channel (guests allowed): `{action, org_id, slug}` visibility events (`created`/`updated`/`restored`/`removed`) emitted after the organizations_public projection commits. Payload is public-only; consumers treat it as a refetch hint, never a fact source.
    New channels require a documented owner, query table, and tests.
 4. Protocol: JSON envelopes only: `{"type": "<versioned-name>", "data": {...}}`. Server heartbeat ping every 25s; client must pong or be closed. Unknown `type` values are ignored and logged, never crash the connection. Use explicit close codes (`4401` unauthorized, `4403` forbidden, `4400` bad frame).

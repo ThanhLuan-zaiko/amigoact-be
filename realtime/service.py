@@ -10,6 +10,7 @@ from core.realtime import PUBLIC_CHANNEL_SUBJECTS, Channel
 from core.security import hash_token, new_opaque_token, utcnow
 from realtime.interfaces import (
     AttendanceAccess,
+    ChatRoomAccess,
     OrgMembership,
     PresenceDirectory,
     WsTicketStore,
@@ -34,12 +35,14 @@ class RealtimeService:
         attendance: AttendanceAccess | None,
         ticket_ttl_seconds: int,
         presence: PresenceDirectory | None = None,
+        chat_rooms: ChatRoomAccess | None = None,
     ) -> None:
         self._tickets = tickets
         self._membership = membership
         self._attendance = attendance
         self._ticket_ttl = ticket_ttl_seconds
         self._presence = presence
+        self._chat_rooms = chat_rooms
 
     def issue_ticket(self, user_id: UUID) -> IssuedTicket:
         """Mint an opaque ticket; only its SHA-256 hash is persisted."""
@@ -84,7 +87,13 @@ class RealtimeService:
             return False
         if channel.kind == "notifications":
             return channel.subject == user_id
-        if channel.kind in ("activities", "members"):
+        if channel.kind in ("activities", "members", "posts"):
+            return self._membership.is_member(channel.subject, user_id)
+        if channel.kind == "chat":
+            # Room-aware ACL resolves general/activity/dm rooms; without
+            # the port wired, fall back to plain org membership.
+            if self._chat_rooms is not None:
+                return self._chat_rooms.can_access(channel.subject, user_id)
             return self._membership.is_member(channel.subject, user_id)
         if channel.kind == "attendance":
             return (

@@ -43,6 +43,19 @@ class AttendanceAccess(ABC):
         """True for staff of the org owning the activity."""
 
 
+class ChatRoomAccess(ABC):
+    """Read port: may the user subscribe to one chat:{room_id} channel.
+
+    Implemented by the chat service itself so subscription checks share
+    the exact room-resolution rules (general / activity / dm) instead of
+    duplicating them behind the transport.
+    """
+
+    @abstractmethod
+    def can_access(self, room_id: UUID, user_id: UUID) -> bool:
+        """True when the room resolves for this user and they are a member."""
+
+
 class PresenceDirectory(ABC):
     """Read port: org rosters for presence fan-out and snapshots.
 
