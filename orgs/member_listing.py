@@ -14,7 +14,17 @@ from uuid import UUID
 from orgs.listing import fold_search_text
 
 _MEMBER_ORDER = ("active", "invited", "suspended", "left")
-_ROLE_ORDER = {"owner": 0, "admin": 1, "member": 2}
+
+
+def _role_rank(roles: list[str]) -> int:
+    """Display ordering: owner, admin, customs, plain member."""
+    if "owner" in roles:
+        return 0
+    if "admin" in roles:
+        return 1
+    if roles:
+        return 2
+    return 3
 
 
 @dataclass(frozen=True)
@@ -25,7 +35,7 @@ class MemberSnapshot:
     user_id: UUID
     full_name: str
     email: str | None
-    role: str
+    roles: list[str]
     status: str
     invited_by: UUID | None
     invited_by_name: str | None
@@ -39,7 +49,7 @@ class MembershipSnapshot:
     org_id: UUID
     org_name: str
     org_slug: str
-    role: str
+    roles: list[str]
     status: str
     invited_by_name: str | None
     joined_at: datetime
@@ -47,12 +57,13 @@ class MembershipSnapshot:
 
 @dataclass(frozen=True)
 class MemberPage:
-    """Roster page plus the caller's effective role."""
+    """Roster page plus the caller's effective role and permissions."""
 
     items: list[MemberSnapshot]
     total: int
     counts: list[tuple[str, int]] = field(default_factory=list)
     viewer_role: str = "member"
+    viewer_permissions: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -114,7 +125,7 @@ def paginate_members(
         ordered = sorted(
             filtered,
             key=lambda item: (
-                _ROLE_ORDER.get(item.role, len(_ROLE_ORDER)),
+                _role_rank(item.roles),
                 fold_search_text(item.full_name),
             ),
         )

@@ -134,6 +134,95 @@ class CqlRoleRepository(RoleRepository):
             # caller retries the still-pending second delete.
             raise
 
+    def list_org_roles(self, org_id: UUID) -> list[Role]:
+        roles: list[Role] = []
+        for link in RolesByOrg.objects(org_id=org_id).all():
+            role = self.get_role(link.role_id)
+            if role is not None:
+                roles.append(role)
+        return roles
+
+    def create_org_role(
+        self,
+        org_id: UUID,
+        role_id: UUID,
+        name: str,
+        description: str,
+        now: datetime,
+    ) -> Role:
+        role = Role.create(
+            id=role_id,
+            org_id=org_id,
+            name=name,
+            description=description,
+            is_system=False,
+            created_at=now,
+        )
+        RolesByOrg.create(org_id=org_id, role_id=role_id, name=name)
+        return role
+
+    def update_org_role(
+        self,
+        org_id: UUID,
+        role_id: UUID,
+        name: str | None,
+        description: str | None,
+    ) -> Role | None:
+        role = self.get_role(role_id)
+        if role is None or role.org_id != org_id or role.is_system:
+            return None
+        updates: dict[str, str] = {}
+        if name is not None:
+            updates["name"] = name
+        if description is not None:
+            updates["description"] = description
+        if not updates:
+            return role
+        Role.objects(id=role_id).update(**updates)
+        if name is not None:
+            RolesByOrg.objects(org_id=org_id, role_id=role_id).update(
+                name=name
+            )
+        return self.get_role(role_id)
+
+    def delete_org_role(self, org_id: UUID, role_id: UUID) -> bool:
+        role = self.get_role(role_id)
+        if role is None or role.org_id != org_id or role.is_system:
+            return False
+        # Cascade every assignment off both query tables first so no
+        # dangling role ids linger on member rows.
+        for row in UserRole.objects(org_id=org_id).all():
+            if row.role_id != role_id:
+                continue
+            RolesByUser.objects(
+                user_id=row.user_id, org_id=org_id, role_id=role_id
+            ).delete()
+            UserRole.objects(
+                org_id=org_id, user_id=row.user_id, role_id=role_id
+            ).delete()
+        RolePermission.objects(role_id=role_id).delete()
+        RolesByOrg.objects(org_id=org_id, role_id=role_id).delete()
+        Role.objects(id=role_id).delete()
+        return True
+
+    def set_role_permissions(self, role_id: UUID, codes: set[str]) -> None:
+        existing = {
+            row.permission_code
+            for row in RolePermission.objects(role_id=role_id).all()
+        }
+        for code in existing - codes:
+            RolePermission.objects(
+                role_id=role_id, permission_code=code
+            ).delete()
+        for code in codes - existing:
+            RolePermission.create(role_id=role_id, permission_code=code)
+
+    def count_role_holders(self, org_id: UUID) -> dict[UUID, int]:
+        counts: dict[UUID, int] = {}
+        for row in UserRole.objects(org_id=org_id).all():
+            counts[row.role_id] = counts.get(row.role_id, 0) + 1
+        return counts
+
 
 class CqlGrantRepository(GrantRepository):
     """Direct per-user permission grant rows."""
@@ -144,6 +233,15 @@ class CqlGrantRepository(GrantRepository):
         return UserPermissionGrant.objects(
             org_id=org_id, user_id=user_id, permission_code=permission_code
         ).first()
+
+    def list_grants(
+        self, org_id: UUID, user_id: UUID
+    ) -> list[UserPermissionGrant]:
+        return list(
+            UserPermissionGrant.objects(
+                org_id=org_id, user_id=user_id
+            ).all()
+        )
 
 
 class CqlAuditReader(AuditReader):

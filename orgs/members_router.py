@@ -33,7 +33,7 @@ def _to_member(row: MemberSnapshot) -> MemberResponse:
         org_id=row.org_id,
         full_name=row.full_name,
         email=row.email,
-        role=row.role,  # type: ignore[arg-type]
+        roles=row.roles,
         status=row.status,  # type: ignore[arg-type]
         invited_by=row.invited_by,
         invited_by_name=row.invited_by_name,
@@ -63,7 +63,7 @@ def list_my_memberships(
                 org_id=item.org_id,
                 org_name=item.org_name,
                 org_slug=item.org_slug,
-                role=item.role,  # type: ignore[arg-type]
+                roles=item.roles,
                 status=item.status,  # type: ignore[arg-type]
                 invited_by_name=item.invited_by_name,
                 joined_at=item.joined_at,
@@ -108,7 +108,8 @@ def list_members(
             BucketCount(bucket=key, count=count)
             for key, count in page.counts
         ],
-        viewer_role=page.viewer_role,  # type: ignore[arg-type]
+        viewer_role=page.viewer_role,
+        viewer_permissions=page.viewer_permissions,
     )
 
 
@@ -142,12 +143,13 @@ def update_member(
     current_user: CurrentUser = Depends(get_current_user),
     service: MemberService = Depends(get_member_service),
 ) -> MemberResponse:
-    """Assign a role (owner) or suspend/reactivate (owner/admin)."""
+    """Replace roles (owner/delegates) or suspend/reactivate (managers)."""
     row = service.update_member(
         org_id,
         current_user.id,
         user_id,
         role=body.role,
+        roles=body.roles,
         status=body.status,
     )
     return _to_member(row)

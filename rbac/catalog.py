@@ -20,6 +20,19 @@ PERMISSIONS: dict[str, str] = {
     "activity:manage": "Publish, edit, staff, and cancel activities.",
 }
 
+# Permissions a custom org role may carry. media:upload stays out:
+# every active member can already upload into the org gallery, so the
+# code has no enforcement point to hang on today.
+ASSIGNABLE_PERMISSIONS: frozenset[str] = frozenset(
+    code for code in PERMISSIONS if code != "media:upload"
+)
+
+# Display names that can never label a custom role: they collide with
+# the built-in pseudo-roles (owner/member) or seeded system roles.
+RESERVED_ROLE_NAMES: frozenset[str] = frozenset(
+    {"owner", "admin", "member", "platform_admin"}
+)
+
 # Well-known ids let seeding and role lookup stay deterministic.
 # (Fixed constants, not generated PKs: system roles are reference data,
 # so the UUIDv7 rule for new entity ids does not apply here.)

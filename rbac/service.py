@@ -51,6 +51,27 @@ class AccessControlService(AccessControl):
                 return True
         return False
 
+    def effective_permissions(self, org_id: UUID, user_id: UUID) -> set[str]:
+        perms: set[str] = set()
+        for grant in self._grants.list_grants(org_id, user_id):
+            if not _expired(grant):
+                perms.add(grant.permission_code)
+        for assignment in self._roles.list_assignments(org_id, user_id):
+            if _expired(assignment):
+                continue
+            perms.update(
+                self._roles.list_role_permissions(assignment.role_id)
+            )
+        return perms
+
+    def role_permissions_of(
+        self, org_id: UUID, role_name: str
+    ) -> set[str] | None:
+        role = self._roles.resolve_role(org_id, role_name)
+        if role is None:
+            return None
+        return self._roles.list_role_permissions(role.id)
+
     def role_names_of(self, org_id: UUID, user_id: UUID) -> list[str]:
         names: list[str] = []
         for assignment in self._roles.list_assignments(org_id, user_id):

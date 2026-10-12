@@ -17,7 +17,7 @@ def _uid() -> UUID:
 def _snap(
     name: str,
     status: str = "active",
-    role: str = "member",
+    roles: list[str] | None = None,
     age_minutes: int = 0,
     email: str | None = "x@example.com",
 ) -> MemberSnapshot:
@@ -26,7 +26,7 @@ def _snap(
         user_id=_uid(),
         full_name=name,
         email=email,
-        role=role,
+        roles=[] if roles is None else roles,
         status=status,
         invited_by=None,
         invited_by_name=None,
@@ -67,16 +67,32 @@ def test_status_filter_and_bucket_counts() -> None:
 
 def test_sort_newest_name_and_role() -> None:
     items = [
-        _snap("Charlie", role="member", age_minutes=10),
-        _snap("Alice", role="owner", age_minutes=30),
-        _snap("Bob", role="admin", age_minutes=20),
+        _snap("Charlie", age_minutes=10),
+        _snap("Alice", roles=["owner"], age_minutes=30),
+        _snap("Bob", roles=["admin"], age_minutes=20),
+        _snap("Dana", roles=["coordinator"], age_minutes=40),
     ]
     newest = paginate_members(items, sort="newest")
-    assert [i.full_name for i in newest.items] == ["Charlie", "Bob", "Alice"]
+    assert [i.full_name for i in newest.items] == [
+        "Charlie",
+        "Bob",
+        "Alice",
+        "Dana",
+    ]
     named = paginate_members(items, sort="name")
-    assert [i.full_name for i in named.items] == ["Alice", "Bob", "Charlie"]
+    assert [i.full_name for i in named.items] == [
+        "Alice",
+        "Bob",
+        "Charlie",
+        "Dana",
+    ]
     by_role = paginate_members(items, sort="role")
-    assert [i.role for i in by_role.items] == ["owner", "admin", "member"]
+    assert [i.roles for i in by_role.items] == [
+        ["owner"],
+        ["admin"],
+        ["coordinator"],
+        [],
+    ]
 
 
 def test_pagination_slices_and_reports_total() -> None:

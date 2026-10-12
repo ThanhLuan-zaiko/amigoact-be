@@ -27,12 +27,26 @@ def is_admin(access: AccessControl, org_id: UUID, user_id: UUID) -> bool:
 
 
 def role_of(access: AccessControl, org: Organization, user_id: UUID) -> str:
-    """Display role: owner first, then RBAC admin, else member."""
+    """Primary display role: owner, then admin, then first custom name."""
     if org.owner_id == user_id:
         return "owner"
-    if is_admin(access, org.id, user_id):
+    names = access.role_names_of(org.id, user_id)
+    if "admin" in names:
         return "admin"
+    if names:
+        return sorted(names)[0]
     return "member"
+
+
+def roles_of(
+    org: Organization, user_id: UUID, role_map: dict[UUID, list[str]]
+) -> list[str]:
+    """Badge roles for one member: owner pseudo-role, admin, customs."""
+    if user_id == org.owner_id:
+        return ["owner"]
+    names = role_map.get(user_id, [])
+    head = ["admin"] if "admin" in names else []
+    return head + sorted(name for name in names if name != "admin")
 
 
 def is_active_member(
@@ -53,11 +67,6 @@ def member_snapshot(
 ) -> MemberSnapshot:
     """Project one membership row to a display snapshot with privacy."""
     brief = users.get_brief(row.user_id)
-    role = (
-        "owner"
-        if row.user_id == org.owner_id
-        else "admin" if "admin" in role_map.get(row.user_id, []) else "member"
-    )
     inviter_id = getattr(row, "invited_by", None)
     inviter = users.get_brief(inviter_id) if inviter_id is not None else None
     return MemberSnapshot(
@@ -65,7 +74,7 @@ def member_snapshot(
         user_id=row.user_id,
         full_name=brief.full_name if brief else "Unknown user",
         email=brief.email if (show_email and brief) else None,
-        role=role,
+        roles=roles_of(org, row.user_id, role_map),
         status=getattr(row, "status", "active") or "active",
         invited_by=inviter_id,
         invited_by_name=inviter.full_name if inviter else None,
@@ -98,7 +107,7 @@ def my_memberships(
                 org_id=org.id,
                 org_name=org.name,
                 org_slug=org.slug,
-                role=role_of(access, org, user_id),
+                roles=roles_of(org, user_id, access.role_map(org.id)),
                 status=link.status,
                 invited_by_name=inviter.full_name if inviter else None,
                 joined_at=link.joined_at,

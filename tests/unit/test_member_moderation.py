@@ -68,9 +68,9 @@ def test_role_assign_owner_only() -> None:
     with pytest.raises(ForbiddenError):
         service.update_member(org_id, admin, target, role="admin")
     snap = service.update_member(org_id, owner, target, role="admin")
-    assert snap.role == "admin"
+    assert snap.roles == ["admin"]
     snap = service.update_member(org_id, owner, target, role="member")
-    assert snap.role == "member"
+    assert snap.roles == []
     assert "admin" not in access.roles.get((org_id, target), set())
 
 
@@ -137,14 +137,14 @@ def test_member_events_emitted() -> None:
     events = service._events  # noqa: SLF001
     target = _new_user(users, "rt@example.com")
     service.invite_member(org_id, owner, "rt@example.com")
-    assert (org_id, "invited", target, owner) in events.roster
-    assert (target, "invited", org_id) in events.inbox
+    assert (org_id, "invited", target, owner, None) in events.roster
+    assert (target, "invited", org_id, None) in events.inbox
     service.accept_invitation(org_id, target)
-    assert (org_id, "accepted", target, target) in events.roster
-    assert (target, "accepted", org_id) in events.inbox
+    assert (org_id, "accepted", target, target, None) in events.roster
+    assert (target, "accepted", org_id, None) in events.inbox
     service.remove_member(org_id, owner, target)
-    assert (org_id, "removed", target, owner) in events.roster
-    assert (target, "removed", org_id) in events.inbox
+    assert (org_id, "removed", target, owner, None) in events.roster
+    assert (target, "removed", org_id, None) in events.inbox
 
 
 def test_list_my_memberships_inbox() -> None:
@@ -154,9 +154,9 @@ def test_list_my_memberships_inbox() -> None:
     inbox = service.list_my_memberships(invited, status="invited")
     assert len(inbox) == 1
     assert inbox[0].org_id == org_id
-    assert inbox[0].role == "member"
+    assert inbox[0].roles == []
     mine = service.list_my_memberships(owner)
-    assert len(mine) == 1 and mine[0].role == "owner"
+    assert len(mine) == 1 and mine[0].roles == ["owner"]
 
 
 def test_list_denies_non_active_admins() -> None:

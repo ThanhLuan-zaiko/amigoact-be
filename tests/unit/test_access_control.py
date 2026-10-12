@@ -76,6 +76,24 @@ class FakeRoles(RoleRepository):
             )
         ]
 
+    def list_org_roles(self, org_id):  # noqa: ANN001, ANN202
+        raise NotImplementedError
+
+    def create_org_role(self, org_id, role_id, name, description, now):  # noqa: ANN001, ANN202
+        raise NotImplementedError
+
+    def update_org_role(self, org_id, role_id, name, description):  # noqa: ANN001, ANN202
+        raise NotImplementedError
+
+    def delete_org_role(self, org_id, role_id):  # noqa: ANN001, ANN202
+        raise NotImplementedError
+
+    def set_role_permissions(self, role_id, codes):  # noqa: ANN001, ANN202
+        raise NotImplementedError
+
+    def count_role_holders(self, org_id):  # noqa: ANN001, ANN202
+        raise NotImplementedError
+
 
 class FakeGrants(GrantRepository):
     def __init__(self) -> None:
@@ -83,6 +101,13 @@ class FakeGrants(GrantRepository):
 
     def get_grant(self, org_id, user_id, permission_code):  # noqa: ANN001, ANN202
         return self.rows.get((org_id, user_id, permission_code))
+
+    def list_grants(self, org_id, user_id):  # noqa: ANN001, ANN202
+        return [
+            SimpleNamespace(permission_code=code, expires_at=row.expires_at)
+            for (oid, uid, code), row in self.rows.items()
+            if oid == org_id and uid == user_id
+        ]
 
 
 class FakeAudit(AuditWriter):

@@ -286,7 +286,7 @@ async def test_join_policy_update_and_admin_assignment(client: AsyncClient) -> N
         headers=owner_h,
     )
     assert promoted.status_code == 200, promoted.text
-    assert promoted.json()["role"] == "admin"
+    assert promoted.json()["roles"] == ["admin"]
 
     third = await _token(client, "p3@example.com", "0912346012")
     invited = await client.post(
@@ -308,7 +308,7 @@ async def test_join_policy_update_and_admin_assignment(client: AsyncClient) -> N
         headers=owner_h,
     )
     assert demoted.status_code == 200
-    assert demoted.json()["role"] == "member"
+    assert demoted.json()["roles"] == []
 
 
 async def test_owner_immutable_and_member_not_found(client: AsyncClient) -> None:

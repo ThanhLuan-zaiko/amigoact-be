@@ -24,6 +24,7 @@ from orgs.interfaces import (
 )
 from orgs.listing import OrgListResult, paginate_mine
 from orgs.repository import generate_org_id
+from rbac.interfaces import AccessControl
 
 if TYPE_CHECKING:
     from orgs.model import Organization
@@ -86,11 +87,13 @@ class OrgService:
         media: MediaRepository | None = None,
         store: MediaStore | None = None,
         events: OrgDirectoryEvents | None = None,
+        access: AccessControl | None = None,
     ) -> None:
         self._orgs = orgs
         self._media = media
         self._store = store
         self._events = events
+        self._access = access
 
     def _emit(self, action: str, org_id: UUID, slug: str) -> None:
         """Best-effort public directory fan-out after a mutation commits."""
@@ -150,6 +153,21 @@ class OrgService:
         if getattr(org, "deleted_at", None) is not None:
             raise OrgDeletedError("Organization is soft-deleted.")
         return org
+
+    def _require_editor(self, org_id: UUID, user_id: UUID) -> Organization:
+        """Owner, or an active member holding the org:update permission."""
+        org = self._owned(org_id)
+        if getattr(org, "deleted_at", None) is not None:
+            raise OrgDeletedError("Organization is soft-deleted.")
+        if org.owner_id == user_id:
+            return org
+        if (
+            self._access is not None
+            and self._orgs.is_member(org_id, user_id)
+            and self._access.has_permission(org_id, user_id, "org:update")
+        ):
+            return org
+        raise ForbiddenError("Only the org owner can do this.")
 
     def create_org(
         self,
@@ -246,8 +264,8 @@ class OrgService:
         join_policy: str | None = None,
         contact: OrgContactDetails | None = None,
     ) -> OrgSnapshot:
-        """Owner renames, re-describes or re-policies a live org."""
-        self._require_live(org_id, user_id)
+        """Owner or org:update holder edits profile/policy of a live org."""
+        self._require_editor(org_id, user_id)
         clean_name = name.strip()
         if not (2 <= len(clean_name) <= 100):
             raise InvalidBusinessProfileError("Org name is invalid.")

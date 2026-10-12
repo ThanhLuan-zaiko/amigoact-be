@@ -120,6 +120,7 @@ from orgs.members_router import router as members_router  # noqa: E402
 from orgs.public_router import router as orgs_public_router  # noqa: E402
 from orgs.router import router as orgs_router  # noqa: E402
 from profiles.router import router as profiles_router  # noqa: E402
+from rbac.router import router as rbac_router  # noqa: E402
 from realtime.router import router as realtime_router  # noqa: E402
 from registrations.router import router as registrations_router  # noqa: E402
 from reviews.router import router as reviews_router  # noqa: E402
@@ -129,6 +130,7 @@ app.include_router(auth_router)
 app.include_router(orgs_router)
 app.include_router(orgs_public_router)  # after orgs: /orgs/mine beats {slug}
 app.include_router(members_router)
+app.include_router(rbac_router)
 app.include_router(realtime_router)
 app.include_router(admin_router)
 app.include_router(notifications_router)

@@ -139,14 +139,37 @@ class FakeUsers(UserDirectory):
         return None
 
 
+_ADMIN_PERMS = {
+    "member:invite",
+    "member:suspend",
+    "member:remove",
+    "member:view",
+    "activity:view",
+    "activity:create",
+    "activity:manage",
+}
+
+
 class FakeAccess(AccessControl):
     def __init__(self) -> None:
         self.perms: dict[tuple[UUID, UUID], set[str]] = {}
         self.roles: dict[tuple[UUID, UUID], set[str]] = {}
+        # Custom role name -> permission set, per org. Tests register
+        # role bundles here before exercising assign/update paths.
+        self.role_perms: dict[tuple[UUID, str], set[str]] = {}
         self.audit: list[tuple] = []
 
     def has_permission(self, org_id, user_id, permission):  # noqa: ANN001, ANN202
         return permission in self.perms.get((org_id, user_id), set())
+
+    def effective_permissions(self, org_id, user_id):  # noqa: ANN001, ANN202
+        return set(self.perms.get((org_id, user_id), set()))
+
+    def role_permissions_of(self, org_id, role_name):  # noqa: ANN001, ANN202
+        if role_name == "admin":
+            return set(_ADMIN_PERMS)
+        value = self.role_perms.get((org_id, role_name))
+        return None if value is None else set(value)
 
     def role_names_of(self, org_id, user_id):  # noqa: ANN001, ANN202
         return sorted(self.roles.get((org_id, user_id), set()))
@@ -158,19 +181,22 @@ class FakeAccess(AccessControl):
                 out[uid] = sorted(names)
         return out
 
+    def _role_perms(self, org_id, role_name):  # noqa: ANN001, ANN202
+        return _ADMIN_PERMS if role_name == "admin" else self.role_perms.get(
+            (org_id, role_name), set()
+        )
+
     def assign(self, org_id, actor_id, user_id, role_name):  # noqa: ANN001, ANN202
         self.roles.setdefault((org_id, user_id), set()).add(role_name)
-        if role_name == "admin":
-            self.perms.setdefault((org_id, user_id), set()).update(
-                {"member:invite", "member:suspend", "member:remove", "member:view"}
-            )
+        self.perms.setdefault((org_id, user_id), set()).update(
+            self._role_perms(org_id, role_name)
+        )
 
     def revoke(self, org_id, user_id, role_name):  # noqa: ANN001, ANN202
         self.roles.get((org_id, user_id), set()).discard(role_name)
-        if role_name == "admin":
-            self.perms.get((org_id, user_id), set()).difference_update(
-                {"member:invite", "member:suspend", "member:remove", "member:view"}
-            )
+        self.perms.get((org_id, user_id), set()).difference_update(
+            self._role_perms(org_id, role_name)
+        )
 
     def record(self, org_id, actor_id, action, resource_type, resource_id, result):  # noqa: ANN001, ANN202
         self.audit.append((action, resource_id, result))
@@ -181,11 +207,11 @@ class FakeEvents(MemberEvents):
         self.roster: list[tuple] = []
         self.inbox: list[tuple] = []
 
-    def member_changed(self, org_id, action, target_id, actor_id):  # noqa: ANN001, ANN202
-        self.roster.append((org_id, action, target_id, actor_id))
+    def member_changed(self, org_id, action, target_id, actor_id, detail=None):  # noqa: ANN001, ANN202
+        self.roster.append((org_id, action, target_id, actor_id, detail))
 
-    def inbox_changed(self, user_id, action, org_id):  # noqa: ANN001, ANN202
-        self.inbox.append((user_id, action, org_id))
+    def inbox_changed(self, user_id, action, org_id, detail=None):  # noqa: ANN001, ANN202
+        self.inbox.append((user_id, action, org_id, detail))
 
 
 def _service(

@@ -41,6 +41,7 @@ from orgs.member_listing import (
     paginate_members,
 )
 from notifications.interfaces import NotificationPort
+from rbac.catalog import PERMISSIONS
 from rbac.interfaces import AccessControl
 
 if TYPE_CHECKING:
@@ -74,12 +75,15 @@ class MemberService(MemberModerationMixin):
         actor_id: UUID,
         *,
         notify: UUID | None = None,
+        detail: str | None = None,
     ) -> None:
         """Fan out after a committed change; publish failures never raise."""
         try:
-            self._events.member_changed(org_id, action, target_id, actor_id)
+            self._events.member_changed(
+                org_id, action, target_id, actor_id, detail=detail
+            )
             if notify is not None:
-                self._events.inbox_changed(notify, action, org_id)
+                self._events.inbox_changed(notify, action, org_id, detail=detail)
         except Exception:  # noqa: BLE001 - realtime is best-effort
             pass
 
@@ -126,14 +130,17 @@ class MemberService(MemberModerationMixin):
         limit: int = 20,
         offset: int = 0,
     ) -> MemberPage:
-        """Roster: managers see all states plus email; members see active."""
+        """Roster: member:view holders see all states plus emails."""
         org = live_org(self._orgs, org_id)
         viewer_role = role_of(self._access, org, viewer_id)
-        if org.owner_id != viewer_id and not is_active_member(
+        is_owner = org.owner_id == viewer_id
+        if not is_owner and not is_active_member(
             self._members, org_id, viewer_id
         ):
             raise self._deny(org_id, viewer_id, "member.list", None)
-        manager = viewer_role != "member"
+        manager = is_owner or self._access.has_permission(
+            org_id, viewer_id, "member:view"
+        )
         role_map = self._access.role_map(org_id)
         rows = self._members.list_by_org(org_id)
         if not manager:
@@ -145,11 +152,19 @@ class MemberService(MemberModerationMixin):
         result = paginate_members(
             snapshots, q=q, status=status, sort=sort, limit=limit, offset=offset
         )
+        viewer_permissions = (
+            sorted(PERMISSIONS)
+            if is_owner
+            else sorted(
+                self._access.effective_permissions(org_id, viewer_id)
+            )
+        )
         return MemberPage(
             items=result.items,
             total=result.total,
             counts=result.counts,
             viewer_role=viewer_role,
+            viewer_permissions=viewer_permissions,
         )
 
     def list_my_memberships(
@@ -178,10 +193,28 @@ class MemberService(MemberModerationMixin):
                 raise AlreadyInvitedError("This user was already invited.")
             if state in ("active", "suspended"):
                 raise AlreadyMemberError("This user is already a member.")
-        if role not in ("member", "admin"):
-            raise InvalidRoleError("Role is invalid.")
-        if role == "admin" and org.owner_id != actor_id:
-            raise self._deny(org.id, actor_id, "member.invite", brief.id)
+        if role != "member":
+            if self._access.role_permissions_of(org_id, role) is None:
+                raise InvalidRoleError("Role is invalid.")
+            if role == "admin" and org.owner_id != actor_id:
+                raise self._deny(org.id, actor_id, "member.invite", brief.id)
+            if role != "admin" and org.owner_id != actor_id:
+                # Inviting straight into a custom role is a role-assign
+                # act: needs member:role-assign plus the subset rule.
+                assignable = (
+                    is_active_member(self._members, org_id, actor_id)
+                    and self._access.has_permission(
+                        org_id, actor_id, "member:role-assign"
+                    )
+                    and self._access.role_permissions_of(
+                        org_id, role
+                    )
+                    <= self._access.effective_permissions(org_id, actor_id)
+                )
+                if not assignable:
+                    raise self._deny(
+                        org.id, actor_id, "member.invite", brief.id
+                    )
         now = utcnow()
         if row is None:
             self._members.put(
@@ -191,8 +224,8 @@ class MemberService(MemberModerationMixin):
             self._members.set_status(
                 org_id, brief.id, "invited", now, invited_by=actor_id
             )
-        if role == "admin":
-            self._access.assign(org_id, actor_id, brief.id, "admin")
+        if role != "member":
+            self._access.assign(org_id, actor_id, brief.id, role)
         self._audit(org_id, actor_id, "member.invite", brief.id)
         self._emit(org_id, "invited", brief.id, actor_id, notify=brief.id)
         if self._notifications is not None:
@@ -289,7 +322,8 @@ class MemberService(MemberModerationMixin):
             if is_admin(self._access, org_id, user_id) and org.owner_id != actor_id:
                 raise self._deny(org.id, actor_id, action, user_id)
         self._members.set_status(org_id, user_id, "left", utcnow())
-        self._access.revoke(org_id, user_id, "admin")
+        for name in self._access.role_names_of(org_id, user_id):
+            self._access.revoke(org_id, user_id, name)
         self._audit(org_id, actor_id, action, user_id)
         event = "left" if actor_id == user_id else "removed"
         self._emit(org_id, event, user_id, actor_id, notify=user_id)

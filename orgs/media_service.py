@@ -20,6 +20,7 @@ from core.exceptions import (
 from core.media import MediaStore, media_kind, normalize_image
 from core.security import utcnow
 from orgs.interfaces import MediaRepository, OrgRepository
+from rbac.interfaces import AccessControl
 
 if TYPE_CHECKING:
     from orgs.model import MediaAsset, Organization
@@ -47,7 +48,7 @@ class MediaSnapshot:
 
 
 class MediaService:
-    """Gallery lifecycle: member uploads, owner brands, rows plus bytes."""
+    """Gallery lifecycle: member uploads, owner/media manager brands."""
 
     def __init__(
         self,
@@ -56,12 +57,14 @@ class MediaService:
         store: MediaStore,
         max_image_bytes: int = 10 * 1024 * 1024,
         max_video_bytes: int = 100 * 1024 * 1024,
+        access: AccessControl | None = None,
     ) -> None:
         self._orgs = orgs
         self._media = media
         self._store = store
         self._max_image_bytes = max_image_bytes
         self._max_video_bytes = max_video_bytes
+        self._access = access
 
     def _owned(self, org_id: UUID) -> Organization:
         """Load an org or 404."""
@@ -76,6 +79,26 @@ class MediaService:
             raise ForbiddenError("Only the org owner can do this.")
         if getattr(org, "deleted_at", None) is not None:
             raise OrgDeletedError("Organization is soft-deleted.")
+        return org
+
+    def _can_manage(self, org: Organization, user_id: UUID) -> bool:
+        """Owner, or an active member holding the media:manage permission."""
+        if org.owner_id == user_id:
+            return True
+        return bool(
+            self._access is not None
+            and self._orgs.is_member(org.id, user_id)
+            and self._access.has_permission(org.id, user_id, "media:manage")
+        )
+
+    def _require_manager(
+        self, org_id: UUID, user_id: UUID
+    ) -> Organization:
+        org = self._owned(org_id)
+        if getattr(org, "deleted_at", None) is not None:
+            raise OrgDeletedError("Organization is soft-deleted.")
+        if not self._can_manage(org, user_id):
+            raise ForbiddenError("Only org media managers can do this.")
         return org
 
     def _media_snapshot(self, org_id: UUID, row: MediaAsset) -> MediaSnapshot:
@@ -130,9 +153,9 @@ class MediaService:
         if role in _BRAND_ROLES:
             if kind != "image":
                 raise InvalidMediaRoleError("Cover and logo must be images.")
-            if org.owner_id != user_id:
+            if not self._can_manage(org, user_id):
                 raise ForbiddenError(
-                    "Only the org owner can mark cover or logo."
+                    "Only org media managers can mark cover or logo."
                 )
 
     def upload_media(
@@ -193,8 +216,8 @@ class MediaService:
     def set_media_role(
         self, org_id: UUID, user_id: UUID, media_id: UUID, role: str
     ) -> MediaSnapshot:
-        """Owner marks a gallery image as cover/logo, or clears it."""
-        self._require_live(org_id, user_id)
+        """Owner or media manager marks cover/logo, or clears it."""
+        self._require_manager(org_id, user_id)
         if role not in _MEDIA_ROLES:
             raise InvalidMediaRoleError("Media role is invalid.")
         row = self._media.get_asset(media_id)
@@ -238,7 +261,7 @@ class MediaService:
         file plus its metadata change. New file is written before the row
         updates, old file is swept best-effort when the path moves.
         """
-        self._require_live(org_id, user_id)
+        self._require_manager(org_id, user_id)
         row = self._media.get_asset(media_id)
         if row is None or row.owner_id != org_id:
             raise NotFoundError("Media not found.")
@@ -273,8 +296,8 @@ class MediaService:
         return self._media_snapshot(org_id, updated)
 
     def delete_media(self, org_id: UUID, user_id: UUID, media_id: UUID) -> None:
-        """Owner removes one gallery file: metadata row plus bytes."""
-        self._require_live(org_id, user_id)
+        """Owner or media manager removes one gallery file."""
+        self._require_manager(org_id, user_id)
         row = self._media.get_asset(media_id)
         if row is None or row.owner_id != org_id:
             raise NotFoundError("Media not found.")
@@ -283,9 +306,9 @@ class MediaService:
         self._store.delete_file(row.file_url)
 
     def delete_all_media(self, org_id: UUID, user_id: UUID) -> int:
-        """Owner wipes gallery, 500 rows max per call; repeat if needed."""
+        """Owner or media manager wipes the gallery, 500 rows per call."""
         # Idempotent: missing rows/files are skipped, safe to retry.
-        self._require_live(org_id, user_id)
+        self._require_manager(org_id, user_id)
         removed = 0
         for row in self._media.list_by_org(org_id)[:500]:
             self._media.delete_asset(row.asset_id)

@@ -23,6 +23,7 @@ if TYPE_CHECKING:
     from orgs.member_service import MemberService
     from orgs.service import OrgService
     from rbac.interfaces import AccessControl
+    from rbac.roles_service import OrgRoleService
     from realtime.service import RealtimeService
 
 _bearer = HTTPBearer(auto_error=False)
@@ -70,9 +71,26 @@ def get_auth_service(
     )
 
 
+def get_access_control() -> AccessControl:
+    """Build one AccessControlService per request over the rbac tables."""
+    from rbac.repository import (
+        CqlAuditWriter,
+        CqlGrantRepository,
+        CqlRoleRepository,
+    )
+    from rbac.service import AccessControlService
+
+    return AccessControlService(
+        roles=CqlRoleRepository(),
+        grants=CqlGrantRepository(),
+        audit=CqlAuditWriter(),
+    )
+
+
 def get_org_service(
     request: Request,
     settings: Settings = Depends(get_settings),
+    access: AccessControl = Depends(get_access_control),
 ) -> OrgService:
     """Build one OrgService per request from the org repository."""
     from orgs.directory_events import WsOrgDirectoryEvents
@@ -87,11 +105,13 @@ def get_org_service(
         events=WsOrgDirectoryEvents(
             getattr(request.app.state, "ws_manager", None)
         ),
+        access=access,
     )
 
 
 def get_media_service(
     settings: Settings = Depends(get_settings),
+    access: AccessControl = Depends(get_access_control),
 ) -> MediaService:
     """Build one MediaService per request for the org gallery."""
     from orgs.media_service import MediaService
@@ -104,22 +124,7 @@ def get_media_service(
         store=get_media_store(settings),
         max_image_bytes=settings.media_max_image_mb * 1024 * 1024,
         max_video_bytes=settings.media_max_video_mb * 1024 * 1024,
-    )
-
-
-def get_access_control() -> AccessControl:
-    """Build one AccessControlService per request over the rbac tables."""
-    from rbac.repository import (
-        CqlAuditWriter,
-        CqlGrantRepository,
-        CqlRoleRepository,
-    )
-    from rbac.service import AccessControlService
-
-    return AccessControlService(
-        roles=CqlRoleRepository(),
-        grants=CqlGrantRepository(),
-        audit=CqlAuditWriter(),
+        access=access,
     )
 
 
@@ -194,56 +199,43 @@ def get_member_service(
     notifications: NotificationService = Depends(get_notification_service),
 ) -> MemberService:
     """Build one MemberService; user lookup adapts the auth repository."""
-    from orgs.interfaces import MemberEvents
+    from orgs.member_events import WsMemberEvents
     from orgs.member_repository import CqlMemberRepository
     from orgs.member_service import MemberService
     from orgs.repository import CqlOrgRepository
-
-    class _WsMemberEvents(MemberEvents):
-        """Fan roster and invite events onto the socket registry."""
-
-        def __init__(self, manager: ConnectionManager | None) -> None:
-            self._manager = manager
-
-        def member_changed(
-            self,
-            org_id: UUID,
-            action: str,
-            target_id: UUID,
-            actor_id: UUID,
-        ) -> None:
-            if self._manager is not None:
-                self._manager.schedule_publish(
-                    f"members:{org_id}",
-                    {
-                        "action": action,
-                        "user_id": str(target_id),
-                        "actor_id": str(actor_id),
-                    },
-                )
-
-        def inbox_changed(
-            self, user_id: UUID, action: str, org_id: UUID
-        ) -> None:
-            if self._manager is not None:
-                self._manager.schedule_publish(
-                    f"notifications:{user_id}",
-                    {
-                        "scope": "membership",
-                        "action": action,
-                        "org_id": str(org_id),
-                    },
-                )
 
     return MemberService(
         orgs=CqlOrgRepository(settings.scylla_keyspace),
         members=CqlMemberRepository(),
         users=user_directory(settings),
         access=access,
-        events=_WsMemberEvents(
+        events=WsMemberEvents(
             getattr(request.app.state, "ws_manager", None)
         ),
         notifications=notifications,
+    )
+
+
+def get_role_service(
+    request: Request,
+    settings: Settings = Depends(get_settings),
+    access: AccessControl = Depends(get_access_control),
+) -> OrgRoleService:
+    """Build one OrgRoleService per request for org role CRUD."""
+    from orgs.member_events import WsMemberEvents
+    from orgs.member_repository import CqlMemberRepository
+    from orgs.repository import CqlOrgRepository
+    from rbac.repository import CqlRoleRepository
+    from rbac.roles_service import OrgRoleService
+
+    return OrgRoleService(
+        orgs=CqlOrgRepository(settings.scylla_keyspace),
+        members=CqlMemberRepository(),
+        roles=CqlRoleRepository(),
+        access=access,
+        events=WsMemberEvents(
+            getattr(request.app.state, "ws_manager", None)
+        ),
     )
 
 

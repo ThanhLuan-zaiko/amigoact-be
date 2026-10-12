@@ -157,6 +157,16 @@ class InvalidRoleError(DomainError):
     status = 400
 
 
+class RoleNameTakenError(DomainError):
+    code = "ROLE_NAME_TAKEN"
+    status = 409
+
+
+class RoleNotFoundError(DomainError):
+    code = "ROLE_NOT_FOUND"
+    status = 404
+
+
 class InvalidOrgStateError(DomainError):
     code = "INVALID_ORG_STATE"
     status = 400

@@ -86,7 +86,7 @@ def test_invite_as_admin_owner_only() -> None:
     with pytest.raises(ForbiddenError):
         service.invite_member(org_id, admin, "vip@example.com", role="admin")
     snap = service.invite_member(org_id, owner, "vip@example.com", role="admin")
-    assert snap.role == "admin"
+    assert snap.roles == ["admin"]
     assert "admin" in access.roles.get((org_id, target), set())
 
 

@@ -47,6 +47,43 @@ class RoleRepository(ABC):
     def revoke_role(self, org_id: UUID, user_id: UUID, role_id: UUID) -> None:
         """Drop the assignment rows on both query tables."""
 
+    @abstractmethod
+    def list_org_roles(self, org_id: UUID) -> list[Role]:
+        """Every custom role owned by one org (via roles_by_org links)."""
+
+    @abstractmethod
+    def create_org_role(
+        self,
+        org_id: UUID,
+        role_id: UUID,
+        name: str,
+        description: str,
+        now: datetime,
+    ) -> Role:
+        """Insert a custom role row plus its roles_by_org link."""
+
+    @abstractmethod
+    def update_org_role(
+        self,
+        org_id: UUID,
+        role_id: UUID,
+        name: str | None,
+        description: str | None,
+    ) -> Role | None:
+        """Rename/re-describe an org-owned role; None when not found."""
+
+    @abstractmethod
+    def delete_org_role(self, org_id: UUID, role_id: UUID) -> bool:
+        """Drop an org-owned role, its permissions and all assignments."""
+
+    @abstractmethod
+    def set_role_permissions(self, role_id: UUID, codes: set[str]) -> None:
+        """Replace the permission rows attached to one role."""
+
+    @abstractmethod
+    def count_role_holders(self, org_id: UUID) -> dict[UUID, int]:
+        """Assignment totals per role id inside one org."""
+
 
 class GrantRepository(ABC):
     """Persistence port for direct per-user permission grants."""
@@ -56,6 +93,12 @@ class GrantRepository(ABC):
         self, org_id: UUID, user_id: UUID, permission_code: str
     ) -> UserPermissionGrant | None:
         """Load one direct grant row."""
+
+    @abstractmethod
+    def list_grants(
+        self, org_id: UUID, user_id: UUID
+    ) -> list[UserPermissionGrant]:
+        """Every direct grant row one user holds inside one org."""
 
 
 class AuditReader(ABC):
@@ -101,6 +144,16 @@ class AccessControl(ABC):
     @abstractmethod
     def role_map(self, org_id: UUID) -> dict[UUID, list[str]]:
         """User id to live role names for the whole org (list render)."""
+
+    @abstractmethod
+    def effective_permissions(self, org_id: UUID, user_id: UUID) -> set[str]:
+        """Union of live grant codes plus all assigned role permissions."""
+
+    @abstractmethod
+    def role_permissions_of(
+        self, org_id: UUID, role_name: str
+    ) -> set[str] | None:
+        """Permission set of a named role; None when it does not resolve."""
 
     @abstractmethod
     def assign(

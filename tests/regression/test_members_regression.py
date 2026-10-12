@@ -41,14 +41,22 @@ async def test_member_page_envelope_and_viewer_role(client: AsyncClient) -> None
     roster = await client.get(f"/orgs/{org_id}/members", headers=headers)
     assert roster.status_code == 200
     body = roster.json()
-    assert set(body.keys()) == {"items", "total", "counts", "viewer_role"}
+    assert set(body.keys()) == {
+        "items",
+        "total",
+        "counts",
+        "viewer_role",
+        "viewer_permissions",
+    }
     assert body["viewer_role"] == "owner"
+    assert "member:role-assign" in body["viewer_permissions"]
     assert body["total"] == 1
     item = body["items"][0]
     assert {
-        "user_id", "org_id", "full_name", "email", "role", "status", "joined_at"
+        "user_id", "org_id", "full_name", "email", "roles", "status",
+        "joined_at",
     } <= set(item.keys())
-    assert item["role"] == "owner"
+    assert item["roles"] == ["owner"]
     assert item["status"] == "active"
 
 

@@ -270,12 +270,23 @@ class MemberEvents(ABC):
 
     @abstractmethod
     def member_changed(
-        self, org_id: UUID, action: str, target_id: UUID, actor_id: UUID
+        self,
+        org_id: UUID,
+        action: str,
+        target_id: UUID,
+        actor_id: UUID,
+        detail: str | None = None,
     ) -> None:
         """Broadcast one roster change to members:{org_id} subscribers."""
 
     @abstractmethod
-    def inbox_changed(self, user_id: UUID, action: str, org_id: UUID) -> None:
+    def inbox_changed(
+        self,
+        user_id: UUID,
+        action: str,
+        org_id: UUID,
+        detail: str | None = None,
+    ) -> None:
         """Push to notifications:{user_id} so an invitee updates live."""
 
 
