@@ -265,6 +265,35 @@ class ActivityDirectory(ABC):
         """Newest public-status activities of one org, sliced, plus total."""
 
 
+@dataclass(frozen=True)
+class OrgPostBrief:
+    """Public card fields of one published announcement (posts owns rows)."""
+
+    id: UUID
+    title: str
+    excerpt: str
+    cover_url: str | None
+    author_name: str
+    published_at: datetime | None
+    comment_count: int
+
+
+@dataclass(frozen=True)
+class OrgPostListing:
+    """Published announcement briefs plus their exact total count."""
+
+    total: int
+    items: list[OrgPostBrief]
+
+
+class PostDirectory(ABC):
+    """Read-only bridge onto the posts context (posts owns the rows)."""
+
+    @abstractmethod
+    def list_public(self, org_id: UUID, limit: int = 4) -> OrgPostListing:
+        """Newest published announcements of one org, sliced, plus total."""
+
+
 class MemberEvents(ABC):
     """Realtime fan-out port for roster and invitation changes (best-effort)."""
 

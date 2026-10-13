@@ -1278,9 +1278,12 @@ CREATE TABLE IF NOT EXISTS ws_tickets (
 // quote, list, image, video, divider; media blocks carry asset ids only),
 // body is its plain-text projection. status is the publish state; trash
 // is the orthogonal deleted_at stamp so restore returns to that state.
+// revision_of links a private draft to the live post it replaces on
+// publish (parallel-draft editing: the published version stays up while
+// the author stages edits).
 // (deployed keyspaces: ALTER TABLE org_posts ADD blocks_json text,
 //  ADD cover_media_id uuid, ADD published_at timestamp,
-//  ADD deleted_at timestamp)
+//  ADD deleted_at timestamp, ADD revision_of uuid)
 CREATE TABLE IF NOT EXISTS org_posts (
     post_id uuid PRIMARY KEY,
     org_id uuid,
@@ -1291,6 +1294,7 @@ CREATE TABLE IF NOT EXISTS org_posts (
     blocks_json text,
     cover_media_id uuid,
     status text, // active (published) | draft
+    revision_of uuid, // draft staging edits for a live post
     pinned_at timestamp,
     edited_at timestamp,
     published_at timestamp,

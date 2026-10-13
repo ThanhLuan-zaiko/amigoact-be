@@ -29,6 +29,7 @@ class PostStore(ABC):
         status: str = "active",
         blocks_json: str = "",
         cover_media_id: UUID | None = None,
+        revision_of: UUID | None = None,
     ) -> OrgPost:
         """Insert the canonical row, its feed or draft entry, media links."""
 

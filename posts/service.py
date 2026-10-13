@@ -175,9 +175,9 @@ class PostService(BoardServiceBase):
         current_kind = row.kind or "discussion"
         next_kind = kind or current_kind
         if next_kind != current_kind:
-            if not is_draft(row):
+            if not is_draft(row) or getattr(row, "revision_of", None):
                 raise InvalidPostStateError(
-                    "Kind can only change while the post is a draft."
+                    "Kind can only change on a standalone draft."
                 )
             if next_kind == "announcement":
                 self._guard.require_announce(

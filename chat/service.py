@@ -21,7 +21,7 @@ from core.exceptions import (
     OrgDeletedError,
 )
 from core.ids import uuid7
-from core.security import utcnow
+from core.security import utc_aware, utcnow
 from orgs.interfaces import MemberRepository, OrgRepository, UserDirectory
 from orgs.member_helpers import is_active_member, live_org
 from rbac.interfaces import AccessControl
@@ -106,7 +106,7 @@ class ChatService:
             author_id=row.author_id,
             author_name=brief.full_name if brief else "Unknown user",
             body=row.body or "",
-            created_at=row.created_at,
+            created_at=utc_aware(row.created_at),
         )
 
     def can_access(self, room_id: UUID, user_id: UUID) -> bool:
@@ -254,7 +254,7 @@ class ChatService:
         ):
             return ReadSnapshot(
                 last_read_message_id=existing.last_read_message_id,
-                last_read_at=existing.last_read_at,
+                last_read_at=utc_aware(existing.last_read_at),
             )
         now = utcnow()
         self._chat.mark_read(room_id, user_id, message_id, now)
@@ -290,7 +290,7 @@ class ChatService:
             org_id=org_id,
             peer_id=peer_id,
             peer_name=brief.full_name if brief else "Unknown user",
-            created_at=pair.created_at,
+            created_at=utc_aware(pair.created_at),
         )
 
     def list_dm_rooms(
@@ -320,7 +320,7 @@ class ChatService:
                     org_id=org_id,
                     peer_id=row.peer_id,
                     peer_name=brief.full_name if brief else "Unknown user",
-                    created_at=row.created_at,
+                    created_at=utc_aware(row.created_at),
                 )
             )
         return out

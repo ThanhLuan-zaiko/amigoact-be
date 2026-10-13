@@ -79,7 +79,8 @@ async def test_public_detail_contract_locked(client: AsyncClient) -> None:
         "join_policy", "email", "phone", "website", "address", "city",
         "country", "legal_status", "legal_name", "license_number",
         "tax_code", "verified_at", "logo_url", "cover_url", "gallery",
-        "activity_count", "activities", "created_at",
+        "activity_count", "activities",
+        "announcement_count", "announcements", "created_at",
     }
     assert body["tax_code"] == "0309876543"
     assert body["legal_status"] == "pending"
@@ -87,3 +88,65 @@ async def test_public_detail_contract_locked(client: AsyncClient) -> None:
     # Route order: /orgs/mine still resolves to the auth-only listing.
     mine = await client.get("/orgs/mine")
     assert mine.status_code == 401
+
+
+async def test_public_announcement_contract_locked(client: AsyncClient) -> None:
+    """Guest announcement read reuses the internal PostResponse shape and
+    its teaser items freeze their own field set on the profile."""
+    await client.post(
+        "/auth/register",
+        json={
+            "email": "annpager@example.com", "phone": "0344123777",
+            "password": PASSWORD, "full_name": "Ann Pager",
+        },
+    )
+    logged = await client.post(
+        "/auth/login",
+        json={"email": "annpager@example.com", "password": PASSWORD},
+    )
+    headers = {"Authorization": f"Bearer {logged.json()['access_token']}"}
+    made = await client.post(
+        "/orgs",
+        json={
+            "name": "Ann Club", "slug": "ann-club", "description": "",
+            "kind": "club",
+        },
+        headers=headers,
+    )
+    assert made.status_code == 201
+    org_id = made.json()["id"]
+    posted = await client.post(
+        f"/orgs/{org_id}/posts",
+        json={"kind": "announcement", "title": "News", "body": "Body"},
+        headers=headers,
+    )
+    assert posted.status_code == 201, posted.text
+    post_id = posted.json()["post_id"]
+
+    detail = await client.get("/orgs/ann-club")  # guest: no auth
+    assert detail.status_code == 200
+    item = detail.json()["announcements"][0]
+    assert set(item.keys()) == {
+        "id", "title", "excerpt", "cover_url", "author_name",
+        "published_at", "comment_count",
+    }
+
+    article = await client.get(f"/orgs/ann-club/announcements/{post_id}")
+    assert article.status_code == 200
+    assert set(article.json().keys()) == {
+        "post_id", "org_id", "author_id", "author_name", "kind", "title",
+        "body", "pinned_at", "edited_at", "media", "comment_count",
+        "status", "blocks", "cover_media_id", "published_at",
+        "deleted_at", "updated_at", "created_at", "revision_of",
+    }
+    assert article.json()["kind"] == "announcement"
+    assert article.json()["status"] == "published"
+
+    listing = await client.get("/orgs/ann-club/announcements")
+    assert listing.status_code == 200
+    assert set(listing.json().keys()) == {"items", "total"}
+    assert listing.json()["total"] == 1
+    assert set(listing.json()["items"][0].keys()) == {
+        "id", "title", "excerpt", "cover_url", "author_name",
+        "published_at", "comment_count",
+    }

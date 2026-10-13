@@ -31,11 +31,12 @@ class FakePostStore(PostStore):
         self.trash: dict[UUID, list[UUID]] = {}
         self.media: dict[UUID, list[Any]] = {}
 
-    def create(self, post_id, org_id, author_id, kind, title, body, media_ids, now, status="active", blocks_json="", cover_media_id=None):  # noqa: ANN001, ANN202, E501
+    def create(self, post_id, org_id, author_id, kind, title, body, media_ids, now, status="active", blocks_json="", cover_media_id=None, revision_of=None):  # noqa: ANN001, ANN202, E501
         row = SimpleNamespace(
             post_id=post_id, org_id=org_id, author_id=author_id,
             kind=kind, title=title, body=body, status=status,
             blocks_json=blocks_json, cover_media_id=cover_media_id,
+            revision_of=revision_of,
             pinned_at=None, edited_at=None, deleted_at=None,
             published_at=now if status == "active" else None,
             created_at=now, updated_at=now,

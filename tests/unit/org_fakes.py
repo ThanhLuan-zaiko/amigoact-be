@@ -15,7 +15,9 @@ from orgs.interfaces import (
     MediaRepository,
     OrgActivityListing,
     OrgDirectoryEvents,
+    OrgPostListing,
     OrgRepository,
+    PostDirectory,
 )
 from orgs.media_service import MediaService
 from orgs.service import OrgService
@@ -219,6 +221,18 @@ class FakeActivityDirectory(ActivityDirectory):
     def list_public(self, org_id, limit=6):  # noqa: ANN001, ANN202
         return self.listings.get(
             org_id, OrgActivityListing(total=0, items=[])
+        )
+
+
+class FakePostDirectory(PostDirectory):
+    """Canned per-org announcement listings for detail-page unit tests."""
+
+    def __init__(self) -> None:
+        self.listings: dict[UUID, OrgPostListing] = {}
+
+    def list_public(self, org_id, limit=4):  # noqa: ANN001, ANN202
+        return self.listings.get(
+            org_id, OrgPostListing(total=0, items=[])
         )
 
 

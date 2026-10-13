@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from uuid import UUID
 
 import pytest
@@ -176,6 +177,110 @@ def test_trash_visibility_by_role() -> None:
     )
 
 
+def test_revision_stages_edits_until_publish() -> None:
+    env = Env()
+    snap = env.post(env.member, body="v1")
+    events = len(env.events.calls)
+    rev = env.life.get_or_create_revision(env.org_id, snap.post_id, env.member)
+    assert rev.post_id != snap.post_id
+    assert rev.status == "draft" and rev.revision_of == snap.post_id
+    assert rev.body == "v1"
+    again = env.life.get_or_create_revision(env.org_id, snap.post_id, env.member)
+    assert again.post_id == rev.post_id  # idempotent
+    assert len(env.events.calls) == events  # revisions stay silent
+    assert env.svc.get_post(env.org_id, snap.post_id, env.member).body == "v1"
+    drafts = env.life.list_drafts(env.org_id, env.member)
+    assert [p.post_id for p in drafts.items] == [rev.post_id]
+
+
+def test_revision_requires_published_post_and_author() -> None:
+    env = Env()
+    snap = env.post(env.member)
+    with pytest.raises(ForbiddenError):
+        env.life.get_or_create_revision(env.org_id, snap.post_id, env.owner)
+    draft = env.draft(env.member)
+    with pytest.raises(InvalidPostStateError):
+        env.life.get_or_create_revision(env.org_id, draft.post_id, env.member)
+
+
+def test_publish_revision_folds_into_live_post() -> None:
+    env = Env()
+    snap = env.post(env.member, body="v1")
+    rev = env.life.get_or_create_revision(env.org_id, snap.post_id, env.member)
+    edited = env.svc.update_post(
+        env.org_id, rev.post_id, env.member, "New title", "v2",
+    )
+    assert edited.title == "New title"
+    merged = env.life.publish(env.org_id, rev.post_id, env.member)
+    assert merged.post_id == snap.post_id
+    assert merged.status == "published" and merged.edited_at is not None
+    assert merged.title == "New title" and merged.body == "v2"
+    assert rev.post_id not in env.posts.posts
+    assert env.posts.feed[env.org_id] == [snap.post_id]
+    assert env.life.list_drafts(env.org_id, env.member).items == []
+    assert env.events.calls[-1][1] == "post.updated"
+    assert env.events.calls[-1][2] == snap.post_id
+
+
+def test_revision_kind_is_locked_to_parent() -> None:
+    env = Env()
+    snap = env.post(env.member)
+    rev = env.life.get_or_create_revision(env.org_id, snap.post_id, env.member)
+    with pytest.raises(InvalidPostStateError):
+        env.svc.update_post(
+            env.org_id, rev.post_id, env.member, "T", "x",
+            kind="announcement",
+        )
+
+
+def test_unpublish_folds_open_revision_into_draft() -> None:
+    env = Env()
+    snap = env.post(env.member, body="v1")
+    rev = env.life.get_or_create_revision(env.org_id, snap.post_id, env.member)
+    env.svc.update_post(env.org_id, rev.post_id, env.member, "v2", "v2 body")
+    back = env.life.unpublish(env.org_id, snap.post_id, env.member)
+    assert back.status == "draft" and back.body == "v2 body"
+    assert rev.post_id not in env.posts.posts
+    drafts = env.life.list_drafts(env.org_id, env.member)
+    assert [p.post_id for p in drafts.items] == [snap.post_id]
+
+
+def test_trash_and_purge_cascade_to_revisions() -> None:
+    env = Env()
+    snap = env.post(env.member)
+    rev = env.life.get_or_create_revision(env.org_id, snap.post_id, env.member)
+    env.life.soft_delete(env.org_id, snap.post_id, env.member)
+    trashed = {
+        p.post_id for p in env.life.list_trash(env.org_id, env.member).items
+    }
+    assert trashed == {snap.post_id, rev.post_id}
+    env.life.restore(env.org_id, snap.post_id, env.member)
+    assert env.svc.get_post(env.org_id, snap.post_id, env.member).status == (
+        "published"
+    )
+    env.life.restore(env.org_id, rev.post_id, env.member)
+    env.life.hard_delete(env.org_id, snap.post_id, env.member)
+    assert snap.post_id not in env.posts.posts
+    assert rev.post_id not in env.posts.posts
+
+
+def test_purging_revision_keeps_live_assets() -> None:
+    env = Env()
+    att = env.media.create_asset(
+        _uid(), env.org_id, "orgs/x/keep.png", "image/png", 1, NOW,
+        role="attachment",
+    )
+    env.files.files["orgs/x/keep.png"] = b"1"
+    snap = env.svc.create_post(
+        env.org_id, env.member, "discussion", "T", "", [],
+        blocks=[ImageBlock(type="image", asset_id=att.asset_id)],
+    )
+    rev = env.life.get_or_create_revision(env.org_id, snap.post_id, env.member)
+    env.life.hard_delete(env.org_id, rev.post_id, env.member)
+    assert rev.post_id not in env.posts.posts
+    assert att.asset_id in env.media.assets  # still used by the live post
+
+
 def test_hard_delete_purges_attachments_only() -> None:
     env = Env()
     att = env.media.create_asset(
@@ -205,3 +310,18 @@ def test_hard_delete_purges_attachments_only() -> None:
     assert "orgs/x/att.png" not in env.files.files
     assert "orgs/x/gal.png" in env.files.files
     assert env.events.calls[-1][1] == "post.deleted"
+
+
+def test_snapshot_timestamps_carry_utc_offset() -> None:
+    """Scylla rows are naive UTC; snapshots must reattach the offset."""
+    env = Env()
+    snap = env.post(env.member)
+    row = env.posts.posts[snap.post_id]
+    naive = datetime(2026, 10, 13, 2, 30)
+    row.created_at, row.published_at, row.updated_at = naive, naive, naive
+    loaded = env.svc.get_post(env.org_id, snap.post_id, env.member)
+    aware = datetime(2026, 10, 13, 2, 30, tzinfo=UTC)
+    assert loaded.created_at == aware
+    assert loaded.published_at == aware
+    assert loaded.updated_at == aware
+    assert loaded.deleted_at is None

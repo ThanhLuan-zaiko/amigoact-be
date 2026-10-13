@@ -7,13 +7,21 @@ Bảng tin tổ chức là không gian viết bài dạng báo/blog: nội dung 
 đường kẻ), kèm `title`, `cover_media_id` và `kind` (`discussion` mặc định,
 `announcement` cần `post:announce`).
 
-Vòng đời bài viết giống CRUD tổ chức: tạo/sửa/đăng, chuyển về nháp, xóa mềm
-vào thùng rác, khôi phục, xóa cứng. Hai trục trạng thái độc lập:
+Vòng đời bài viết giống CRUD tổ chức: tạo/sửa/đăng, gỡ xuống, xóa mềm
+vào thùng rác, khôi phục, xóa cứng. Hai trục trạng thái độc lập cộng một
+liên kết nháp song song:
 
 - `status`: `draft` (nháp riêng tư của tác giả) ↔ `active` (đã đăng; API trả
   `published`).
 - `deleted_at`: khác `None` nghĩa là đang ở thùng rác — trùng được với cả hai
   trạng thái trên và khôi phục sẽ trả về đúng trạng thái cũ.
+- `revision_of`: trên một `draft`, trỏ về `post_id` của bài đang live. Đây là
+  "nháp chờ đăng": tác giả sửa riêng, bài gốc vẫn hiển thị; `publish` trên
+  revision gộp nội dung ngược vào bài gốc (giữ `post_id`, comment, ghim) rồi
+  xóa row revision thay vì tạo bài mới. `kind` của revision bị khóa theo bài
+  gốc. `unpublish` (gỡ xuống) hấp thụ revision mới nhất vào bài rồi mới chuyển
+  draft; `soft_delete`/`hard_delete` trên bài gốc cascade sang mọi revision;
+  xóa cứng revision lẻ giữ lại asset mà bài gốc đang dùng chung.
 
 Bảng canonical `org_posts` cộng ba projection: `org_posts_feed` (đã đăng,
 mới nhất trước), `org_posts_pinned` (rail ghim), `org_post_drafts`
@@ -51,14 +59,32 @@ vẫn phân trang cursor `next_cursor`.
 | Thùng rác | `GET /orgs/{id}/posts/trash` | member thấy bài mình; manager thấy hết |
 | Chi tiết | `GET /orgs/{id}/posts/{post}` | member; nháp chỉ tác giả đọc |
 | Tạo | `POST /orgs/{id}/posts` | member; `status=draft` cho nháp |
-| Sửa | `PATCH /orgs/{id}/posts/{post}` | chỉ tác giả; `kind` đổi được khi còn nháp |
-| Đăng nháp | `POST .../publish` | tác giả (announcement cần `post:announce`) |
-| Về nháp | `POST .../unpublish` | tác giả |
+| Sửa | `PATCH /orgs/{id}/posts/{post}` | chỉ tác giả; `kind` đổi được khi còn nháp độc lập |
+| Nháp chờ đăng | `POST .../posts/{post}/revisions` | tác giả của bài đang live; idempotent — trả revision đang mở nếu có |
+| Đăng nháp | `POST .../publish` | tác giả (announcement cần `post:announce`); revision gộp vào bài gốc |
+| Gỡ xuống | `POST .../unpublish` | tác giả; hấp thụ revision đang mở trước khi chuyển draft |
 | Ghim/bỏ ghim | `POST .../pin` `POST .../unpin` | manager |
 | Xóa mềm | `DELETE .../posts/{post}` | tác giả hoặc manager → `204` |
 | Khôi phục | `POST .../restore` | tác giả hoặc manager |
 | Xóa cứng | `DELETE .../posts/{post}?hard=true` | tác giả hoặc manager → `204`, xóa luôn comment + media link |
 | Comment | `GET/POST/DELETE .../comments` | member; xóa bởi tác giả comment hoặc manager |
+
+## 3.1. Cổng public
+
+Chỉ bài `announcement` đã đăng (không nháp, không revision, không thùng rác)
+là public; `discussion` và mọi nội dung khác ở lại board nội bộ.
+
+- Teaser (`title`, `excerpt`, `cover_url`, `author_name`, `published_at`,
+  `comment_count`) nhúng trong `GET /orgs/{slug}` qua field `announcements`
+  + `announcement_count` — `PublicOrgService` gọi port `PostDirectory`
+  (`orgs/interfaces.py`) do `posts/public_service.py` cài đặt.
+- Đọc bài đầy đủ: `GET /orgs/{slug}/announcements/{post_id}` → `PostResponse`
+  (shape y hệt API nội bộ). Segment `announcements` cố ý để không đụng route
+  member `/orgs/{id}/posts/{post_id}` cùng shape. `404` khi org chết/xóa,
+  bài không public, hoặc bài thuộc org khác.
+- Danh sách đầy đủ: `GET /orgs/{slug}/announcements?limit&page` →
+  `PublicAnnouncementPage` (`items` teaser + `total` chính xác; `limit` 1–30
+  mặc định 9, `page` ≥ 1 mặc định 1). Trang vượt tổng trả `items` rỗng.
 
 Lỗi riêng: `INVALID_POST_STATE` (đăng bài đã đăng, khôi phục bài không ở thùng
 rác…), `POST_CONTENT_REQUIRED`, `POST_TITLE_REQUIRED` (announcement đăng cần

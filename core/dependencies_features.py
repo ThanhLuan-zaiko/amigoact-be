@@ -59,6 +59,7 @@ def get_public_org_service(
     settings: Settings = Depends(get_settings),
 ) -> PublicOrgService:
     """Build the read-only guest surface over org, media and activity rows."""
+    from core.dependencies_workspace import get_public_post_service
     from orgs.activity_directory import CqlOrgActivityDirectory
     from orgs.media_repository import CqlMediaRepository
     from orgs.public_service import PublicOrgService
@@ -68,6 +69,7 @@ def get_public_org_service(
         orgs=CqlOrgRepository(settings.scylla_keyspace),
         media=CqlMediaRepository(),
         activities=CqlOrgActivityDirectory(settings.scylla_keyspace),
+        posts=get_public_post_service(settings),
     )
 
 

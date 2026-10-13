@@ -6,7 +6,12 @@ from typing import TYPE_CHECKING
 from uuid import UUID
 
 from core.exceptions import NotFoundError
-from orgs.interfaces import ActivityDirectory, MediaRepository, OrgRepository
+from orgs.interfaces import (
+    ActivityDirectory,
+    MediaRepository,
+    OrgRepository,
+    PostDirectory,
+)
 from orgs.listing import (
     PublicOrgDetail,
     PublicOrgListResult,
@@ -26,10 +31,12 @@ class PublicOrgService:
         orgs: OrgRepository,
         media: MediaRepository | None = None,
         activities: ActivityDirectory | None = None,
+        posts: PostDirectory | None = None,
     ) -> None:
         self._orgs = orgs
         self._media = media
         self._activities = activities
+        self._posts = posts
 
     def _media_url(self, asset_id: UUID | None) -> str | None:
         """Resolve a brand asset to its semi-public /media/ URL."""
@@ -102,6 +109,11 @@ class PublicOrgService:
             if self._activities is not None
             else None
         )
+        announcements = (
+            self._posts.list_public(org.id)
+            if self._posts is not None
+            else None
+        )
         return PublicOrgDetail(
             id=org.id,
             name=org.name,
@@ -126,5 +138,11 @@ class PublicOrgService:
             gallery=self._gallery_urls(org.id),
             activity_count=listing.total if listing is not None else 0,
             activities=listing.items if listing is not None else [],
+            announcement_count=(
+                announcements.total if announcements is not None else 0
+            ),
+            announcements=(
+                announcements.items if announcements is not None else []
+            ),
             created_at=org.created_at,
         )

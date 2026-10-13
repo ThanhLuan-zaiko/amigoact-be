@@ -39,6 +39,7 @@ class PostSnapshot:
     status: str = "published"
     blocks: list[dict[str, Any]] = field(default_factory=list)
     cover_media_id: UUID | None = None
+    revision_of: UUID | None = None
     published_at: datetime | None = None
     deleted_at: datetime | None = None
     updated_at: datetime | None = None

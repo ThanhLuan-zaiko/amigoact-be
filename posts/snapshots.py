@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
+from core.security import utc_aware
 from orgs.interfaces import MediaRepository, UserDirectory
 from posts.blocks import load_blocks
 from posts.dtos import PostMediaBrief, PostSnapshot
@@ -59,18 +60,19 @@ class PostSnapshots:
             kind=row.kind or "discussion",
             title=row.title or "",
             body=row.body or "",
-            pinned_at=row.pinned_at,
-            edited_at=row.edited_at,
+            pinned_at=utc_aware(row.pinned_at),
+            edited_at=utc_aware(row.edited_at),
             media=self.media_briefs(row.post_id),
             comment_count=self._comments.count(row.post_id),
-            created_at=row.created_at,
+            created_at=utc_aware(row.created_at),
             status=status,
             blocks=load_blocks(getattr(row, "blocks_json", None)),
             cover_media_id=getattr(row, "cover_media_id", None),
-            published_at=getattr(row, "published_at", None)
-            or (row.created_at if status == "published" else None),
-            deleted_at=getattr(row, "deleted_at", None),
-            updated_at=getattr(row, "updated_at", None),
+            revision_of=getattr(row, "revision_of", None),
+            published_at=utc_aware(getattr(row, "published_at", None))
+            or (utc_aware(row.created_at) if status == "published" else None),
+            deleted_at=utc_aware(getattr(row, "deleted_at", None)),
+            updated_at=utc_aware(getattr(row, "updated_at", None)),
         )
 
     def fresh(self, post_id: UUID) -> PostSnapshot:

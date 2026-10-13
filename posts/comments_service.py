@@ -6,7 +6,7 @@ from uuid import UUID
 
 from core.exceptions import ForbiddenError, NotFoundError
 from core.ids import uuid7
-from core.security import utcnow
+from core.security import utc_aware, utcnow
 from orgs.interfaces import MemberRepository, OrgRepository, UserDirectory
 from orgs.member_helpers import is_active_member, live_org
 from posts.dtos import CommentPage, CommentSnapshot
@@ -130,5 +130,5 @@ class CommentService:
             author_id=row.author_id,
             author_name=brief.full_name if brief else "Unknown user",
             body=row.body or "",
-            created_at=row.created_at,
+            created_at=utc_aware(row.created_at),
         )

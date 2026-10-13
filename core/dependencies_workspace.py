@@ -22,8 +22,27 @@ if TYPE_CHECKING:
     from notifications.service import NotificationService
     from posts.comments_service import CommentService
     from posts.lifecycle_service import PostLifecycleService
+    from posts.public_service import PublicPostService
     from posts.service import PostService
     from rbac.interfaces import AccessControl
+
+
+def get_public_post_service(
+    settings: Settings = Depends(get_settings),
+) -> PublicPostService:
+    """Guest announcement reads over the same posts tables (no auth)."""
+    from orgs.media_repository import CqlMediaRepository
+    from orgs.repository import CqlOrgRepository
+    from posts.public_service import PublicPostService
+    from posts.repository import CqlCommentStore, CqlPostStore
+
+    return PublicPostService(
+        orgs=CqlOrgRepository(settings.scylla_keyspace),
+        posts=CqlPostStore(settings.scylla_keyspace),
+        comments=CqlCommentStore(settings.scylla_keyspace),
+        users=user_directory(settings),
+        media=CqlMediaRepository(),
+    )
 
 
 def get_post_service(

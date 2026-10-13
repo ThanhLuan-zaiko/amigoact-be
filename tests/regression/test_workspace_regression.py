@@ -19,9 +19,9 @@ POST_FIELDS = {
     "post_id", "org_id", "author_id", "author_name", "kind", "title",
     "body", "pinned_at", "edited_at", "media", "comment_count",
     "created_at",
-    # Article fields (block editor, drafts, trash).
+    # Article fields (block editor, drafts, trash, revisions).
     "status", "blocks", "cover_media_id", "published_at", "deleted_at",
-    "updated_at",
+    "updated_at", "revision_of",
 }
 PAGE_FIELDS = {
     "items", "pinned", "total", "viewer_role", "viewer_permissions",
@@ -47,7 +47,10 @@ async def test_post_page_contract(client: AsyncClient) -> None:
     page = await client.get(f"/orgs/{org_id}/posts", headers=owner_h)
     assert set(page.json()) == PAGE_FIELDS
     assert page.json()["viewer_role"] == "owner"
-    assert page.json()["viewer_permissions"] == []
+    # Owner carries the whole permission catalog implicitly (same rule as
+    # member_service.list_members); an empty list would lock owner UI.
+    assert "post:announce" in page.json()["viewer_permissions"]
+    assert "post:manage" in page.json()["viewer_permissions"]
 
 
 async def test_legacy_post_and_static_routes(client: AsyncClient) -> None:

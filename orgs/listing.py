@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING
 from uuid import UUID
 
 if TYPE_CHECKING:
-    from orgs.interfaces import OrgActivityBrief
+    from orgs.interfaces import OrgActivityBrief, OrgPostBrief
     from orgs.service import OrgSnapshot
 
 _BUCKET_ORDER = ("active", "pending")
@@ -148,6 +148,8 @@ class PublicOrgDetail:
     gallery: list[str]
     activity_count: int
     activities: list[OrgActivityBrief]
+    announcement_count: int
+    announcements: list[OrgPostBrief]
     created_at: datetime
 
 

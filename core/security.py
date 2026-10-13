@@ -20,6 +20,13 @@ def utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def utc_aware(moment: datetime | None) -> datetime | None:
+    """Reattach UTC to a naive DB datetime so clients see real instants."""
+    if moment is not None and moment.tzinfo is None:
+        return moment.replace(tzinfo=timezone.utc)
+    return moment
+
+
 def new_token_id() -> str:
     """Random UUIDv7 identifier for access-token jti claims."""
     return str(uuid_utils.uuid7())

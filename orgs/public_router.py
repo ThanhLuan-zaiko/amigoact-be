@@ -14,6 +14,7 @@ from orgs.schemas import (
     PublicOrgActivityItem,
     PublicOrgDetailResponse,
     PublicOrgPage,
+    PublicOrgPostItem,
     PublicOrgResponse,
 )
 
@@ -96,6 +97,19 @@ def _public_detail_schema(item: PublicOrgDetail) -> PublicOrgDetailResponse:
                 start_at=activity.start_at,
             )
             for activity in item.activities
+        ],
+        announcement_count=item.announcement_count,
+        announcements=[
+            PublicOrgPostItem(
+                id=post.id,
+                title=post.title,
+                excerpt=post.excerpt,
+                cover_url=post.cover_url,
+                author_name=post.author_name,
+                published_at=post.published_at,
+                comment_count=post.comment_count,
+            )
+            for post in item.announcements
         ],
         created_at=item.created_at,
     )

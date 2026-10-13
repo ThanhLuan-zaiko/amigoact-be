@@ -7,6 +7,7 @@ from uuid import UUID
 from core.exceptions import ForbiddenError
 from orgs.interfaces import MemberRepository, OrgRepository
 from orgs.member_helpers import is_active_member, live_org
+from rbac.catalog import PERMISSIONS
 from rbac.interfaces import AccessControl
 
 
@@ -93,9 +94,14 @@ class BoardGuard:
     def viewer(
         self, org_id: UUID, org_owner: UUID, viewer_id: UUID
     ) -> tuple[str, list[str]]:
-        """(viewer_role, viewer_permissions) for page envelopes."""
+        """(viewer_role, viewer_permissions) for page envelopes.
+
+        The owner carries every catalog permission implicitly, like
+        member_service.list_members — reporting an empty list would let
+        the client lock the owner out of manager UI.
+        """
         if org_owner == viewer_id:
-            return "owner", []
+            return "owner", sorted(PERMISSIONS)
         return "member", sorted(
             self._access.effective_permissions(org_id, viewer_id)
         )

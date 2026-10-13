@@ -38,6 +38,7 @@ class CqlPostStore(PostStore):
         status: str = "active",
         blocks_json: str = "",
         cover_media_id: UUID | None = None,
+        revision_of: UUID | None = None,
     ) -> OrgPost:
         row = OrgPost.create(
             post_id=post_id,
@@ -49,6 +50,7 @@ class CqlPostStore(PostStore):
             blocks_json=blocks_json,
             cover_media_id=cover_media_id,
             status=status,
+            revision_of=revision_of,
             published_at=now if status == "active" else None,
             created_at=now,
             updated_at=now,

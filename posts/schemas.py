@@ -8,6 +8,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from orgs.schemas import PublicOrgPostItem
 from posts.blocks import MAX_BLOCKS, Block, has_content
 
 PostKind = Literal["announcement", "discussion"]
@@ -101,6 +102,7 @@ class PostResponse(BaseModel):
     body: str
     blocks: list[dict[str, Any]] = []
     cover_media_id: UUID | None = None
+    revision_of: UUID | None = None
     pinned_at: datetime | None = None
     edited_at: datetime | None = None
     published_at: datetime | None = None
@@ -119,6 +121,13 @@ class PostPageResponse(BaseModel):
     total: int = 0
     viewer_role: str = "member"
     viewer_permissions: list[str] = []
+
+
+class PublicAnnouncementPage(BaseModel):
+    """Guest-facing numbered page of announcement teasers (no auth)."""
+
+    items: list[PublicOrgPostItem]
+    total: int = 0
 
 
 class CommentResponse(BaseModel):

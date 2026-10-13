@@ -31,6 +31,7 @@ class OrgPost(models.Model):
     blocks_json = columns.Text(required=False, default="")
     cover_media_id = columns.UUID(required=False)
     status = columns.Text(required=True, default="active")
+    revision_of = columns.UUID(required=False)
     pinned_at = columns.DateTime(required=False)
     edited_at = columns.DateTime(required=False)
     published_at = columns.DateTime(required=False)

@@ -213,6 +213,18 @@ class PublicOrgActivityItem(BaseModel):
     start_at: datetime | None = None
 
 
+class PublicOrgPostItem(BaseModel):
+    """One published announcement teaser on the org profile."""
+
+    id: UUID
+    title: str
+    excerpt: str = ""
+    cover_url: str | None = None
+    author_name: str
+    published_at: datetime | None = None
+    comment_count: int = 0
+
+
 class PublicOrgDetailResponse(BaseModel):
     """Guest-facing org profile; owner and legal-rep fields stay out."""
 
@@ -239,6 +251,8 @@ class PublicOrgDetailResponse(BaseModel):
     gallery: list[str] = []
     activity_count: int = 0
     activities: list[PublicOrgActivityItem] = []
+    announcement_count: int = 0
+    announcements: list[PublicOrgPostItem] = []
     created_at: datetime
 
 
