@@ -235,6 +235,7 @@ class MemberService(MemberModerationMixin):
                     "membership",
                     f"L\u1eddi m\u1eddi v\u00e0o {org.name}",
                     "B\u1ea1n \u0111\u01b0\u1ee3c m\u1eddi tham gia t\u1ed5 ch\u1ee9c. V\u00e0o H\u1ed9p th\u01b0 l\u1eddi m\u1eddi \u0111\u1ec3 ph\u1ea3n h\u1ed3i.",
+                    f'{{"org_id": "{org_id}", "org_slug": "{org.slug}"}}',
                 )
             except Exception:  # noqa: BLE001 - notifications are best-effort
                 pass

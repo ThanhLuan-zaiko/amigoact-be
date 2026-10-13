@@ -64,6 +64,10 @@ class NotificationStore(ABC):
     def mark_read(self, row: Notification, now: datetime) -> None:
         """Stamp read_at and flip status on both tables."""
 
+    @abstractmethod
+    def mark_all_read(self, user_id: UUID, now: datetime) -> int:
+        """Flip every unread feed row for the user; returns count marked."""
+
 
 class PreferenceStore(ABC):
     """Persistence port for per-user notification preferences."""

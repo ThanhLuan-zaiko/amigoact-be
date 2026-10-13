@@ -242,7 +242,7 @@ class ActivityDetailService:
     ) -> ActivityDetail:
         """Replace staff; every member must belong to the org."""
         self._manager(org_id, actor_id)
-        self._org_activity(org_id, activity_id)
+        activity = self._org_activity(org_id, activity_id)
         merged: dict[UUID, str] = {}
         for user_id, staff_role in rows:
             if staff_role not in _STAFF_ROLES:
@@ -260,7 +260,9 @@ class ActivityDetailService:
                     "staff",
                     "B\u1ea1n \u0111\u01b0\u1ee3c ph\u00e2n c\u00f4ng s\u1ef1 ki\u1ec7n",
                     f"Vai tr\u00f2 {staff_role} trong m\u1ed9t ho\u1ea1t \u0111\u1ed9ng m\u1edbi.",
-                    f'{{"activity_id": "{activity_id}"}}',
+                    f'{{"activity_id": "{activity_id}", '
+                    f'"org_id": "{org_id}", '
+                    f'"activity_slug": "{activity.slug}"}}',
                 )
         return self.detail(org_id, activity_id, actor_id)
 

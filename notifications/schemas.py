@@ -18,6 +18,7 @@ class NotificationItem(BaseModel):
     status: str
     read_at: datetime | None
     created_at: datetime
+    data: dict | None = None
 
 
 class NotificationPage(BaseModel):
@@ -26,6 +27,12 @@ class NotificationPage(BaseModel):
     items: list[NotificationItem]
     total: int
     unread: int
+
+
+class MarkAllResult(BaseModel):
+    """Bulk-read receipt; the client refreshes the badge to zero."""
+
+    marked: int
 
 
 class PreferencesBody(BaseModel):

@@ -32,6 +32,7 @@ NOTIFICATION_KEYS = {
     "status",
     "read_at",
     "created_at",
+    "data",
 }
 
 

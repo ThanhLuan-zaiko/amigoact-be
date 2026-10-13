@@ -197,7 +197,11 @@ class RegistrationService(_RegistrationBase):
             row.student_id,
             f"\u0110\u0103ng k\u00fd {label}",
             f"\u0110\u01a1n tham gia {activity.title} {label}.",
-            {"activity_id": str(activity_id)},
+            {
+                "activity_id": str(activity_id),
+                "org_id": str(activity.org_id),
+                "activity_slug": activity.slug,
+            },
         )
         return updated
 

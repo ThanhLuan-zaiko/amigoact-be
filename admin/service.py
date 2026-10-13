@@ -151,7 +151,11 @@ class AdminService:
         )
         try:
             self._notifications.notify(
-                org.owner_id, "organization", title, body
+                org.owner_id,
+                "organization",
+                title,
+                body,
+                f'{{"org_id": "{org_id}", "org_slug": "{fresh.slug}"}}',
             )
         except Exception:  # noqa: BLE001 - notifications are best-effort
             pass

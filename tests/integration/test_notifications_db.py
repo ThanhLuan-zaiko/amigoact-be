@@ -69,6 +69,8 @@ async def test_invite_emits_notification_and_read_flow(
     assert item["type"] == "membership"
     assert item["status"] == "unread"
     assert "Notify Club" in item["title"]
+    assert item["data"]["org_id"] == org_id
+    assert item["data"]["org_slug"] == "notify-club"
 
     foreign = await client.post(
         f"/notifications/{item['id']}/read", headers=stranger
@@ -84,6 +86,51 @@ async def test_invite_emits_notification_and_read_flow(
 
     after = await client.get("/notifications", headers=invitee)
     assert after.json()["unread"] == 0
+
+
+async def test_read_all_marks_every_unread(
+    client: AsyncClient,
+) -> None:
+    owner = _headers(await _token(client, "ra.owner@example.com", "0900000020"))
+    invitee = _headers(
+        await _token(client, "ra.invitee@example.com", "0900000021")
+    )
+
+    for slug in ("read-all-a", "read-all-b"):
+        created = await client.post(
+            "/orgs",
+            json={
+                "name": f"ReadAll {slug}",
+                "slug": slug,
+                "description": "",
+                "kind": "club",
+            },
+            headers=owner,
+        )
+        assert created.status_code == 201, created.text
+        invited = await client.post(
+            f"/orgs/{created.json()['id']}/members",
+            json={"email": "ra.invitee@example.com"},
+            headers=owner,
+        )
+        assert invited.status_code == 201, invited.text
+
+    inbox = await client.get("/notifications", headers=invitee)
+    assert inbox.json()["unread"] == 2
+
+    swept = await client.post("/notifications/read-all", headers=invitee)
+    assert swept.status_code == 200, swept.text
+    assert swept.json() == {"marked": 2}
+
+    after = await client.get("/notifications", headers=invitee)
+    assert after.json()["unread"] == 0
+    assert all(
+        item["status"] == "read" for item in after.json()["items"]
+    )
+
+    again = await client.post("/notifications/read-all", headers=invitee)
+    assert again.status_code == 200
+    assert again.json() == {"marked": 0}
 
 
 async def test_notifications_require_auth(client: AsyncClient) -> None:

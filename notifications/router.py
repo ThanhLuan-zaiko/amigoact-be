@@ -13,6 +13,7 @@ from core.dependencies import (
     get_notification_service,
 )
 from notifications.schemas import (
+    MarkAllResult,
     NotificationItem,
     NotificationPage,
     PreferencesBody,
@@ -72,6 +73,7 @@ def _item(snapshot: NotificationSnapshot) -> NotificationItem:
         status=snapshot.status,
         read_at=snapshot.read_at,
         created_at=snapshot.created_at,
+        data=snapshot.data,
     )
 
 
@@ -89,6 +91,15 @@ def list_notifications(
     return NotificationPage(
         items=[_item(item) for item in items], total=total, unread=unread
     )
+
+
+@router.post("/notifications/read-all", response_model=MarkAllResult)
+def mark_all_notifications_read(
+    current: CurrentUser = Depends(get_current_user),
+    service: NotificationService = Depends(get_notification_service),
+) -> MarkAllResult:
+    """Owner marks every unread notification as read in one call."""
+    return MarkAllResult(marked=service.mark_all_read(current.id))
 
 
 @router.post(

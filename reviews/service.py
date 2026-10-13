@@ -82,15 +82,13 @@ class ReviewService:
         row = self._reviews.add(
             uuid7(), activity_id, student_id, rating, comment, now
         )
-        self._notify_owner(activity.org_id, activity.title, rating)
+        self._notify_owner(activity, rating)
         return self._view(row)
 
-    def _notify_owner(
-        self, org_id: UUID, activity_title: str, rating: int
-    ) -> None:
+    def _notify_owner(self, activity: object, rating: int) -> None:
         if self._notifications is None:
             return
-        org = self._orgs.get_by_id(org_id)
+        org = self._orgs.get_by_id(activity.org_id)
         if org is None or getattr(org, "owner_id", None) is None:
             return
         try:
@@ -98,8 +96,10 @@ class ReviewService:
                 org.owner_id,
                 "review",
                 "\u0110\u00e1nh gi\u00e1 m\u1edbi",
-                f'"{activity_title}" nh\u1eadn {rating}/5 sao.',
-                None,
+                f'"{activity.title}" nh\u1eadn {rating}/5 sao.',
+                f'{{"org_id": "{activity.org_id}", '
+                f'"activity_id": "{activity.id}", '
+                f'"activity_slug": "{activity.slug}"}}',
             )
         except Exception:  # noqa: BLE001 - notifications are best-effort
             pass

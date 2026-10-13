@@ -49,6 +49,18 @@ class FakeStore(NotificationStore):
             if feed.notification_id == row.notification_id:
                 feed.status = "read"
 
+    def mark_all_read(self, user_id, now):  # noqa: ANN001, ANN202
+        marked = 0
+        for feed in self.feeds.get(user_id, []):
+            if feed.status != "unread":
+                continue
+            feed.status = "read"
+            row = self.rows[feed.notification_id]
+            row.status = "read"
+            row.read_at = now
+            marked += 1
+        return marked
+
 
 def _service() -> tuple[NotificationService, FakeStore]:
     store = FakeStore()
@@ -88,6 +100,37 @@ def test_mark_read_flips_status_once() -> None:
     assert second.read_at == first.read_at
     _, _, unread = service.list_mine(user)
     assert unread == 0
+
+
+def test_list_mine_returns_parsed_deep_link_data() -> None:
+    service, store = _service()
+    user = _uid()
+    service.notify(
+        user, "announcement", "t", "b",
+        data_json='{"org_id": "abc", "post_id": "def"}',
+    )
+    service.notify(user, "system", "corrupt", data_json="not json")
+    items, _, _ = service.list_mine(user)
+    assert items[0].data is None  # corrupt payload never breaks the inbox
+    assert items[1].data == {"org_id": "abc", "post_id": "def"}
+    nid = items[1].id
+    assert service.mark_read(user, nid).data == {
+        "org_id": "abc", "post_id": "def"
+    }
+
+
+def test_mark_all_read_clears_badge_and_is_idempotent() -> None:
+    service, _ = _service()
+    user, other = _uid(), _uid()
+    for index in range(3):
+        service.notify(user, "system", f"n{index}")
+    service.notify(other, "system", "alien")
+    assert service.mark_all_read(user) == 3
+    _, _, unread = service.list_mine(user)
+    assert unread == 0
+    _, _, other_unread = service.list_mine(other)
+    assert other_unread == 1
+    assert service.mark_all_read(user) == 0
 
 
 def test_mark_read_rejects_foreign_and_missing() -> None:

@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Any
 from uuid import UUID
 
 from core.exceptions import ForbiddenError, NotFoundError
@@ -28,6 +30,7 @@ class NotificationSnapshot:
     status: str
     read_at: datetime | None
     created_at: datetime
+    data: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -126,6 +129,18 @@ class NotificationService(NotificationPort):
             except Exception:  # noqa: BLE001 - realtime is best-effort
                 pass
 
+    @staticmethod
+    def _data(raw: str | None) -> dict[str, Any] | None:
+        """Deep-link payload stored beside the row; corrupt data never
+        breaks the inbox."""
+        if not raw:
+            return None
+        try:
+            parsed = json.loads(raw)
+        except ValueError:
+            return None
+        return parsed if isinstance(parsed, dict) else None
+
     def list_mine(
         self, user_id: UUID, *, limit: int = 20, offset: int = 0
     ) -> tuple[list[NotificationSnapshot], int, int]:
@@ -144,6 +159,9 @@ class NotificationService(NotificationPort):
                     status=row.status or "unread",
                     read_at=full.read_at if full is not None else None,
                     created_at=row.created_at,
+                    data=self._data(
+                        full.data_json if full is not None else None
+                    ),
                 )
             )
         return items, len(feed), unread
@@ -169,4 +187,9 @@ class NotificationService(NotificationPort):
             status="read",
             read_at=fresh.read_at,
             created_at=fresh.created_at,
+            data=self._data(fresh.data_json),
         )
+
+    def mark_all_read(self, user_id: UUID) -> int:
+        """Owner clears the whole unread badge in one sweep."""
+        return self._store.mark_all_read(user_id, utcnow())

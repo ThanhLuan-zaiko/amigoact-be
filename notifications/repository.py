@@ -65,6 +65,22 @@ class CqlNotificationStore(NotificationStore):
             notification_id=row.notification_id,
         ).update(status="read")
 
+    def mark_all_read(self, user_id: UUID, now: datetime) -> int:
+        marked = 0
+        for feed in NotificationsByUser.objects(user_id=user_id).all():
+            if (feed.status or "unread") != "unread":
+                continue
+            Notification.objects(
+                notification_id=feed.notification_id
+            ).update(status="read", read_at=now)
+            NotificationsByUser.objects(
+                user_id=user_id,
+                created_at=feed.created_at,
+                notification_id=feed.notification_id,
+            ).update(status="read")
+            marked += 1
+        return marked
+
 
 class CqlPreferenceStore(PreferenceStore):
     """Single-row-per-user preferences; absent row means defaults."""
