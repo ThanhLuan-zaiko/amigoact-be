@@ -447,7 +447,7 @@ CREATE TABLE IF NOT EXISTS student_profiles (
     school_name text, // free-text school outside a member org
     bio text,
     interests set<text>,
-    status text, // studying | graduated | suspended
+    status text, // studying | graduated | suspended | working
     total_hours double,
     updated_at timestamp
 );

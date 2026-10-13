@@ -148,3 +148,29 @@ def test_category_scoping() -> None:
         service.create_activity(
             other.id, owner, _fields(None, category_id=org_cat.id)
         )
+
+
+def test_update_category_scoping() -> None:
+    """Updates must apply the same category existence/scope check."""
+    service, _, _, orgs, _, categories, *_ = _svc()
+    owner = uuid_utils.uuid7()
+    org = _org_with_owner(orgs, owner)
+    other = _org_with_owner(orgs, owner, slug="other2")
+    foreign = categories.seed("Club Fest", "club-fest", other.id)
+    row = service.create_activity(org.id, owner, _fields(None))
+    with pytest.raises(NotFoundError):
+        service.update_activity(
+            org.id,
+            row.id,
+            owner,
+            _fields(None, category_id=uuid_utils.uuid7()),
+        )
+    with pytest.raises(NotFoundError):
+        service.update_activity(
+            org.id, row.id, owner, _fields(None, category_id=foreign.id)
+        )
+    global_cat = categories.seed("Environment", "environment")
+    updated = service.update_activity(
+        org.id, row.id, owner, _fields(None, category_id=global_cat.id)
+    )
+    assert updated.category_id == global_cat.id

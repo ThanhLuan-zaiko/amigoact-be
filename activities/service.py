@@ -104,17 +104,24 @@ class ActivityService:
             raise NotFoundError("Activity not found.")
         return row
 
+    def _check_category(
+        self, org_id: UUID, category_id: UUID | None
+    ) -> None:
+        """Reject category ids that don't exist or belong to another org."""
+        if category_id is None:
+            return
+        category = self._categories.get(category_id)
+        if category is None or (
+            category.org_id is not None and category.org_id != org_id
+        ):
+            raise NotFoundError("Category not found.")
+
     def create_activity(
         self, org_id: UUID, actor_id: UUID, fields: ActivityFields
     ) -> Activity:
         """Member with activity:create opens a draft."""
         self._require_manager(org_id, actor_id, "activity:create")
-        if fields.category_id is not None:
-            category = self._categories.get(fields.category_id)
-            if category is None or (
-                category.org_id is not None and category.org_id != org_id
-            ):
-                raise NotFoundError("Category not found.")
+        self._check_category(org_id, fields.category_id)
         row = self._activities.create(org_id, actor_id, fields, utcnow())
         self._access.record(
             org_id, actor_id, "activity.create", "activity", row.id,
@@ -136,6 +143,7 @@ class ActivityService:
             raise InvalidOrgStateError(
                 "Completed or cancelled activities cannot be edited."
             )
+        self._check_category(org_id, fields.category_id)
         fields.slug = fields.slug or row.slug
         updated = self._activities.update_details(
             activity_id, fields, utcnow()

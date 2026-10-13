@@ -45,6 +45,34 @@ async def test_profile_roundtrip_and_public_card(
     assert empty.json()["student_code"] is None
     assert empty.json()["skills"] == []
 
+    missing = await client.put("/profiles/me", json={}, headers=headers)
+    assert missing.status_code == 422
+    student_blank = await client.put(
+        "/profiles/me",
+        json={
+            "student_code": " ",
+            "class_name": "CTK43",
+            "school_name": "Bach Khoa",
+            "status": "studying",
+        },
+        headers=headers,
+    )
+    assert student_blank.status_code == 422
+    grad_no_school = await client.put(
+        "/profiles/me", json={"status": "graduated"}, headers=headers
+    )
+    assert grad_no_school.status_code == 422
+    working_empty = await client.put(
+        "/profiles/me", json={"status": "working"}, headers=headers
+    )
+    assert working_empty.status_code == 422
+    working_ok = await client.put(
+        "/profiles/me",
+        json={"status": "working", "bio": "Retail staff"},
+        headers=headers,
+    )
+    assert working_ok.status_code == 200, working_ok.text
+
     updated = await client.put(
         "/profiles/me",
         json={

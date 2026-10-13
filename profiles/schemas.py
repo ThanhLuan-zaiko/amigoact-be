@@ -5,9 +5,9 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
-_PROFILE_STATUSES = {"studying", "graduated", "suspended"}
+_PROFILE_STATUSES = {"studying", "graduated", "suspended", "working"}
 
 
 class SkillItem(BaseModel):
@@ -51,7 +51,12 @@ class ContactCreate(BaseModel):
 
 
 class ProfileBody(BaseModel):
-    """Editable profile fields in PUT /profiles/me (full replace)."""
+    """Editable profile fields in PUT /profiles/me (full replace).
+
+    Required fields depend on status: studying/suspended need the
+    student trio, graduated needs only school_name, working (or no
+    status) just needs the profile to carry at least one field.
+    """
 
     student_code: str | None = Field(default=None, max_length=40)
     class_name: str | None = Field(default=None, max_length=60)
@@ -61,12 +66,54 @@ class ProfileBody(BaseModel):
     interests: list[str] = Field(default_factory=list, max_length=20)
     status: str | None = None
 
+    @field_validator("student_code", "class_name", "school_name", "bio")
+    @classmethod
+    def _blank_to_none(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return value.strip() or None
+
+    @field_validator("interests")
+    @classmethod
+    def _interests_clean(cls, value: list[str]) -> list[str]:
+        return [item.strip() for item in value if item.strip()]
+
     @field_validator("status")
     @classmethod
     def _status_ok(cls, value: str | None) -> str | None:
         if value is not None and value not in _PROFILE_STATUSES:
-            raise ValueError("status must be studying|graduated|suspended")
+            raise ValueError(
+                "status must be studying|graduated|suspended|working"
+            )
         return value
+
+    @model_validator(mode="after")
+    def _status_requirements(self) -> ProfileBody:
+        if self.status in {"studying", "suspended"}:
+            if not all(
+                [self.student_code, self.class_name, self.school_name]
+            ):
+                raise ValueError(
+                    "student_code, class_name and school_name are "
+                    "required when status is studying or suspended"
+                )
+        elif self.status == "graduated":
+            if self.school_name is None:
+                raise ValueError(
+                    "school_name is required when status is graduated"
+                )
+        elif not any(
+            [
+                self.student_code,
+                self.class_name,
+                self.school_name,
+                self.bio,
+                self.interests,
+                self.enrollment_year is not None,
+            ]
+        ):
+            raise ValueError("profile must carry at least one field")
+        return self
 
 
 class SetSkillsBody(BaseModel):
