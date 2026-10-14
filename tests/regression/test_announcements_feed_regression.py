@@ -65,7 +65,7 @@ async def test_announcements_contract_shape(client: AsyncClient) -> None:
     )
     assert set(mine.keys()) == {
         "id", "title", "excerpt", "cover_url", "author_name",
-        "published_at", "comment_count", "org",
+        "author_avatar_url", "published_at", "comment_count", "org",
     }
     assert set(mine["org"].keys()) == {"id", "name", "slug", "logo_url"}
     assert mine["org"]["slug"] == "reg-feed"

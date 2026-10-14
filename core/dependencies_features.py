@@ -70,6 +70,7 @@ def get_public_org_service(
         media=CqlMediaRepository(),
         activities=CqlOrgActivityDirectory(settings.scylla_keyspace),
         posts=get_public_post_service(settings),
+        users=user_directory(settings),
     )
 
 

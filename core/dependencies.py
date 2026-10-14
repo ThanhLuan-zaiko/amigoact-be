@@ -176,6 +176,7 @@ def user_directory(settings: Settings) -> UserDirectory:
                 full_name=user.full_name,
                 email=user.email,
                 status=user.status,
+                avatar_media_id=getattr(user, "avatar_media_id", None),
             )
 
         def find_by_email(self, email: str) -> UserBrief | None:
@@ -187,6 +188,7 @@ def user_directory(settings: Settings) -> UserDirectory:
                 full_name=user.full_name,
                 email=user.email,
                 status=user.status,
+                avatar_media_id=getattr(user, "avatar_media_id", None),
             )
 
     return _UserDirectory()

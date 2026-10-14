@@ -81,6 +81,51 @@ async def test_timeline_is_guest_readable_with_org_attribution(
     assert item["org"]["name"] == "Name feed-org"
 
 
+async def test_timeline_carries_author_avatar_url(client: AsyncClient) -> None:
+    owner = await _token(client, "feed-ava-own@x.com", "0912347104")
+    owner_h = _headers(owner)
+    png = (
+        b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01"
+        b"\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89"
+        b"\x00\x00\x00\x0bIDATx\x9cc\x00\x01\x00\x00\x05\x00\x01"
+        b"\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82"
+    )
+    uploaded = await client.post(
+        "/profiles/me/avatar",
+        files={"file": ("me.png", png, "image/png")},
+        headers=owner_h,
+    )
+    assert uploaded.status_code == 200, uploaded.text
+    created = await client.post(
+        "/orgs",
+        json={
+            "name": "Name feed-ava",
+            "slug": "feed-ava",
+            "description": "D",
+            "kind": "club",
+            "join_policy": "invite",
+        },
+        headers=owner_h,
+    )
+    assert created.status_code == 201, created.text
+    made = await client.post(
+        f"/orgs/{created.json()['id']}/posts",
+        json={"kind": "announcement", "title": "Hi", "body": "b"},
+        headers=owner_h,
+    )
+    assert made.status_code == 201, made.text
+
+    listed = await client.get("/announcements")
+    assert listed.status_code == 200, listed.text
+    item = next(
+        row
+        for row in listed.json()["items"]
+        if row["id"] == made.json()["post_id"]
+    )
+    assert item["author_name"] == "Feed User"
+    assert item["author_avatar_url"] == uploaded.json()["avatar_url"]
+
+
 async def test_timeline_excludes_everything_not_public(
     client: AsyncClient,
 ) -> None:

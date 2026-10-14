@@ -11,6 +11,7 @@ from orgs.interfaces import (
     MediaRepository,
     OrgRepository,
     PostDirectory,
+    UserDirectory,
 )
 from orgs.listing import (
     PublicOrgDetail,
@@ -32,11 +33,13 @@ class PublicOrgService:
         media: MediaRepository | None = None,
         activities: ActivityDirectory | None = None,
         posts: PostDirectory | None = None,
+        users: UserDirectory | None = None,
     ) -> None:
         self._orgs = orgs
         self._media = media
         self._activities = activities
         self._posts = posts
+        self._users = users
 
     def _media_url(self, asset_id: UUID | None) -> str | None:
         """Resolve a brand asset to its semi-public /media/ URL."""
@@ -49,6 +52,11 @@ class PublicOrgService:
 
     def _public_snapshot(self, org: Organization) -> PublicOrgSnapshot:
         """Card fields only; legal/contact data never leaves the server."""
+        brief = (
+            self._users.get_brief(org.owner_id)
+            if self._users is not None
+            else None
+        )
         return PublicOrgSnapshot(
             id=org.id,
             name=org.name,
@@ -63,6 +71,10 @@ class PublicOrgService:
             logo_url=self._media_url(getattr(org, "logo_media_id", None)),
             cover_url=self._media_url(getattr(org, "cover_media_id", None)),
             created_at=org.created_at,
+            owner_name=brief.full_name if brief else None,
+            owner_avatar_url=self._media_url(
+                getattr(brief, "avatar_media_id", None)
+            ),
         )
 
     def list_public_orgs(

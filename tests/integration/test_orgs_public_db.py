@@ -54,6 +54,37 @@ async def test_public_directory_guest_readable(client: AsyncClient) -> None:
         assert private not in card
     assert card["member_count"] == 1
     assert card["city"] == "Da Nang"
+    assert card["owner_name"] == "Org User"
+    assert card["owner_avatar_url"] is None
+
+
+async def test_public_directory_carries_owner_avatar(
+    client: AsyncClient,
+) -> None:
+    """Owner display identity rides the card: name plus avatar URL."""
+    access = await _token(client, "pub-ava@example.com", "0912345024")
+    headers = {"Authorization": f"Bearer {access}"}
+    png = (
+        b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01"
+        b"\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89"
+        b"\x00\x00\x00\x0bIDATx\x9cc\x00\x01\x00\x00\x05\x00\x01"
+        b"\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82"
+    )
+    uploaded = await client.post(
+        "/profiles/me/avatar",
+        files={"file": ("me.png", png, "image/png")},
+        headers=headers,
+    )
+    assert uploaded.status_code == 200, uploaded.text
+    await _make_org(client, headers, "pub-ava")
+
+    guests = await client.get("/orgs")
+    assert guests.status_code == 200, guests.text
+    card = next(
+        o for o in guests.json()["items"] if o["slug"] == "pub-ava"
+    )
+    assert card["owner_name"] == "Org User"
+    assert card["owner_avatar_url"] == uploaded.json()["avatar_url"]
 
 
 async def test_public_directory_hides_trashed_and_revives(

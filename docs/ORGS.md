@@ -70,7 +70,10 @@ Hai endpoint guest (không auth), phục vụ trang khám phá `/orgs` bên FE:
   mark_deleted/mark_restored/delete_everything) dual-write feed này nên
   org ẩn/xóa biến mất khỏi đọc tiếp theo ngay, không `ALLOW FILTERING`.
 - `PublicOrgService` chỉ trả field public: card giấu `owner_id`,
-  `legal_rep_*`, contact, `deleted_at`; detail trả tín hiệu tin cậy
+  `legal_rep_*`, contact, `deleted_at`; `owner_name`/`owner_avatar_url`
+  (resolve qua `UserDirectory` + media) là danh tính hiển thị public giống
+  `author_*` của bài đăng — danh tính con người đứng sau card. Detail trả
+  tín hiệu tin cậy
   (`verified_at`, `legal_status`, `legal_name`, `license_number`,
   `tax_code`, contact, `member_count`, `activity_count`, 6 activity
   public gần nhất, gallery ảnh) nhưng vẫn giấu `owner_id`/`legal_rep_*`/

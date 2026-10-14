@@ -53,6 +53,7 @@ def _item(item: TimelineItem) -> PublicTimelineItem:
         excerpt=item.excerpt,
         cover_url=item.cover_url,
         author_name=item.author_name,
+        author_avatar_url=item.author_avatar_url,
         published_at=item.published_at,
         comment_count=item.comment_count,
         org=PublicTimelineOrg(

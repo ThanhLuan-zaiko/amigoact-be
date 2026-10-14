@@ -86,7 +86,9 @@ là public; `discussion` và mọi nội dung khác ở lại board nội bộ.
   `PublicAnnouncementPage` (`items` teaser + `total` chính xác; `limit` 1–30
   mặc định 9, `page` ≥ 1 mặc định 1). Trang vượt tổng trả `items` rỗng.
 - Timeline toàn cục: `GET /announcements?limit&cursor` →
-  `PublicTimelinePage` (`items` teaser kèm `org{id,name,slug,logo_url}` +
+  `PublicTimelinePage` (`items` teaser kèm `author_avatar_url` (avatar người
+  đăng, resolve từ `avatar_media_id` qua media) và
+  `org{id,name,slug,logo_url}` +
   `next_cursor`; `limit` 1–30 mặc định 12; `cursor` là `post_id` cuối trang
   trước, cursor rác bị bỏ qua). Đọc từ projection `announcements_feed`
   (partition `bucket='all'`, cluster `post_id` DESC) — một read bounded phục

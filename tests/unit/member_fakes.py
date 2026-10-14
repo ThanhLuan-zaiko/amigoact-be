@@ -124,9 +124,20 @@ class FakeUsers(UserDirectory):
     def __init__(self) -> None:
         self.users: dict[UUID, UserBrief] = {}
 
-    def add(self, user_id: UUID, email: str, name: str = "User", status: str = "active") -> None:
+    def add(
+        self,
+        user_id: UUID,
+        email: str,
+        name: str = "User",
+        status: str = "active",
+        avatar_media_id: UUID | None = None,
+    ) -> None:
         self.users[user_id] = UserBrief(
-            id=user_id, full_name=name, email=email, status=status
+            id=user_id,
+            full_name=name,
+            email=email,
+            status=status,
+            avatar_media_id=avatar_media_id,
         )
 
     def get_brief(self, user_id):  # noqa: ANN001, ANN202

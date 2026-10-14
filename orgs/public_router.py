@@ -40,6 +40,8 @@ def _public_schema(item: PublicOrgSnapshot) -> PublicOrgResponse:
         logo_url=item.logo_url,
         cover_url=item.cover_url,
         created_at=item.created_at,
+        owner_name=item.owner_name,
+        owner_avatar_url=item.owner_avatar_url,
     )
 
 

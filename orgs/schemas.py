@@ -177,7 +177,11 @@ class OrgListPage(BaseModel):
 
 
 class PublicOrgResponse(BaseModel):
-    """Guest-facing org card: no legal, contact or ownership fields."""
+    """Guest-facing org card: no legal, contact or owner-id fields.
+
+    owner_name/owner_avatar_url are public display identity like a post's
+    author fields; the raw owner_id never leaves the server.
+    """
 
     id: UUID
     name: str
@@ -192,6 +196,8 @@ class PublicOrgResponse(BaseModel):
     logo_url: str | None = None
     cover_url: str | None = None
     created_at: datetime
+    owner_name: str | None = None
+    owner_avatar_url: str | None = None
 
 
 class PublicOrgPage(BaseModel):

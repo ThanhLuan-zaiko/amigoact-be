@@ -147,6 +147,7 @@ class PublicTimelineItem(BaseModel):
     excerpt: str = ""
     cover_url: str | None = None
     author_name: str
+    author_avatar_url: str | None = None
     published_at: datetime | None = None
     comment_count: int = 0
     org: PublicTimelineOrg

@@ -5,7 +5,7 @@ from __future__ import annotations
 from uuid import UUID
 
 from core.security import utc_aware
-from orgs.interfaces import MediaRepository, UserDirectory
+from orgs.interfaces import MediaRepository, UserBrief, UserDirectory
 from posts.blocks import load_blocks
 from posts.dtos import PostMediaBrief, PostSnapshot
 from posts.interfaces import CommentStore, PostStore
@@ -49,6 +49,14 @@ class PostSnapshots:
             )
         return briefs
 
+    def _avatar_url(self, brief: UserBrief | None) -> str | None:
+        """Author avatar asset -> semi-public /media/ URL, like profiles."""
+        asset_id = getattr(brief, "avatar_media_id", None) if brief else None
+        if asset_id is None:
+            return None
+        asset = self._media.get_asset(asset_id)
+        return public_media_url(asset.file_url) if asset is not None else None
+
     def build(self, row: OrgPost) -> PostSnapshot:
         brief = self._users.get_brief(row.author_id)
         status = "draft" if (row.status or "active") == "draft" else "published"
@@ -57,6 +65,7 @@ class PostSnapshots:
             org_id=row.org_id,
             author_id=row.author_id,
             author_name=brief.full_name if brief else "Unknown user",
+            author_avatar_url=self._avatar_url(brief),
             kind=row.kind or "discussion",
             title=row.title or "",
             body=row.body or "",

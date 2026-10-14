@@ -40,7 +40,7 @@ async def test_public_page_envelope_contract_locked(client: AsyncClient) -> None
     assert set(card.keys()) == {
         "id", "name", "slug", "description", "kind", "member_count",
         "join_policy", "city", "country", "verified_at", "logo_url",
-        "cover_url", "created_at",
+        "cover_url", "created_at", "owner_name", "owner_avatar_url",
     }
     assert "reg-club" in [o["slug"] for o in body["items"]]
 

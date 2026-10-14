@@ -173,10 +173,40 @@ def test_list_timeline_returns_org_attributed_teasers() -> None:
     assert item.title == "News"
     assert item.excerpt == "Announcement content."
     assert item.author_name == "Owner"
+    assert item.author_avatar_url is None
     assert item.org.id == env.org.id
     assert item.org.slug == "green-org"
     assert item.org.name == "Green Org"
     assert item.org.logo_url is None
+
+
+def test_list_timeline_carries_author_avatar_url() -> None:
+    env = Env()
+    asset = env.media.create_asset(
+        _uid(), env.org.id, "users/u/a.png", "image/png", 10, NOW
+    )
+    env.users.add(
+        env.owner,
+        "owner@example.com",
+        "Owner",
+        avatar_media_id=asset.asset_id,
+    )
+    env.post(title="News")
+    item = env.service.list_timeline(None, 10).items[0]
+    assert item.author_avatar_url == "/media/users/u/a.png"
+
+
+def test_list_timeline_ignores_dead_author_avatar_asset() -> None:
+    env = Env()
+    env.users.add(
+        env.owner,
+        "owner@example.com",
+        "Owner",
+        avatar_media_id=_uid(),
+    )
+    env.post(title="News")
+    item = env.service.list_timeline(None, 10).items[0]
+    assert item.author_avatar_url is None
 
 
 def test_list_timeline_skips_non_public_and_dead_orgs() -> None:

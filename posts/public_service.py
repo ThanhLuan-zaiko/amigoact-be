@@ -152,6 +152,7 @@ class PublicPostService(PostDirectory):
             excerpt=_excerpt(snapshot.body),
             cover_url=self._cover_url(row, snapshot),
             author_name=snapshot.author_name,
+            author_avatar_url=snapshot.author_avatar_url,
             published_at=snapshot.published_at,
             comment_count=snapshot.comment_count,
             org=TimelineOrg(

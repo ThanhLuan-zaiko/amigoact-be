@@ -43,6 +43,7 @@ class PostSnapshot:
     published_at: datetime | None = None
     deleted_at: datetime | None = None
     updated_at: datetime | None = None
+    author_avatar_url: str | None = None
 
 
 @dataclass(frozen=True)
@@ -90,6 +91,7 @@ class TimelineItem:
     published_at: datetime | None
     comment_count: int
     org: TimelineOrg
+    author_avatar_url: str | None = None
 
 
 @dataclass(frozen=True)

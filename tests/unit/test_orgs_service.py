@@ -21,6 +21,7 @@ from orgs.interfaces import (
 )
 from orgs.public_service import PublicOrgService
 from orgs.service import OrgService
+from tests.unit.member_fakes import FakeUsers
 from tests.unit.org_fakes import (
     FakeActivityDirectory,
     FakeDirectoryEvents,
@@ -195,6 +196,36 @@ def test_public_snapshot_resolves_brand_media_urls() -> None:
     item = public.list_public_orgs().items[0]
     assert item.logo_url == f"/media/{logo.file_url}"
     assert item.cover_url is None
+
+
+def test_public_listing_carries_owner_brief() -> None:
+    orgs, media, users = FakeOrgs(), FakeMedia(), FakeUsers()
+    service = OrgService(orgs)
+    public = PublicOrgService(orgs, media, users=users)
+    owner = new_owner()
+    avatar = media.create_asset(
+        uuid7(), owner, "users/o/a.png", "image/png", 10,
+        datetime.now(timezone.utc), role="avatar",
+    )
+    users.add(
+        owner, "o@x.com", "Owner Name", avatar_media_id=avatar.asset_id
+    )
+    service.create_org(owner, "Pic", "pic-own", "", "club")
+
+    item = public.list_public_orgs().items[0]
+    assert item.owner_name == "Owner Name"
+    assert item.owner_avatar_url == "/media/users/o/a.png"
+    assert not hasattr(item, "owner_id")
+
+
+def test_public_listing_owner_fields_none_without_directory() -> None:
+    orgs = FakeOrgs()
+    service = OrgService(orgs)
+    public = PublicOrgService(orgs)
+    service.create_org(new_owner(), "Solo", "solo-pub", "", "club")
+    item = public.list_public_orgs().items[0]
+    assert item.owner_name is None
+    assert item.owner_avatar_url is None
 
 
 def test_public_detail_exposes_trust_signals_not_pii() -> None:

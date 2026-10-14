@@ -104,7 +104,11 @@ def paginate_mine(
 
 @dataclass(frozen=True)
 class PublicOrgSnapshot:
-    """Guest-facing org card; no legal, contact or ownership fields."""
+    """Guest-facing org card; no legal, contact or owner-id fields.
+
+    owner_name/owner_avatar_url are public display identity (like a post's
+    author), never the raw owner_id or any legal-rep data.
+    """
 
     id: UUID
     name: str
@@ -119,6 +123,8 @@ class PublicOrgSnapshot:
     logo_url: str | None
     cover_url: str | None
     created_at: datetime
+    owner_name: str | None = None
+    owner_avatar_url: str | None = None
 
 
 @dataclass(frozen=True)
