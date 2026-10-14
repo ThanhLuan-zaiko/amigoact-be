@@ -24,6 +24,7 @@ from tests.unit.workspace_fakes import (
     FakeCommentStore,
     FakeNotify,
     FakePostStore,
+    FakeTimelineEvents,
     _uid,
     add_org,
 )
@@ -37,14 +38,19 @@ class Env:
         self.orgs, self.members, self.users = FakeOrgs(), FakeMembers(), FakeUsers()
         self.access, self.media, self.files = FakeAccess(), FakeMedia(), FakeStore()
         self.events, self.notify = FakeBoardEvents(), FakeNotify()
+        self.timeline_events = FakeTimelineEvents()
         self.owner = _uid()
         self.org_id = add_org(self.orgs, self.members, self.users, self.owner)
         args = (
             self.posts, self.comments, self.orgs, self.members, self.users,
             self.media, self.access, self.events, self.notify,
         )
-        self.svc = PostService(*args)
-        self.life = PostLifecycleService(*args, files=self.files)
+        self.svc = PostService(
+            *args, announcements=self.timeline_events
+        )
+        self.life = PostLifecycleService(
+            *args, files=self.files, announcements=self.timeline_events
+        )
         self.member = self.add_member("mem@x.com")
         self.manager = self.add_member("mgr@x.com")
         self.access.perms[(self.org_id, self.manager)] = {"post:manage"}

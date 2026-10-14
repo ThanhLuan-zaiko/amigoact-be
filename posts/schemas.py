@@ -130,6 +130,35 @@ class PublicAnnouncementPage(BaseModel):
     total: int = 0
 
 
+class PublicTimelineOrg(BaseModel):
+    """Org attribution embedded in a global timeline item."""
+
+    id: UUID
+    name: str
+    slug: str
+    logo_url: str | None = None
+
+
+class PublicTimelineItem(BaseModel):
+    """One published announcement teaser on the global guest timeline."""
+
+    id: UUID
+    title: str
+    excerpt: str = ""
+    cover_url: str | None = None
+    author_name: str
+    published_at: datetime | None = None
+    comment_count: int = 0
+    org: PublicTimelineOrg
+
+
+class PublicTimelinePage(BaseModel):
+    """Guest-facing cursor page of the global announcement timeline."""
+
+    items: list[PublicTimelineItem]
+    next_cursor: str | None = None
+
+
 class CommentResponse(BaseModel):
     comment_id: UUID
     post_id: UUID

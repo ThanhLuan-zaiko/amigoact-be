@@ -26,6 +26,8 @@ class FakePostStore(PostStore):
     def __init__(self) -> None:
         self.posts: dict[UUID, Any] = {}
         self.feed: dict[UUID, list[UUID]] = {}
+        self.timeline: list[UUID] = []
+        self.timeline_orgs: dict[UUID, UUID] = {}
         self.pinned: dict[UUID, list[UUID]] = {}
         self.drafts: dict[tuple[UUID, UUID], list[UUID]] = {}
         self.trash: dict[UUID, list[UUID]] = {}
@@ -52,8 +54,14 @@ class FakePostStore(PostStore):
             _add_sorted(self.drafts.setdefault(key, []), post.post_id)
         else:
             _add_sorted(self.feed.setdefault(post.org_id, []), post.post_id)
+            if post.kind == "announcement":
+                _add_sorted(self.timeline, post.post_id)
+                self.timeline_orgs[post.post_id] = post.org_id
 
     def _unplace(self, post):  # noqa: ANN001, ANN202
+        if post.kind == "announcement" and post.status != "draft":
+            _drop(self.timeline, post.post_id)
+            self.timeline_orgs.pop(post.post_id, None)
         _drop(self.feed.get(post.org_id), post.post_id)
         _drop(self.pinned.get(post.org_id), post.post_id)
         _drop(self.drafts.get((post.org_id, post.author_id)), post.post_id)
@@ -67,6 +75,13 @@ class FakePostStore(PostStore):
             SimpleNamespace(post_id=p, kind=self.posts[p].kind)
             for p in rows[:limit]
             if p in self.posts
+        ]
+
+    def list_timeline(self, cursor, limit):  # noqa: ANN001, ANN202
+        rows = [p for p in self.timeline if cursor is None or p < cursor]
+        return [
+            SimpleNamespace(post_id=p, org_id=self.timeline_orgs.get(p))
+            for p in rows[:limit]
         ]
 
     def count_feed(self, org_id):  # noqa: ANN001, ANN202

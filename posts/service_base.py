@@ -18,7 +18,12 @@ from orgs.interfaces import (
 from posts.blocks import has_content
 from posts.dtos import PostSnapshot
 from posts.guards import BoardGuard
-from posts.interfaces import CommentStore, PostEvents, PostStore
+from posts.interfaces import (
+    AnnouncementFeedEvents,
+    CommentStore,
+    PostEvents,
+    PostStore,
+)
 from posts.media_rules import PostMediaRules
 from posts.model import OrgPost
 from posts.snapshots import PostSnapshots
@@ -56,12 +61,14 @@ class BoardServiceBase:
         events: PostEvents,
         notifications: NotificationPort | None = None,
         files: MediaStore | None = None,
+        announcements: AnnouncementFeedEvents | None = None,
     ) -> None:
         self._posts = posts
         self._comments = comments
         self._members = members
         self._events = events
         self._notifications = notifications
+        self._announcements = announcements
         self._guard = BoardGuard(orgs, members, access)
         self._snapshots = PostSnapshots(posts, comments, users, media)
         self._media_rules = PostMediaRules(media, files)
@@ -72,6 +79,19 @@ class BoardServiceBase:
     ) -> None:
         try:
             self._events.feed_changed(org_id, action, post_id, actor_id, detail)
+        except Exception:  # noqa: BLE001 - realtime is best-effort
+            pass
+
+    def _emit_public(
+        self, org_id: UUID, action: str, post_id: UUID, kind: str | None
+    ) -> None:
+        """Refetch hint for the guest timeline; announcements only."""
+        if (kind or "discussion") != "announcement":
+            return
+        if self._announcements is None:
+            return
+        try:
+            self._announcements.feed_changed(action, post_id, org_id)
         except Exception:  # noqa: BLE001 - realtime is best-effort
             pass
 

@@ -19,7 +19,12 @@ from orgs.interfaces import (
     PostDirectory,
     UserDirectory,
 )
-from posts.dtos import PostSnapshot
+from posts.dtos import (
+    PostSnapshot,
+    TimelineItem,
+    TimelineOrg,
+    TimelinePage,
+)
 from posts.interfaces import CommentStore, PostStore
 from posts.model import OrgPost
 from posts.snapshots import PostSnapshots, public_media_url
@@ -27,6 +32,7 @@ from posts.snapshots import PostSnapshots, public_media_url
 _PUBLIC_KIND = "announcement"
 _FEED_SCAN_LIMIT = 500
 _EXCERPT_MAX = 200
+_TIMELINE_MAX_SCANS = 4
 
 
 def _excerpt(text: str, max_len: int = _EXCERPT_MAX) -> str:
@@ -95,6 +101,74 @@ class PublicPostService(PostDirectory):
             total=len(feed),
             items=self._briefs(feed[start : start + limit]),
         )
+
+    def list_timeline(
+        self, cursor: UUID | None, limit: int
+    ) -> TimelinePage:
+        """Global guest timeline: newest public announcements across orgs.
+
+        Feed rows whose canonical post or org went dead are skipped
+        lazily (bounded re-scans); the cursor always advances past the
+        last scanned row so dead rows can never stall the pager.
+        """
+        items: list[TimelineItem] = []
+        last_seen = cursor
+        exhausted = False
+        for _ in range(_TIMELINE_MAX_SCANS):
+            if len(items) >= limit or exhausted:
+                break
+            rows = self._posts.list_timeline(last_seen, limit + 1)
+            exhausted = len(rows) < limit + 1
+            for feed_row in rows:
+                if len(items) >= limit:
+                    break
+                last_seen = feed_row.post_id
+                item = self._timeline_item(feed_row)
+                if item is not None:
+                    items.append(item)
+        next_cursor = (
+            str(last_seen)
+            if last_seen is not None and not exhausted
+            else None
+        )
+        return TimelinePage(items=items, next_cursor=next_cursor)
+
+    def _timeline_item(self, feed_row) -> TimelineItem | None:  # noqa: ANN001
+        """Hydrate one feed row; dead post or dead org reads as None."""
+        row = self._posts.get(feed_row.post_id)
+        if row is None or not self._is_public(row):
+            return None
+        org = self._orgs.get_by_id(row.org_id)
+        if (
+            org is None
+            or getattr(org, "deleted_at", None) is not None
+            or (getattr(org, "status", "active") or "active") != "active"
+        ):
+            return None
+        snapshot = self._snapshots.build(row)
+        return TimelineItem(
+            id=row.post_id,
+            title=snapshot.title,
+            excerpt=_excerpt(snapshot.body),
+            cover_url=self._cover_url(row, snapshot),
+            author_name=snapshot.author_name,
+            published_at=snapshot.published_at,
+            comment_count=snapshot.comment_count,
+            org=TimelineOrg(
+                id=org.id,
+                name=org.name,
+                slug=org.slug,
+                logo_url=self._org_logo(org),
+            ),
+        )
+
+    def _org_logo(self, org) -> str | None:  # noqa: ANN001, ANN202
+        """Resolve the org's logo asset to its semi-public /media/ URL."""
+        asset_id = getattr(org, "logo_media_id", None)
+        if asset_id is None:
+            return None
+        asset = self._media.get_asset(asset_id)
+        return public_media_url(asset.file_url) if asset is not None else None
 
     def get_public_post(self, slug: str, post_id: UUID) -> PostSnapshot:
         """One published announcement under a live org; everything else 404."""

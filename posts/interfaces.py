@@ -42,6 +42,10 @@ class PostStore(ABC):
         """Newest-first feed rows (post_id + kind) of one org, capped."""
 
     @abstractmethod
+    def list_timeline(self, cursor: UUID | None, limit: int) -> list[Any]:
+        """Newest-first global announcement rows (post_id + org_id)."""
+
+    @abstractmethod
     def count_feed(self, org_id: UUID) -> int:
         """Published total of one org (partition row count)."""
 
@@ -159,3 +163,11 @@ class PostEvents(ABC):
         detail: str | None = None,
     ) -> None:
         """Broadcast one post/comment event to posts:{org_id} subscribers."""
+
+
+class AnnouncementFeedEvents(ABC):
+    """Realtime fan-out port for the public timeline (best-effort)."""
+
+    @abstractmethod
+    def feed_changed(self, action: str, post_id: UUID, org_id: UUID) -> None:
+        """Broadcast a refetch hint to announcements:feed subscribers."""

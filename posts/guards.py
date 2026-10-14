@@ -97,7 +97,7 @@ class BoardGuard:
         """(viewer_role, viewer_permissions) for page envelopes.
 
         The owner carries every catalog permission implicitly, like
-        member_service.list_members — reporting an empty list would let
+        member_service.list_members - reporting an empty list would let
         the client lock the owner out of manager UI.
         """
         if org_owner == viewer_id:

@@ -11,7 +11,11 @@ import uuid_utils
 
 from chat.interfaces import ChatEvents, ChatStore
 from notifications.interfaces import NotificationPort
-from posts.interfaces import CommentStore, PostEvents
+from posts.interfaces import (
+    AnnouncementFeedEvents,
+    CommentStore,
+    PostEvents,
+)
 from tests.unit.post_fakes import FakePostStore  # noqa: F401 - re-export
 from tests.unit.member_fakes import (
     FakeAccess,
@@ -213,6 +217,16 @@ class FakeBoardEvents(PostEvents):
 
     def feed_changed(self, org_id, action, post_id, actor_id, detail=None):  # noqa: ANN001, ANN202
         self.calls.append((org_id, action, post_id, actor_id, detail))
+
+
+class FakeTimelineEvents(AnnouncementFeedEvents):
+    """Records every public-timeline fan-out call."""
+
+    def __init__(self) -> None:
+        self.calls: list[tuple] = []
+
+    def feed_changed(self, action, post_id, org_id):  # noqa: ANN001, ANN202
+        self.calls.append((action, post_id, org_id))
 
 
 class FakeChatEvents(ChatEvents):

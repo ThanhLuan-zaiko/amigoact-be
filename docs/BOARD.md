@@ -85,6 +85,18 @@ là public; `discussion` và mọi nội dung khác ở lại board nội bộ.
 - Danh sách đầy đủ: `GET /orgs/{slug}/announcements?limit&page` →
   `PublicAnnouncementPage` (`items` teaser + `total` chính xác; `limit` 1–30
   mặc định 9, `page` ≥ 1 mặc định 1). Trang vượt tổng trả `items` rỗng.
+- Timeline toàn cục: `GET /announcements?limit&cursor` →
+  `PublicTimelinePage` (`items` teaser kèm `org{id,name,slug,logo_url}` +
+  `next_cursor`; `limit` 1–30 mặc định 12; `cursor` là `post_id` cuối trang
+  trước, cursor rác bị bỏ qua). Đọc từ projection `announcements_feed`
+  (partition `bucket='all'`, cluster `post_id` DESC) — một read bounded phục
+  vụ mọi guest; row có post/org đã chết bị skip lười và cursor vẫn tiến qua
+  chúng nên không kẹt pager. Mọi announcement mới đăng/ghép trang đều ghi
+  row này trong `_place` của `CqlPostStore`; keyspace đã deploy chạy
+  `uv run python -m migrate.announcements_feed` (`--dry-run` để xem
+  trước) — script tạo bảng nếu thiếu rồi backfill từ `org_posts_feed` nơi
+  `kind='announcement'`, upsert nên chạy lại bao nhiêu lần cũng an toàn,
+  không đụng dữ liệu khác. Migration mới thêm file `migrate/<chủ_đề>.py`.
 
 Lỗi riêng: `INVALID_POST_STATE` (đăng bài đã đăng, khôi phục bài không ở thùng
 rác…), `POST_CONTENT_REQUIRED`, `POST_TITLE_REQUIRED` (announcement đăng cần
@@ -97,3 +109,9 @@ Mọi thay đổi bảng tin phát lên kênh `posts:{org_id}` với `action` �
 `post.created | post.updated | post.deleted | post.pinned | post.unpinned |
 post.unpublished | post.restored | post.purged` kèm `post_id`, `actor_id`
 (`detail` = kind khi tạo/đăng). Client invalidate query, không mutate cache.
+
+Song song đó, mọi thao tác đổi visibility của một **announcement đã đăng**
+(created/updated/unpublished/trashed/restored/purged, cả comment ±) phát
+thêm hint `{action, post_id, org_id}` lên kênh public `announcements:feed`
+(guest subscribe được) qua port `AnnouncementFeedEvents` — action gộp về
+`created | updated | removed` đủ cho việc refetch timeline.

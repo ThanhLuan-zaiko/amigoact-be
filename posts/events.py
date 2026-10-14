@@ -5,10 +5,29 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 from uuid import UUID
 
-from posts.interfaces import PostEvents
+from posts.interfaces import AnnouncementFeedEvents, PostEvents
 
 if TYPE_CHECKING:
     from core.realtime import ConnectionManager
+
+
+class WsAnnouncementFeedEvents(AnnouncementFeedEvents):
+    """Fan timeline changes onto announcements:feed guests (best-effort)."""
+
+    def __init__(self, manager: ConnectionManager | None) -> None:
+        self._manager = manager
+
+    def feed_changed(self, action: str, post_id: UUID, org_id: UUID) -> None:
+        if self._manager is None:
+            return
+        self._manager.schedule_publish(
+            "announcements:feed",
+            {
+                "action": action,
+                "post_id": str(post_id),
+                "org_id": str(org_id),
+            },
+        )
 
 
 class WsPostEvents(PostEvents):

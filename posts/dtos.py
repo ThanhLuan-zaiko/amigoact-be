@@ -69,6 +69,38 @@ class PostPage:
 
 
 @dataclass(frozen=True)
+class TimelineOrg:
+    """Public org card fields embedded in one timeline item."""
+
+    id: UUID
+    name: str
+    slug: str
+    logo_url: str | None
+
+
+@dataclass(frozen=True)
+class TimelineItem:
+    """One public announcement teaser plus its org attribution."""
+
+    id: UUID
+    title: str
+    excerpt: str
+    cover_url: str | None
+    author_name: str
+    published_at: datetime | None
+    comment_count: int
+    org: TimelineOrg
+
+
+@dataclass(frozen=True)
+class TimelinePage:
+    """Cursor page of the public announcement timeline."""
+
+    items: list[TimelineItem]
+    next_cursor: str | None
+
+
+@dataclass(frozen=True)
 class CommentSnapshot:
     """One comment row joined with its author display name."""
 

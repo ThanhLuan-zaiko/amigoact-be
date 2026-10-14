@@ -7,6 +7,7 @@ revisions, discussions and trash must never leave the member board.
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from uuid import UUID
 
 import pytest
 
@@ -61,14 +62,14 @@ class Env:
 
 def test_list_public_returns_announcement_briefs() -> None:
     env = Env()
-    post = env.post(title="Tin mừng", body="Nội dung thông báo.")
+    post = env.post(title="News", body="Announcement content.")
     env.comments.add(post.post_id, _uid(), env.owner, "hay", NOW)
     listing = env.service.list_public(env.org.id)
     assert listing.total == 1
     brief = listing.items[0]
     assert brief.id == post.post_id
-    assert brief.title == "Tin mừng"
-    assert brief.excerpt == "Nội dung thông báo."
+    assert brief.title == "News"
+    assert brief.excerpt == "Announcement content."
     assert brief.author_name == "Owner"
     assert brief.comment_count == 1
     assert brief.published_at is not None
@@ -133,7 +134,7 @@ def test_list_public_page_paginates_and_guards_slug() -> None:
 
 def test_get_public_post_returns_snapshot() -> None:
     env = Env()
-    post = env.post(title="Xin chào", body="Nội dung")
+    post = env.post(title="Hello", body="Content")
     snap = env.service.get_public_post("green-org", post.post_id)
     assert snap.post_id == post.post_id
     assert snap.kind == "announcement"
@@ -160,6 +161,69 @@ def test_get_public_post_rejects_everything_not_public() -> None:
     ):
         with pytest.raises(NotFoundError):
             env.service.get_public_post(slug, post_id)
+
+
+def test_list_timeline_returns_org_attributed_teasers() -> None:
+    env = Env()
+    post = env.post(title="News", body="Announcement content.")
+    page = env.service.list_timeline(None, 10)
+    assert page.next_cursor is None
+    assert [item.id for item in page.items] == [post.post_id]
+    item = page.items[0]
+    assert item.title == "News"
+    assert item.excerpt == "Announcement content."
+    assert item.author_name == "Owner"
+    assert item.org.id == env.org.id
+    assert item.org.slug == "green-org"
+    assert item.org.name == "Green Org"
+    assert item.org.logo_url is None
+
+
+def test_list_timeline_skips_non_public_and_dead_orgs() -> None:
+    env = Env()
+    env.post(kind="discussion")
+    env.post(kind="announcement", status="draft")
+    trashed = env.post()
+    env.posts.soft_delete(trashed, NOW)
+    dead_org = env.orgs.create(
+        _uid(), env.owner, "Blue", "blue", "", "club", "invite",
+        None, None, None, None, "pending", NOW,
+    )
+    env.posts.create(
+        _uid(), dead_org.id, env.owner, "announcement", "X", "B", [], NOW
+    )
+    env.orgs.mark_deleted(dead_org.id, NOW)
+    live = env.post(title="Live")
+    page = env.service.list_timeline(None, 10)
+    assert [item.id for item in page.items] == [live.post_id]
+    assert page.next_cursor is None
+
+
+def test_list_timeline_scans_past_drifted_feed_rows() -> None:
+    env = Env()
+    ghost = _uid()
+    env.posts.timeline.insert(0, ghost)
+    env.posts.timeline_orgs[ghost] = env.org.id
+    live = env.post(title="Live")
+    first = env.service.list_timeline(None, 1)
+    assert [item.id for item in first.items] == [live.post_id]
+    assert first.next_cursor is not None
+    second = env.service.list_timeline(UUID(first.next_cursor), 10)
+    assert second.items == []
+    assert second.next_cursor is None
+
+
+def test_list_timeline_paginates_by_cursor() -> None:
+    env = Env()
+    posts = [env.post(title=f"T{index}") for index in range(3)]
+    first = env.service.list_timeline(None, 2)
+    assert [item.id for item in first.items] == [
+        posts[2].post_id, posts[1].post_id,
+    ]
+    assert first.next_cursor is not None
+    second = env.service.list_timeline(UUID(first.next_cursor), 2)
+    assert [item.id for item in second.items] == [posts[0].post_id]
+    assert second.next_cursor is None
 
 
 def test_get_public_post_rejects_foreign_org_and_deleted_org() -> None:

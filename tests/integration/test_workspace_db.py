@@ -265,7 +265,7 @@ async def test_dm_room_flow_and_isolation(client: AsyncClient) -> None:
     )
     assert [r["room_id"] for r in inbox.json()["items"]] == [room_id]
 
-    # A member who is not a participant gets the generic 404 — the room
+    # A member who is not a participant gets the generic 404 - the room
     # does not resolve for them, so its existence stays hidden.
     hidden = await client.get(
         f"/chat/rooms/{room_id}/messages", headers=third_h

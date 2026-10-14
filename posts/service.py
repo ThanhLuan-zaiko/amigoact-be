@@ -142,6 +142,7 @@ class PostService(BoardServiceBase):
         self._guard.record(org_id, actor_id, "post.create", post_id)
         if not draft:
             self._emit(org_id, "post.created", post_id, actor_id, detail=kind)
+            self._emit_public(org_id, "created", post_id, kind)
             if kind == "announcement":
                 notify_announcement(
                     self._members, self._notifications, org_id, org.name,
@@ -202,6 +203,7 @@ class PostService(BoardServiceBase):
         self._guard.record(org_id, actor_id, "post.update", post_id)
         if not is_draft(row):
             self._emit(org_id, "post.updated", post_id, actor_id)
+            self._emit_public(org_id, "updated", post_id, next_kind)
         return self._snapshots.fresh(post_id)
 
     def set_pinned(

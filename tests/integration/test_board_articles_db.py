@@ -202,19 +202,19 @@ async def test_public_announcements_guest_surface(client: AsyncClient) -> None:
         base,
         json={
             "kind": "announcement",
-            "title": "Cứu trợ đợt 3",
-            "body": "Nội dung công khai.",
+            "title": "Relief round 3",
+            "body": "Public content.",
         },
         headers=owner_h,
     )
     assert announcement.status_code == 201, announcement.text
     post_id = announcement.json()["post_id"]
     await client.post(
-        base, json={"kind": "discussion", "body": "nội bộ"}, headers=member_h
+        base, json={"kind": "discussion", "body": "internal"}, headers=member_h
     )
     draft = await client.post(
         base,
-        json={"kind": "announcement", "status": "draft", "body": "chưa đăng"},
+        json={"kind": "announcement", "status": "draft", "body": "pending"},
         headers=owner_h,
     )
     draft_id = draft.json()["post_id"]
@@ -224,13 +224,13 @@ async def test_public_announcements_guest_surface(client: AsyncClient) -> None:
     body = profile.json()
     assert body["announcement_count"] == 1
     assert [a["id"] for a in body["announcements"]] == [post_id]
-    assert body["announcements"][0]["title"] == "Cứu trợ đợt 3"
+    assert body["announcements"][0]["title"] == "Relief round 3"
     assert body["announcements"][0]["author_name"]
     assert body["announcements"][0]["published_at"].endswith("Z")
 
     public = await client.get(f"/orgs/{slug}/announcements/{post_id}")
     assert public.status_code == 200
-    assert public.json()["body"] == "Nội dung công khai."
+    assert public.json()["body"] == "Public content."
     assert public.json()["status"] == "published"
     assert public.json()["deleted_at"] is None
     for hidden in (draft_id, "00000000-0000-7000-8000-000000000000"):

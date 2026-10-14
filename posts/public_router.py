@@ -14,14 +14,54 @@ from fastapi import APIRouter, Depends, Query
 
 from core.dependencies_workspace import get_public_post_service
 from orgs.schemas import PublicOrgPostItem
+from posts.helpers import parse_cursor
 from posts.mappers import to_post
-from posts.schemas import PostResponse, PublicAnnouncementPage
+from posts.schemas import (
+    PostResponse,
+    PublicAnnouncementPage,
+    PublicTimelineItem,
+    PublicTimelineOrg,
+    PublicTimelinePage,
+)
 
 if TYPE_CHECKING:
     from orgs.interfaces import OrgPostBrief
+    from posts.dtos import TimelineItem
     from posts.public_service import PublicPostService
 
 router = APIRouter(tags=["posts"])
+
+
+@router.get("/announcements", response_model=PublicTimelinePage)
+def list_announcement_timeline(
+    limit: int = Query(default=12, ge=1, le=30),
+    cursor: str | None = Query(default=None),
+    service: PublicPostService = Depends(get_public_post_service),
+) -> PublicTimelinePage:
+    """Global guest timeline of published announcements (no auth)."""
+    page = service.list_timeline(parse_cursor(cursor), limit)
+    return PublicTimelinePage(
+        items=[_item(item) for item in page.items],
+        next_cursor=page.next_cursor,
+    )
+
+
+def _item(item: TimelineItem) -> PublicTimelineItem:
+    return PublicTimelineItem(
+        id=item.id,
+        title=item.title,
+        excerpt=item.excerpt,
+        cover_url=item.cover_url,
+        author_name=item.author_name,
+        published_at=item.published_at,
+        comment_count=item.comment_count,
+        org=PublicTimelineOrg(
+            id=item.org.id,
+            name=item.org.name,
+            slug=item.org.slug,
+            logo_url=item.org.logo_url,
+        ),
+    )
 
 
 def _teaser(brief: OrgPostBrief) -> PublicOrgPostItem:

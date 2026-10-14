@@ -55,10 +55,11 @@ def get_post_service(
     from orgs.media_repository import CqlMediaRepository
     from orgs.member_repository import CqlMemberRepository
     from orgs.repository import CqlOrgRepository
-    from posts.events import WsPostEvents
+    from posts.events import WsAnnouncementFeedEvents, WsPostEvents
     from posts.repository import CqlCommentStore, CqlPostStore
     from posts.service import PostService
 
+    manager = getattr(request.app.state, "ws_manager", None)
     return PostService(
         posts=CqlPostStore(settings.scylla_keyspace),
         comments=CqlCommentStore(settings.scylla_keyspace),
@@ -67,8 +68,9 @@ def get_post_service(
         users=user_directory(settings),
         media=CqlMediaRepository(),
         access=access,
-        events=WsPostEvents(getattr(request.app.state, "ws_manager", None)),
+        events=WsPostEvents(manager),
         notifications=notifications,
+        announcements=WsAnnouncementFeedEvents(manager),
     )
 
 
@@ -83,10 +85,11 @@ def get_post_lifecycle_service(
     from orgs.media_repository import CqlMediaRepository
     from orgs.member_repository import CqlMemberRepository
     from orgs.repository import CqlOrgRepository
-    from posts.events import WsPostEvents
+    from posts.events import WsAnnouncementFeedEvents, WsPostEvents
     from posts.lifecycle_service import PostLifecycleService
     from posts.repository import CqlCommentStore, CqlPostStore
 
+    manager = getattr(request.app.state, "ws_manager", None)
     return PostLifecycleService(
         posts=CqlPostStore(settings.scylla_keyspace),
         comments=CqlCommentStore(settings.scylla_keyspace),
@@ -95,9 +98,10 @@ def get_post_lifecycle_service(
         users=user_directory(settings),
         media=CqlMediaRepository(),
         access=access,
-        events=WsPostEvents(getattr(request.app.state, "ws_manager", None)),
+        events=WsPostEvents(manager),
         notifications=notifications,
         files=LocalMediaStore(settings.media_root),
+        announcements=WsAnnouncementFeedEvents(manager),
     )
 
 
@@ -110,9 +114,10 @@ def get_comment_service(
     from orgs.member_repository import CqlMemberRepository
     from orgs.repository import CqlOrgRepository
     from posts.comments_service import CommentService
-    from posts.events import WsPostEvents
+    from posts.events import WsAnnouncementFeedEvents, WsPostEvents
     from posts.repository import CqlCommentStore, CqlPostStore
 
+    manager = getattr(request.app.state, "ws_manager", None)
     return CommentService(
         posts=CqlPostStore(settings.scylla_keyspace),
         comments=CqlCommentStore(settings.scylla_keyspace),
@@ -120,7 +125,8 @@ def get_comment_service(
         members=CqlMemberRepository(),
         users=user_directory(settings),
         access=access,
-        events=WsPostEvents(getattr(request.app.state, "ws_manager", None)),
+        events=WsPostEvents(manager),
+        announcements=WsAnnouncementFeedEvents(manager),
     )
 
 

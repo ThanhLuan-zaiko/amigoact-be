@@ -30,10 +30,10 @@
 //   file-registry fields on media_assets, skills matching, activity
 //   partners, legal org identity, per-registration check-in tokens, and
 //   hour approval queues. Everything is re-modeled query-first: no joins.
-// - 113 tables total: 9 auth + 11 org + 14 rbac + 7 student/skills
+// - 114 tables total: 9 auth + 11 org + 14 rbac + 7 student/skills
 //   + 13 activity + 8 registration + 9 attendance + 6 hours
 //   + 5 certificate + 6 media + 3 notification + 4 report + 2 review
-//   + 3 durability + 1 realtime + 12 feed/chat.
+//   + 3 durability + 1 realtime + 13 feed/chat.
 // =============================================================================
 
 CREATE KEYSPACE IF NOT EXISTS amigoact
@@ -1266,7 +1266,7 @@ CREATE TABLE IF NOT EXISTS ws_tickets (
 ) WITH default_time_to_live = 300;
 
 // -----------------------------------------------------------------------------
-// 16. ORG FEED & CHAT (12 tables)
+// 16. ORG FEED & CHAT (13 tables)
 // The member workspace: org-scoped posts (announcement | discussion) with
 // pins, media links and flat comments, plus one org-wide chat room. Ids are
 // UUIDv7 so clustering by the id itself gives time order; that makes the
@@ -1335,6 +1335,19 @@ CREATE TABLE IF NOT EXISTS org_posts_feed (
     post_id uuid,
     kind text,
     PRIMARY KEY ((org_id), post_id)
+) WITH CLUSTERING ORDER BY (post_id DESC);
+
+// Global public announcement timeline, newest first. One literal 'all'
+// bucket partitions every published announcement so a single bounded
+// read serves the guest feed; rows join back to org_posts at read time
+// (dead rows are skipped lazily, same as org_posts_feed drift).
+// (deployed keyspaces: CREATE TABLE announcements_feed (...); backfill
+//  one row per org_posts_feed row where kind = 'announcement')
+CREATE TABLE IF NOT EXISTS announcements_feed (
+    bucket  text,
+    post_id uuid,
+    org_id  uuid,
+    PRIMARY KEY ((bucket), post_id)
 ) WITH CLUSTERING ORDER BY (post_id DESC);
 
 // Pinned posts of one org, newest post first. Unpin deletes the row;

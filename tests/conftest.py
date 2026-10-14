@@ -190,6 +190,7 @@ def test_db() -> str:
         realtime_models.WsTicket,
         post_models.OrgPost,
         post_models.OrgPostFeed,
+        post_models.AnnouncementFeed,
         post_models.OrgPostPinned,
         post_models.OrgPostDraft,
         post_models.OrgPostTrash,

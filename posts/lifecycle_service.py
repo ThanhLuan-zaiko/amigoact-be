@@ -156,7 +156,7 @@ class PostLifecycleService(BoardServiceBase):
         """Author moves a draft onto the board (and notifies if announce).
 
         A draft carrying revision_of folds back into its live post via
-        _publish_revision — the board entry keeps its id, comments and
+        _publish_revision - the board entry keeps its id, comments and
         pin instead of becoming a second copy.
         """
         org = self._guard.require_member(org_id, actor_id, "post.publish")
@@ -180,6 +180,7 @@ class PostLifecycleService(BoardServiceBase):
         self._posts.set_status(row, "active", utcnow())
         self._guard.record(org_id, actor_id, "post.publish", post_id)
         self._emit(org_id, "post.created", post_id, actor_id, detail=kind)
+        self._emit_public(org_id, "created", post_id, kind)
         if kind == "announcement":
             notify_announcement(
                 self._members, self._notifications, org_id, org.name,
@@ -215,6 +216,7 @@ class PostLifecycleService(BoardServiceBase):
         self._posts.delete(rev)
         self._guard.record(rev.org_id, actor_id, "post.publish", parent.post_id)
         self._emit(rev.org_id, "post.updated", parent.post_id, actor_id)
+        self._emit_public(rev.org_id, "updated", parent.post_id, parent.kind)
         return self._snapshots.fresh(parent.post_id)
 
     def unpublish(
@@ -254,6 +256,7 @@ class PostLifecycleService(BoardServiceBase):
         self._posts.set_status(row, "draft", now)
         self._guard.record(org_id, actor_id, "post.unpublish", post_id)
         self._emit(org_id, "post.unpublished", post_id, actor_id)
+        self._emit_public(org_id, "removed", post_id, row.kind)
         return self._snapshots.fresh(post_id)
 
     # ---- trash -----------------------------------------------------------
@@ -282,6 +285,7 @@ class PostLifecycleService(BoardServiceBase):
         self._guard.record(org_id, actor_id, "post.delete", post_id)
         if not was_draft:
             self._emit(org_id, "post.deleted", post_id, actor_id)
+            self._emit_public(org_id, "removed", post_id, row.kind)
 
     def restore(
         self, org_id: UUID, post_id: UUID, actor_id: UUID
@@ -299,6 +303,7 @@ class PostLifecycleService(BoardServiceBase):
         self._guard.record(org_id, actor_id, "post.restore", post_id)
         if not is_draft(row):
             self._emit(org_id, "post.restored", post_id, actor_id)
+            self._emit_public(org_id, "created", post_id, row.kind)
         return self._snapshots.fresh(post_id)
 
     def hard_delete(self, org_id: UUID, post_id: UUID, actor_id: UUID) -> None:
@@ -339,5 +344,6 @@ class PostLifecycleService(BoardServiceBase):
         self._guard.record(org_id, actor_id, "post.purge", post_id)
         if was_public:
             self._emit(org_id, "post.deleted", post_id, actor_id)
+            self._emit_public(org_id, "removed", post_id, row.kind)
         else:
             self._emit(org_id, "post.purged", post_id, actor_id)

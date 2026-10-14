@@ -11,7 +11,12 @@ from orgs.interfaces import MemberRepository, OrgRepository, UserDirectory
 from orgs.member_helpers import is_active_member, live_org
 from posts.dtos import CommentPage, CommentSnapshot
 from posts.helpers import parse_cursor, post_or_404
-from posts.interfaces import CommentStore, PostEvents, PostStore
+from posts.interfaces import (
+    AnnouncementFeedEvents,
+    CommentStore,
+    PostEvents,
+    PostStore,
+)
 from posts.model import OrgPostComment
 from rbac.interfaces import AccessControl
 
@@ -28,6 +33,7 @@ class CommentService:
         users: UserDirectory,
         access: AccessControl,
         events: PostEvents,
+        announcements: AnnouncementFeedEvents | None = None,
     ) -> None:
         self._posts = posts
         self._comments = comments
@@ -36,6 +42,7 @@ class CommentService:
         self._users = users
         self._access = access
         self._events = events
+        self._announcements = announcements
 
     def _require_member(self, org_id: UUID, user_id: UUID, action: str):
         org = live_org(self._orgs, org_id)
@@ -70,6 +77,15 @@ class CommentService:
         except Exception:  # noqa: BLE001 - realtime is best-effort
             pass
 
+    def _emit_public(self, org_id: UUID, post_id: UUID) -> None:
+        """Refresh the teaser's comment_count on announcements:feed."""
+        if self._announcements is None:
+            return
+        try:
+            self._announcements.feed_changed("updated", post_id, org_id)
+        except Exception:  # noqa: BLE001 - realtime is best-effort
+            pass
+
     def list_comments(
         self,
         org_id: UUID,
@@ -96,19 +112,21 @@ class CommentService:
         self, org_id: UUID, post_id: UUID, actor_id: UUID, body: str
     ) -> CommentSnapshot:
         self._require_member(org_id, actor_id, "comment.create")
-        post_or_404(self._posts, org_id, post_id)
+        post = post_or_404(self._posts, org_id, post_id)
         row = self._comments.add(post_id, uuid7(), actor_id, body, utcnow())
         self._access.record(
             org_id, actor_id, "comment.create", "post", post_id, "allowed"
         )
         self._emit(org_id, "comment.created", post_id, actor_id)
+        if (post.kind or "discussion") == "announcement":
+            self._emit_public(org_id, post_id)
         return self._snapshot(row)
 
     def delete_comment(
         self, org_id: UUID, post_id: UUID, comment_id: UUID, actor_id: UUID
     ) -> None:
         org = self._require_member(org_id, actor_id, "comment.delete")
-        post_or_404(self._posts, org_id, post_id)
+        post = post_or_404(self._posts, org_id, post_id)
         row = self._comments.get(post_id, comment_id)
         if row is None:
             raise NotFoundError("Comment not found.")
@@ -121,6 +139,8 @@ class CommentService:
             org_id, actor_id, "comment.delete", "post", post_id, "allowed"
         )
         self._emit(org_id, "comment.deleted", post_id, actor_id)
+        if (post.kind or "discussion") == "announcement":
+            self._emit_public(org_id, post_id)
 
     def _snapshot(self, row: OrgPostComment) -> CommentSnapshot:
         brief = self._users.get_brief(row.author_id)

@@ -57,6 +57,23 @@ class OrgPostFeed(models.Model):
     kind = columns.Text(required=True, default="discussion")
 
 
+class AnnouncementFeed(models.Model):
+    """Global public timeline of published announcements, newest first.
+
+    One literal 'all' bucket partitions every row, so a single bounded
+    read serves the guest feed; org_id rides along for the org card.
+    """
+
+    __table_name__ = "announcements_feed"
+    __keyspace__ = "amigoact"
+
+    bucket = columns.Text(primary_key=True, partition_key=True)
+    post_id = columns.UUID(
+        primary_key=True, clustering_order="DESC", default=uuid7
+    )
+    org_id = columns.UUID(required=True)
+
+
 class OrgPostPinned(models.Model):
     """Pinned posts of one org, newest post first."""
 

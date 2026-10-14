@@ -9,6 +9,7 @@ from cassandra.cqlengine.connection import get_session
 
 from posts.interfaces import CommentStore, PostStore
 from posts.model import (
+    AnnouncementFeed,
     OrgPost,
     OrgPostComment,
     OrgPostDraft,
@@ -17,6 +18,8 @@ from posts.model import (
     OrgPostPinned,
     OrgPostTrash,
 )
+
+TIMELINE_BUCKET = "all"
 
 
 class CqlPostStore(PostStore):
@@ -71,9 +74,22 @@ class CqlPostStore(PostStore):
                 org_id=post.org_id, post_id=post.post_id,
                 kind=post.kind or "discussion",
             )
+            if (post.kind or "discussion") == "announcement":
+                AnnouncementFeed.create(
+                    bucket=TIMELINE_BUCKET,
+                    post_id=post.post_id,
+                    org_id=post.org_id,
+                )
 
     def _unplace(self, post: OrgPost) -> None:
         """Drop every live projection (feed, pin, draft) of the post."""
+        if (
+            (post.kind or "discussion") == "announcement"
+            and (post.status or "active") != "draft"
+        ):
+            AnnouncementFeed.objects(
+                bucket=TIMELINE_BUCKET, post_id=post.post_id
+            ).delete()
         OrgPostFeed.objects(
             org_id=post.org_id, post_id=post.post_id
         ).delete()
@@ -90,6 +106,14 @@ class CqlPostStore(PostStore):
 
     def list_feed(self, org_id: UUID, limit: int) -> list[OrgPostFeed]:
         return list(OrgPostFeed.objects(org_id=org_id).limit(limit))
+
+    def list_timeline(
+        self, cursor: UUID | None, limit: int
+    ) -> list[AnnouncementFeed]:
+        query = AnnouncementFeed.objects(bucket=TIMELINE_BUCKET)
+        if cursor is not None:
+            query = query.filter(post_id__lt=cursor)
+        return list(query.limit(limit))
 
     def count_feed(self, org_id: UUID) -> int:
         row = get_session().execute(
