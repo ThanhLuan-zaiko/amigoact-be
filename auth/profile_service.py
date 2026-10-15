@@ -7,8 +7,10 @@ from datetime import date, datetime
 from uuid import UUID
 
 from auth.interfaces import UserRepository
+from auth.model import User
 from core.exceptions import InvalidBusinessProfileError, NotFoundError
 from core.security import utcnow
+from orgs.interfaces import MediaRepository
 
 
 @dataclass(frozen=True)
@@ -31,13 +33,23 @@ class SessionProfile:
     last_login_at: datetime | None
     email_verified: bool
     created_at: datetime
+    avatar_url: str | None
 
 
 class ProfileService:
     """Profile snapshot reads plus the editable-fields replace flow."""
 
-    def __init__(self, users: UserRepository) -> None:
+    def __init__(self, users: UserRepository, media: MediaRepository) -> None:
         self._users = users
+        self._media = media
+
+    def _avatar_url(self, user: User) -> str | None:
+        """Resolve avatar_media_id to its public /media path."""
+        asset_id = getattr(user, "avatar_media_id", None)
+        if asset_id is None:
+            return None
+        row = self._media.get_asset(asset_id)
+        return f"/media/{row.file_url}" if row else None
 
     def of(self, user_id: UUID) -> SessionProfile:
         """Build the public snapshot; cqlengine Date -> datetime.date."""
@@ -64,6 +76,7 @@ class ProfileService:
             last_login_at=getattr(user, "last_login_at", None),
             email_verified=user.email_verified_at is not None,
             created_at=user.created_at,
+            avatar_url=self._avatar_url(user),
         )
 
     def update(

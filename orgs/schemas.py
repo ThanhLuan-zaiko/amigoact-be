@@ -263,11 +263,19 @@ class PublicOrgDetailResponse(BaseModel):
 
 
 class UpdateOrgRequest(BaseModel):
-    """Owner replaces details; slug/kind/tax stay frozen, null clears."""
+    """Owner replaces details; slug/kind frozen, null clears, legal audited."""
 
     name: Annotated[str, Field(min_length=2, max_length=100)]
     description: Annotated[str, Field(max_length=500)] = ""
     join_policy: JoinPolicy | None = None
+    tax_code: str | None = None
+    legal_rep_name: Annotated[str, Field(min_length=2, max_length=100)] | None = (
+        None
+    )
+    legal_rep_id: str | None = None
+    legal_rep_position: Annotated[str, Field(min_length=2, max_length=100)] | None = (
+        None
+    )
     email: str | None = None
     phone: Annotated[str, Field(max_length=20)] | None = None
     website: Annotated[str, Field(max_length=255)] | None = None
@@ -278,6 +286,18 @@ class UpdateOrgRequest(BaseModel):
     license_number: Annotated[str, Field(max_length=100)] | None = None
     is_personal: bool = False
 
+    _tax = field_validator("tax_code", mode="before")(  # noqa: SLF001
+        lambda v: validate_tax_code(v) if v not in (None, "") else None
+    )
+    _rep_name = field_validator("legal_rep_name", mode="before")(  # noqa: SLF001
+        lambda v: None if v in (None, "") else v
+    )
+    _cccd = field_validator("legal_rep_id", mode="before")(  # noqa: SLF001
+        lambda v: validate_cccd(v) if v not in (None, "") else None
+    )
+    _position = field_validator(  # noqa: SLF001
+        "legal_rep_position", mode="before"
+    )(lambda v: None if v in (None, "") else v)
     _email = field_validator("email", mode="before")(  # noqa: SLF001
         lambda v: validate_contact_email(v) if v not in (None, "") else None
     )

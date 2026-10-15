@@ -40,6 +40,17 @@ class OrgContactDetails:
     is_personal: bool = False
 
 
+@dataclass(frozen=True)
+class OrgLegalEdit:
+    """PATCH-provided legal identity; `provided` marks explicitly sent keys."""
+
+    tax_code: str | None = None
+    legal_rep_name: str | None = None
+    legal_rep_id: str | None = None
+    legal_rep_position: str | None = None
+    provided: frozenset[str] = frozenset()
+
+
 class OrgRepository(ABC):
     """Persistence port for orgs plus slug uniqueness and memberships."""
 
@@ -92,8 +103,9 @@ class OrgRepository(ABC):
         now: datetime,
         join_policy: str | None = None,
         contact: OrgContactDetails | None = None,
+        legal: dict[str, object] | None = None,
     ) -> Organization | None:
-        """Replace name/description (and policy/contact), fresh row out."""
+        """Replace name/description (and policy/contact/legal), fresh row out."""
 
     @abstractmethod
     def mark_deleted(self, org_id: UUID, now: datetime) -> Organization | None:

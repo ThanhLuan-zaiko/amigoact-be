@@ -118,6 +118,7 @@ class AccessControlService(AccessControl):
         resource_type: str,
         resource_id: UUID | None,
         result: str,
+        metadata: str | None = None,
     ) -> None:
         try:
             self._audit.record(
@@ -128,6 +129,7 @@ class AccessControlService(AccessControl):
                 resource_id,
                 result,
                 utcnow(),
+                metadata,
             )
         except Exception:
             # Audit must never break the request path.

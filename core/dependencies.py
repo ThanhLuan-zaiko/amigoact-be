@@ -51,6 +51,7 @@ def get_auth_service(
         CqlVerificationCodeStore,
     )
     from auth.service import AuthService
+    from orgs.media_repository import CqlMediaRepository
 
     mailer: EmailSender = build_sender(
         settings.smtp_host,
@@ -68,6 +69,7 @@ def get_auth_service(
         hasher=Argon2PasswordHasher(),
         mailer=mailer,
         settings=settings,
+        media=CqlMediaRepository(),
     )
 
 

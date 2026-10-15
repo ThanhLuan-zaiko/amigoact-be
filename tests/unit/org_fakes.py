@@ -65,7 +65,7 @@ class FakeOrgs(OrgRepository):
     def is_member(self, org_id, user_id):  # noqa: ANN001, ANN202
         return user_id in self.members.get(org_id, set())
 
-    def update_details(self, org_id, name, description, now, join_policy=None, contact=None):  # noqa: ANN001, ANN202
+    def update_details(self, org_id, name, description, now, join_policy=None, contact=None, legal=None):  # noqa: ANN001, ANN202
         org = self.orgs.get(org_id)
         if org is None:
             return None
@@ -75,6 +75,9 @@ class FakeOrgs(OrgRepository):
             org.join_policy = join_policy
         if contact is not None:
             for key, value in vars(contact).items():
+                setattr(org, key, value)
+        if legal:
+            for key, value in legal.items():
                 setattr(org, key, value)
         org.updated_at = now
         return org

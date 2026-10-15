@@ -37,6 +37,7 @@ def org_audit(
                 resource_type=entry.resource_type,
                 resource_id=entry.resource_id,
                 result=entry.result,
+                detail=entry.detail,
             )
             for entry in entries
         ]

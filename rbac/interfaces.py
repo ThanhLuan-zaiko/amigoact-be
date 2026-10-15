@@ -124,8 +124,9 @@ class AuditWriter(ABC):
         resource_id: UUID | None,
         result: str,
         now: datetime,
+        metadata: str | None = None,
     ) -> None:
-        """Append one audit row (allowed | denied)."""
+        """Append one audit row (allowed | denied); metadata is JSON."""
 
 
 class AccessControl(ABC):
@@ -174,5 +175,6 @@ class AccessControl(ABC):
         resource_type: str,
         resource_id: UUID | None,
         result: str,
+        metadata: str | None = None,
     ) -> None:
         """Best-effort audit append; never breaks the caller."""

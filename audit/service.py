@@ -24,6 +24,7 @@ class AuditEntry:
     resource_type: str
     resource_id: UUID | None
     result: str
+    detail: str | None
 
 
 class AuditService:
@@ -75,6 +76,7 @@ class AuditService:
                     resource_type=row.resource_type,
                     resource_id=row.resource_id,
                     result=row.result,
+                    detail=getattr(row, "meta", None) or None,
                 )
             )
         return entries

@@ -246,6 +246,7 @@ class UserProfile(BaseModel):
     last_login_at: datetime | None = None
     email_verified: bool
     created_at: datetime
+    avatar_url: str | None = None
 
 
 class AcceptedResponse(BaseModel):

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING
@@ -20,10 +21,12 @@ from orgs.interfaces import (
     MediaRepository,
     OrgContactDetails,
     OrgDirectoryEvents,
+    OrgLegalEdit,
     OrgRepository,
 )
 from orgs.listing import OrgListResult, paginate_mine
-from orgs.repository import generate_org_id
+from orgs.repo_helpers import generate_org_id
+from orgs.update_rules import clean_contact, field_diffs, legal_edit_fields
 from rbac.interfaces import AccessControl
 
 if TYPE_CHECKING:
@@ -31,16 +34,6 @@ if TYPE_CHECKING:
 
 _ORG_KINDS = ORG_KINDS
 _JOIN_POLICIES = ("invite", "open")
-_CONTACT_LIMITS = {
-    "email": 254,
-    "phone": 20,
-    "website": 255,
-    "address": 255,
-    "city": 100,
-    "country": 100,
-    "legal_name": 255,
-    "license_number": 100,
-}
 
 
 @dataclass(frozen=True)
@@ -212,29 +205,10 @@ class OrgService:
             legal_rep_position,
             legal_status,
             now,
-            self._clean_contact(contact),
+            clean_contact(contact),
         )
         self._emit("created", org.id, org.slug)
         return self._snapshot(org.id)
-
-    @staticmethod
-    def _clean_contact(
-        contact: OrgContactDetails | None,
-    ) -> OrgContactDetails | None:
-        """Trim contact strings and enforce column length limits."""
-        if contact is None:
-            return None
-        cleaned: dict[str, object] = {}
-        for field_name, limit in _CONTACT_LIMITS.items():
-            value = getattr(contact, field_name)
-            if isinstance(value, str):
-                value = value.strip() or None
-            if value is not None and len(value) > limit:
-                raise InvalidBusinessProfileError(
-                    f"Org {field_name.replace('_', ' ')} is invalid."
-                )
-            cleaned[field_name] = value
-        return OrgContactDetails(is_personal=contact.is_personal, **cleaned)
 
     def list_my_orgs(
         self,
@@ -263,9 +237,10 @@ class OrgService:
         description: str,
         join_policy: str | None = None,
         contact: OrgContactDetails | None = None,
+        legal: OrgLegalEdit | None = None,
     ) -> OrgSnapshot:
-        """Owner or org:update holder edits profile/policy of a live org."""
-        self._require_editor(org_id, user_id)
+        """Owner or org:update holder edits profile/policy/legal of a live org."""
+        org = self._require_editor(org_id, user_id)
         clean_name = name.strip()
         if not (2 <= len(clean_name) <= 100):
             raise InvalidBusinessProfileError("Org name is invalid.")
@@ -273,6 +248,21 @@ class OrgService:
             raise InvalidBusinessProfileError("Org description is invalid.")
         if join_policy is not None and join_policy not in _JOIN_POLICIES:
             raise InvalidBusinessProfileError("Join policy is invalid.")
+        legal_fields = legal_edit_fields(org, legal)
+        cleaned_contact = clean_contact(contact)
+        diffable: dict[str, object] = {
+            "name": clean_name,
+            "description": description.strip(),
+        }
+        if join_policy is not None:
+            diffable["join_policy"] = join_policy
+        if cleaned_contact is not None:
+            diffable.update(vars(cleaned_contact))
+        profile_detail = field_diffs(org, diffable)
+        legal_detail = {
+            key: {"old": getattr(org, key, None), "new": new}
+            for key, new in legal_fields.items()
+        }
         now = utcnow()
         org = self._orgs.update_details(
             org_id,
@@ -280,9 +270,33 @@ class OrgService:
             description.strip(),
             now,
             join_policy,
-            self._clean_contact(contact),
+            cleaned_contact,
+            legal_fields or None,
         )
         assert org is not None
+        if self._access is not None:
+            self._access.record(
+                org_id,
+                user_id,
+                "org.update",
+                "org",
+                org_id,
+                "allowed",
+                json.dumps(profile_detail, default=str)
+                if profile_detail
+                else None,
+            )
+            if legal_fields:
+                changed = ",".join(sorted(legal_fields))
+                self._access.record(
+                    org_id,
+                    user_id,
+                    f"org.legal:{changed}",
+                    "org",
+                    org_id,
+                    "allowed",
+                    json.dumps(legal_detail, default=str),
+                )
         self._emit("updated", org_id, org.slug)
         return self._snapshot(org_id)
 

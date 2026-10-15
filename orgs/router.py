@@ -18,7 +18,7 @@ from core.dependencies import (
 )
 from core.exceptions import MediaTooLargeError, NotFoundError
 from core.media import MEDIA_MIMES, media_kind
-from orgs.interfaces import OrgContactDetails
+from orgs.mappers import contact_of, legal_of, media_schema, org_schema
 from orgs.schemas import (
     BucketCount,
     CreateOrgRequest,
@@ -32,62 +32,10 @@ from orgs.schemas import (
 
 if TYPE_CHECKING:
     from core.media import LocalMediaStore
-    from orgs.media_service import MediaService, MediaSnapshot
-    from orgs.service import OrgService, OrgSnapshot
+    from orgs.media_service import MediaService
+    from orgs.service import OrgService
 
 router = APIRouter(tags=["orgs"])
-
-
-def _org_schema(snapshot: OrgSnapshot) -> OrgResponse:
-    return OrgResponse(
-        id=snapshot.id,
-        name=snapshot.name,
-        slug=snapshot.slug,
-        description=snapshot.description,
-        kind=snapshot.kind,  # type: ignore[arg-type]
-        member_count=snapshot.member_count,
-        event_count=0,
-        owner_id=snapshot.owner_id,
-        tax_code=snapshot.tax_code,
-        legal_rep_name=snapshot.legal_rep_name,
-        legal_rep_id=snapshot.legal_rep_id,
-        legal_rep_position=snapshot.legal_rep_position,
-        legal_status=snapshot.legal_status,
-        status=snapshot.status,
-        join_policy=snapshot.join_policy,  # type: ignore[arg-type]
-        email=snapshot.email,
-        phone=snapshot.phone,
-        website=snapshot.website,
-        address=snapshot.address,
-        city=snapshot.city,
-        country=snapshot.country,
-        legal_name=snapshot.legal_name,
-        license_number=snapshot.license_number,
-        is_personal=snapshot.is_personal,
-        logo_media_id=snapshot.logo_media_id,
-        cover_media_id=snapshot.cover_media_id,
-        verified_at=snapshot.verified_at,
-        previous_slug=snapshot.previous_slug,
-        deleted_at=snapshot.deleted_at,
-        created_at=snapshot.created_at,
-    )
-
-
-def _media_schema(item: MediaSnapshot) -> MediaResponse:
-    return MediaResponse(
-        id=item.id,
-        org_id=item.org_id,
-        kind=item.kind,  # type: ignore[arg-type]
-        role=item.role,  # type: ignore[arg-type]
-        mime=item.mime,
-        size_bytes=item.size_bytes,
-        file_url=item.file_url,
-        uploader_id=item.uploader_id,
-        original_name=item.original_name,
-        upload_status=item.upload_status,
-        created_at=item.created_at,
-        updated_at=item.updated_at,
-    )
 
 
 async def _read_limited(file: UploadFile, limit: int) -> bytes:
@@ -105,21 +53,6 @@ async def _read_limited(file: UploadFile, limit: int) -> bytes:
     return b"".join(parts)
 
 
-def _contact_of(body: CreateOrgRequest | UpdateOrgRequest) -> OrgContactDetails:
-    """Project the request's optional contact block into a value object."""
-    return OrgContactDetails(
-        email=body.email,
-        phone=body.phone,
-        website=body.website,
-        address=body.address,
-        city=body.city,
-        country=body.country,
-        legal_name=body.legal_name,
-        license_number=body.license_number,
-        is_personal=body.is_personal,
-    )
-
-
 @router.post("/orgs", response_model=OrgResponse, status_code=201)
 def create_org(
     body: CreateOrgRequest,
@@ -127,7 +60,7 @@ def create_org(
     service: OrgService = Depends(get_org_service),
 ) -> OrgResponse:
     """Create an org. The caller becomes owner; business needs legal head."""
-    return _org_schema(
+    return org_schema(
         service.create_org(
             current.id,
             body.name,
@@ -139,7 +72,7 @@ def create_org(
             body.legal_rep_name,
             body.legal_rep_id,
             body.legal_rep_position,
-            _contact_of(body),
+            contact_of(body),
         )
     )
 
@@ -166,7 +99,7 @@ def list_my_orgs(
         offset=offset,
     )
     return OrgListPage(
-        items=[_org_schema(item) for item in page.items],
+        items=[org_schema(item) for item in page.items],
         total=page.total,
         counts=[BucketCount(bucket=key, count=count) for key, count in page.counts],
     )
@@ -180,14 +113,15 @@ def update_org(
     service: OrgService = Depends(get_org_service),
 ) -> OrgResponse:
     """Owner renames, re-describes or re-policies a live org."""
-    return _org_schema(
+    return org_schema(
         service.update_org(
             org_id,
             current.id,
             body.name,
             body.description,
             body.join_policy,
-            _contact_of(body),
+            contact_of(body),
+            legal_of(body),
         )
     )
 
@@ -203,7 +137,7 @@ def delete_org(
     if hard:
         service.hard_delete_org(org_id, current.id)
         return Response(status_code=204)
-    return _org_schema(service.soft_delete_org(org_id, current.id))
+    return org_schema(service.soft_delete_org(org_id, current.id))
 
 
 @router.post("/orgs/{org_id}/restore", response_model=OrgResponse)
@@ -213,7 +147,7 @@ def restore_org(
     service: OrgService = Depends(get_org_service),
 ) -> OrgResponse:
     """Owner brings a soft-deleted org back to the visible list."""
-    return _org_schema(service.restore_org(org_id, current.id))
+    return org_schema(service.restore_org(org_id, current.id))
 
 
 @router.post("/orgs/{org_id}/media", response_model=MediaResponse, status_code=201)
@@ -244,7 +178,7 @@ async def upload_org_media(
         content,
         role,
     )
-    return _media_schema(snapshot)
+    return media_schema(snapshot)
 
 
 @router.put("/orgs/{org_id}/media/{media_id}/file", response_model=MediaResponse)
@@ -271,7 +205,7 @@ async def replace_org_media_file(
         file.content_type or "application/octet-stream",
         content,
     )
-    return _media_schema(snapshot)
+    return media_schema(snapshot)
 
 
 @router.get("/orgs/{org_id}/media", response_model=list[MediaResponse])
@@ -281,7 +215,7 @@ def list_org_media(
     service: MediaService = Depends(get_media_service),
 ) -> list[MediaResponse]:
     """Newest-first gallery for members of a live org."""
-    return [_media_schema(item) for item in service.list_media(org_id, current.id)]
+    return [media_schema(item) for item in service.list_media(org_id, current.id)]
 
 
 @router.patch("/orgs/{org_id}/media/{media_id}", response_model=MediaResponse)
@@ -293,7 +227,7 @@ def set_org_media_role(
     service: MediaService = Depends(get_media_service),
 ) -> MediaResponse:
     """Owner picks the cover/logo image; previous holder drops to gallery."""
-    return _media_schema(
+    return media_schema(
         service.set_media_role(org_id, current.id, media_id, body.role)
     )
 

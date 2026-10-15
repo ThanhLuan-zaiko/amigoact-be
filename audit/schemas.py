@@ -17,6 +17,7 @@ class AuditEntryResponse(BaseModel):
     resource_type: str
     resource_id: UUID | None
     result: str
+    detail: str | None = None
 
 
 class AuditFeedResponse(BaseModel):

@@ -267,6 +267,7 @@ class CqlAuditWriter(AuditWriter):
         resource_id: UUID | None,
         result: str,
         now: datetime,
+        metadata: str | None = None,
     ) -> None:
         from core.ids import uuid7
 
@@ -280,6 +281,7 @@ class CqlAuditWriter(AuditWriter):
             resource_type=resource_type,
             resource_id=resource_id,
             result=result,
+            meta=metadata,
         )
         if resource_id is not None:
             AccessAuditByResource.create(

@@ -53,6 +53,7 @@ def _profile_schema(profile: SessionProfile) -> UserProfile:
         last_login_at=profile.last_login_at,
         email_verified=profile.email_verified,
         created_at=profile.created_at,
+        avatar_url=profile.avatar_url,
     )
 
 

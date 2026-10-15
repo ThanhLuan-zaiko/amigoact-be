@@ -8,7 +8,6 @@ from uuid import UUID
 from cassandra.cqlengine.connection import get_session
 
 from core.exceptions import SlugTakenError, TaxCodeTakenError
-from core.ids import uuid7
 from orgs.directory_feed import delete_public_feed, write_public_feed
 from orgs.interfaces import ORG_KINDS, OrgContactDetails, OrgRepository
 from orgs.media_repository import media_feeds_delete
@@ -23,46 +22,7 @@ from orgs.model import (
     OrganizationsByTaxCode,
     OrganizationsPublic,
 )
-
-_CONTACT_FIELDS = (
-    "email",
-    "phone",
-    "website",
-    "address",
-    "city",
-    "country",
-    "legal_name",
-    "license_number",
-    "is_personal",
-)
-
-
-def _contact_fields(contact: OrgContactDetails | None) -> dict[str, object]:
-    """Flatten the contact value object into model update kwargs."""
-    if contact is None:
-        return {}
-    return {name: getattr(contact, name) for name in _CONTACT_FIELDS}
-
-
-def _queue_write(org: Organization) -> None:
-    """Mirror the org into the platform verification queue feed."""
-    OrganizationsByLegalStatus.create(
-        legal_status=org.legal_status or "none",
-        created_at=org.created_at,
-        org_id=org.id,
-        name=org.name,
-        slug=org.slug,
-    )
-
-
-def _queue_delete(org: Organization) -> None:
-    """Drop the org's verification-queue row (trash or hard delete)."""
-    OrganizationsByLegalStatus.objects(
-        legal_status=org.legal_status or "none",
-        created_at=org.created_at,
-        org_id=org.id,
-    ).delete()
-
+from orgs.repo_helpers import contact_fields, queue_delete, queue_write
 
 class CqlOrgRepository(OrgRepository):
     """Orgs plus slug index and dual membership query tables."""
@@ -121,9 +81,9 @@ class CqlOrgRepository(OrgRepository):
             legal_status=legal_status,
             created_at=now,
             updated_at=now,
-            **_contact_fields(contact),
+            **contact_fields(contact),
         )
-        _queue_write(org)
+        queue_write(org)
         write_public_feed(org)
         OrganizationMember.create(
             org_id=org_id, user_id=owner_id, status="active", joined_at=now
@@ -164,6 +124,22 @@ class CqlOrgRepository(OrgRepository):
             return False
         return (getattr(row, "status", "active") or "active") == "active"
 
+    def _claim_tax_change(
+        self, org: Organization, legal: dict[str, object] | None
+    ) -> str | None:
+        """Claim a new tax code before the row moves; None when unchanged."""
+        new_tax = legal.get("tax_code") if legal else None
+        if not isinstance(new_tax, str) or not new_tax or new_tax == org.tax_code:
+            return None
+        claim = get_session().execute(
+            f"INSERT INTO {self._keyspace}.organizations_by_tax_code"
+            " (tax_code, org_id) VALUES (%s, %s) IF NOT EXISTS",
+            [new_tax, org.id],
+        )
+        if not claim.was_applied:
+            raise TaxCodeTakenError("Tax code is already registered.")
+        return new_tax
+
     def update_details(
         self,
         org_id: UUID,
@@ -172,6 +148,7 @@ class CqlOrgRepository(OrgRepository):
         now: datetime,
         join_policy: str | None = None,
         contact: OrgContactDetails | None = None,
+        legal: dict[str, object] | None = None,
     ) -> Organization | None:
         org = self.get_by_id(org_id)
         if org is None:
@@ -183,8 +160,22 @@ class CqlOrgRepository(OrgRepository):
         }
         if join_policy is not None:
             fields["join_policy"] = join_policy
-        fields.update(_contact_fields(contact))
-        Organization.objects(id=org_id).update(**fields)
+        fields.update(contact_fields(contact))
+        claimed_tax = self._claim_tax_change(org, legal)
+        if legal:
+            fields.update(legal)
+        try:
+            Organization.objects(id=org_id).update(**fields)
+        except Exception:
+            if claimed_tax is not None:
+                # Row update failed after claiming; free the new tax code.
+                OrganizationsByTaxCode.objects(
+                    tax_code=claimed_tax
+                ).delete()
+            raise
+        if claimed_tax is not None and org.tax_code:
+            # Row now points at the new code; release the previous claim.
+            OrganizationsByTaxCode.objects(tax_code=org.tax_code).delete()
         # Keep the verification queue's denormalized copy fresh; the
         # upsert also self-heals rows created before the queue existed.
         OrganizationsByLegalStatus.objects(
@@ -207,7 +198,7 @@ class CqlOrgRepository(OrgRepository):
         # Free the slug so a replacement org can take it while this one
         # sits in trash; restore reclaims it (suffix fallback on clashes).
         OrganizationsBySlug.objects(slug=org.slug).delete()
-        _queue_delete(org)
+        queue_delete(org)
         delete_public_feed(org)
         Organization.objects(id=org_id).update(deleted_at=now, updated_at=now)
         return self.get_by_id(org_id)
@@ -238,7 +229,7 @@ class CqlOrgRepository(OrgRepository):
         Organization.objects(id=org_id).update(**fields)
         fresh = self.get_by_id(org_id)
         assert fresh is not None
-        _queue_write(fresh)
+        queue_write(fresh)
         write_public_feed(fresh)
         return fresh
 
@@ -305,7 +296,7 @@ class CqlOrgRepository(OrgRepository):
         )
         fresh = self.get_by_id(org_id)
         assert fresh is not None
-        _queue_write(fresh)
+        queue_write(fresh)
         return fresh
 
     def delete_everything(self, org_id: UUID) -> bool:
@@ -324,12 +315,7 @@ class CqlOrgRepository(OrgRepository):
         OrganizationsBySlug.objects(slug=org.slug).delete()
         if org.tax_code:
             OrganizationsByTaxCode.objects(tax_code=org.tax_code).delete()
-        _queue_delete(org)
+        queue_delete(org)
         delete_public_feed(org)
         org.delete()
         return True
-
-
-def generate_org_id() -> UUID:
-    """Application-side UUIDv7 primary key for new orgs."""
-    return uuid7()

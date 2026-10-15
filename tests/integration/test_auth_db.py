@@ -70,6 +70,40 @@ async def test_register_verify_login_me(client: AsyncClient) -> None:
     assert response.json()["email"] == email
 
 
+async def test_me_returns_avatar_url_after_upload(
+    client: AsyncClient,
+) -> None:
+    """Session payload mirrors the avatar that /profiles/me/avatar stores."""
+    email, phone = "avatar@example.com", "0900000011"
+    await client.post("/auth/register", json=_payload(email, phone))
+    logged = await client.post(
+        "/auth/login", json={"email": email, "password": PASSWORD}
+    )
+    headers = {"Authorization": f"Bearer {logged.json()['access_token']}"}
+
+    me = await client.get("/auth/me", headers=headers)
+    assert me.status_code == 200
+    assert me.json()["avatar_url"] is None
+
+    png = (
+        b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01"
+        b"\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89"
+        b"\x00\x00\x00\x0bIDATx\x9cc\x00\x01\x00\x00\x05\x00\x01"
+        b"\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82"
+    )
+    uploaded = await client.post(
+        "/profiles/me/avatar",
+        files={"file": ("me.png", png, "image/png")},
+        headers=headers,
+    )
+    assert uploaded.status_code == 200, uploaded.text
+    url = uploaded.json()["avatar_url"]
+    assert url.startswith("/media/users/")
+
+    me = await client.get("/auth/me", headers=headers)
+    assert me.json()["avatar_url"] == url
+
+
 async def test_conflicts_and_unverified_login_allowed(client: AsyncClient) -> None:
     email, phone = "taken@example.com", "0312345678"
     await client.post("/auth/register", json=_payload(email, phone))

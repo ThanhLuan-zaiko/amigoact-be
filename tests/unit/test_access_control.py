@@ -115,10 +115,10 @@ class FakeAudit(AuditWriter):
         self.rows: list[tuple] = []
         self._fail = fail
 
-    def record(self, org_id, actor_id, action, resource_type, resource_id, result, now):  # noqa: ANN001, ANN202
+    def record(self, org_id, actor_id, action, resource_type, resource_id, result, now, metadata=None):  # noqa: ANN001, ANN202
         if self._fail:
             raise RuntimeError("audit offline")
-        self.rows.append((org_id, actor_id, action, resource_type, resource_id, result))
+        self.rows.append((org_id, actor_id, action, resource_type, resource_id, result, metadata))
 
 
 def _service() -> tuple[AccessControlService, FakeRoles, FakeGrants, FakeAudit]:

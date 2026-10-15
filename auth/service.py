@@ -38,6 +38,7 @@ from core.security import (
     new_opaque_token,
     utcnow,
 )
+from orgs.interfaces import MediaRepository
 
 
 @dataclass(frozen=True)
@@ -62,9 +63,10 @@ class AuthService:
         hasher: PasswordHasherPort,
         mailer: EmailSender,
         settings: Settings,
+        media: MediaRepository,
     ) -> None:
         self._users = users
-        self._profiles = ProfileService(users)
+        self._profiles = ProfileService(users, media)
         self._refresh_tokens = refresh_tokens
         self._verifications = verifications
         self._resets = resets

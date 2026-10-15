@@ -18,6 +18,7 @@ from auth.service import AuthService
 from core.config import Settings
 from core.email import EmailSender
 from core.hashing import build_hasher
+from tests.unit.org_fakes import FakeMedia
 
 EMAIL = "student@example.com"
 PHONE = "0912345678"
@@ -189,6 +190,7 @@ def make_service(**overrides: Any) -> tuple[AuthService, dict[str, Any]]:
         "hasher": StubHasher(),
         "mailer": FakeMailer(),
         "settings": Settings(jwt_secret="unit-test-secret-32-bytes-long!!"),
+        "media": FakeMedia(),
     }
     parts.update(overrides)
     return AuthService(**parts), parts  # type: ignore[arg-type]

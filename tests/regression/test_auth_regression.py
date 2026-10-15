@@ -157,6 +157,38 @@ async def test_change_password_rejects_reused_password(
     assert response.json()["code"] == "SAME_AS_CURRENT"
 
 
+async def test_me_carries_shared_avatar_field(client: AsyncClient) -> None:
+    """Contract: /auth/me exposes avatar_url for shell chrome, and it must
+    equal what /profiles/me reports (one field, two surfaces)."""
+    access = await _register_verify_login(
+        client, "avatar@example.com", "0900000022"
+    )
+    headers = {"Authorization": f"Bearer {access}"}
+
+    me = await client.get("/auth/me", headers=headers)
+    assert me.status_code == 200
+    assert me.json()["avatar_url"] is None
+
+    png = (
+        b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01"
+        b"\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89"
+        b"\x00\x00\x00\x0bIDATx\x9cc\x00\x01\x00\x00\x05\x00\x01"
+        b"\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82"
+    )
+    uploaded = await client.post(
+        "/profiles/me/avatar",
+        files={"file": ("me.png", png, "image/png")},
+        headers=headers,
+    )
+    assert uploaded.status_code == 200, uploaded.text
+    url = uploaded.json()["avatar_url"]
+
+    me = await client.get("/auth/me", headers=headers)
+    assert me.json()["avatar_url"] == url
+    profile = await client.get("/profiles/me", headers=headers)
+    assert profile.json()["avatar_url"] == url
+
+
 async def test_unknown_refresh_token_is_plain_401(client: AsyncClient) -> None:
     """Unknown refresh digests fail closed without touching live sessions."""
     await _register_verify_login(client, "burn@example.com", "0898765432")

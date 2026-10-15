@@ -209,7 +209,7 @@ class FakeAccess(AccessControl):
             self._role_perms(org_id, role_name)
         )
 
-    def record(self, org_id, actor_id, action, resource_type, resource_id, result):  # noqa: ANN001, ANN202
+    def record(self, org_id, actor_id, action, resource_type, resource_id, result, metadata=None):  # noqa: ANN001, ANN202
         self.audit.append((action, resource_id, result))
 
 
