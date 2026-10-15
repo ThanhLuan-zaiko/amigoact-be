@@ -34,6 +34,7 @@ async def test_audit_feed_contract(client: AsyncClient) -> None:
         "resource_type",
         "resource_id",
         "result",
+        "detail",
     }
 
 

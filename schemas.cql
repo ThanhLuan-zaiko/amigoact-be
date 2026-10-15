@@ -1236,7 +1236,7 @@ CREATE TABLE IF NOT EXISTS idempotency_keys (
 );
 
 CREATE TABLE IF NOT EXISTS auth_rate_limits (
-    bucket text, // e.g. 'login:192.0.2.10' or 'refresh:<user_id>'
+    bucket text, // e.g. 'login:192.0.2.10', 'refresh:<user_id>', 'edge:<ip>'
     window_start timestamp, // fixed window start (e.g. per minute)
     hits counter,
     PRIMARY KEY ((bucket), window_start)

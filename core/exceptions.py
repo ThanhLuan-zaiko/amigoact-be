@@ -97,6 +97,11 @@ class TooManyRequestsError(DomainError):
     status = 429
 
 
+class ServerOverloadedError(DomainError):
+    code = "SERVER_OVERLOADED"
+    status = 503
+
+
 class NotFoundError(DomainError):
     code = "NOT_FOUND"
     status = 404

@@ -87,11 +87,38 @@ Mọi cấu hình nằm trong `core/config.py` (dùng `pydantic-settings`), đ�
 | `MEDIA_ROOT` | Thư mục gốc chứa tệp media org (`<root>/orgs/<org_id>/...`, đã gitignore, không commit) | `./media` |
 | `MEDIA_MAX_IMAGE_MB` | Dung lượng ảnh tối đa (JPG, PNG, WebP, GIF) | `10` |
 | `MEDIA_MAX_VIDEO_MB` | Dung lượng video tối đa (MP4, WebM, MOV) | `100` |
+| `GUARD_ENABLED` | Bật/tắt toàn bộ edge guard (xem mục "Edge guard" bên dưới) | `true` |
+| `GUARD_MAX_CONCURRENT` / `GUARD_QUEUE_MS` | Số request HTTP xử lý đồng thời tối đa; phần dư xếp hàng tối đa `GUARD_QUEUE_MS` mili-giây rồi nhận `503 SERVER_OVERLOADED` | `256` / `250` |
+| `GUARD_IP_MAX_HITS` / `GUARD_IP_WINDOW_SECONDS` | Giới hạn request mỗi IP trong cửa sổ cố định (counter `edge:<ip>` trong `auth_rate_limits`); vượt thì `429 TOO_MANY_REQUESTS` | `300` / `60` |
+| `GUARD_MAX_BODY_MB` | Từ chối sớm request có `Content-Length` vượt ngưỡng (`413 MEDIA_TOO_LARGE`; `0` tắt) | `128` |
+| `GUARD_CLIENT_IP_HEADER` | Header chứa IP thật của client sau edge proxy (Cloudflare gửi `cf-connecting-ip`); chỉ tin khi origin đã khóa với proxy đó, để trống = dùng IP kết nối TCP | `cf-connecting-ip` |
+| `GUARD_EXEMPT_PATHS` | Thêm path miễn guard (phẩy) ngoài mặc định `/health`, `/ready`, `/docs`, `/openapi.json` | `""` |
 | `WS_TICKET_TTL_SECONDS` | Tuổi thọ ticket WebSocket một lần (`POST /ws/tickets`) | `60` |
 | `WS_HEARTBEAT_SECONDS` | Chu kỳ server gửi `ping.v1` qua socket | `25` |
 | `WS_PONG_TIMEOUT_SECONDS` | Thời gian chờ `pong.v1` của client trước khi đóng `4408` | `10` |
 
 Không hard-code host, port, secret trong mã nguồn. Tài liệu biến mới phải cập nhật tại đây.
+
+## Edge guard (`core/guard.py` + `core/guard_middleware.py`)
+
+Bức tường thứ hai sau CDN (Cloudflare), chạy như middleware trong cùng
+tiến trình — chống hiện tượng "đàn bò giẫm đạp" khi lượng request đổ về
+vượt sức chịu đựng của app/DB:
+
+- Giới hạn request đang xử lý đồng thời (`GUARD_MAX_CONCURRENT`): phần dư
+  xếp hàng ngắn rồi nhận `503` — DB không bao giờ thấy nhiều hơn N tác vụ
+  song song.
+- Rate-limit mỗi IP bằng counter cửa sổ cố định trong ScyllaDB
+  (`auth_rate_limits`, bucket `edge:<ip>`): vượt `GUARD_IP_MAX_HITS` thì
+  `429` kèm `Retry-After`. Lỗi counter thì fail-open như mọi limiter khác.
+- IP vừa vượt ngưỡng bị chặn tức thì đến hết cửa sổ nhờ suppression map
+  trong tiến trình (trạng thái dẫn xuất, không authoritative) — flood không
+  còn tốn thêm lượt ghi/đọc DB.
+- Body quá `GUARD_MAX_BODY_MB` bị từ chối sớm bằng `Content-Length`.
+
+Scope `websocket`/`lifespan` đi qua middleware này mà không bị chặn (WS đã
+có giới hạn ticket/frame riêng). Endpoint probe/docs luôn miễn để giám sát
+vẫn hoạt động khi đang dội request.
 
 ## Realtime (`realtime/`)
 

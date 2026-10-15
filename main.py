@@ -14,6 +14,7 @@ from fastapi.routing import APIRoute, APIWebSocketRoute
 from core.config import get_settings
 from core.database import check_scylla_connection, connect
 from core.exceptions import DomainError, domain_error_handler
+from core.guard_middleware import GuardMiddleware
 from core.realtime import ConnectionManager
 
 logger = logging.getLogger("amigoact")
@@ -100,6 +101,8 @@ async def lifespan(app: FastAPI):
 
 app: FastAPI = FastAPI(title="AmigoACT API", lifespan=lifespan)
 app.add_exception_handler(DomainError, domain_error_handler)
+# Guard sits inside CORS so its rejections still carry CORS headers.
+app.add_middleware(GuardMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=get_settings().frontend_urls_list,

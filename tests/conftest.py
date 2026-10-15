@@ -319,6 +319,7 @@ def app_client(clean_tables: str):
     """FastAPI app with test settings (overrides cleared after each test)."""
     import core.hashing as hashing
     import main
+    from core.guard_middleware import GuardMiddleware
     from core.realtime import ConnectionManager
 
     # The app under test still exercises real Argon2id hash/verify, just
@@ -327,6 +328,8 @@ def app_client(clean_tables: str):
     prod_hasher = hashing._default_hasher
     hashing._default_hasher = hashing.build_hasher(for_tests=True)
     main.app.dependency_overrides[get_settings] = _test_settings
+    # Drop cached EdgeGuards so IP suppression never leaks across tests.
+    GuardMiddleware.reset_all(main.app)
     if getattr(main.app.state, "ws_manager", None) is None:
         main.app.state.ws_manager = ConnectionManager()
     try:

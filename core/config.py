@@ -46,6 +46,19 @@ class Settings(BaseSettings):
     ws_max_frame_bytes: int = Field(default=65536, ge=1024, le=1048576)
     ws_ticket_per_min: int = Field(default=10, ge=1, le=100)
     ws_frame_per_sec: int = Field(default=20, ge=1, le=100)
+    # Edge guard: the second wall behind the CDN. A bounded in-flight pool
+    # sheds overload (503) and a per-IP fixed-window counter in ScyllaDB
+    # rate-limits floods (429); see core/guard.py.
+    guard_enabled: bool = True
+    guard_max_concurrent: int = Field(default=256, ge=0)
+    guard_queue_ms: int = Field(default=250, ge=0, le=10_000)
+    guard_ip_max_hits: int = Field(default=300, ge=0)
+    guard_ip_window_seconds: int = Field(default=60, ge=1, le=3600)
+    guard_max_body_mb: int = Field(default=128, ge=0)
+    # Header carrying the real client IP behind a trusted edge proxy
+    # (Cloudflare sends cf-connecting-ip). Empty string trusts the TCP peer.
+    guard_client_ip_header: str = "cf-connecting-ip"
+    guard_exempt_paths: str = ""
     # Comma-separated emails that always count as platform admins. This is
     # the bootstrap path; additional admins live in platform_user_roles.
     platform_admin_emails: str = ""
@@ -54,6 +67,13 @@ class Settings(BaseSettings):
     def frontend_urls_list(self) -> list[str]:
         """Split comma-separated frontend origins for CORS allow-list."""
         return [u.strip() for u in self.frontend_urls.split(",") if u.strip()]
+
+    @property
+    def guard_exempt_paths_set(self) -> frozenset[str]:
+        """Extra guard-exempt paths beyond the built-in probe/doc set."""
+        return frozenset(
+            p.strip() for p in self.guard_exempt_paths.split(",") if p.strip()
+        )
 
     @property
     def platform_admin_emails_set(self) -> frozenset[str]:

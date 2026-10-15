@@ -16,6 +16,7 @@ from core.security import AuthTokenError, decode_access_token
 
 if TYPE_CHECKING:
     from auth.service import AuthService
+    from core.guard import EdgeGuard
     from core.realtime import ConnectionManager
     from notifications.service import NotificationService
     from orgs.interfaces import UserDirectory
@@ -240,6 +241,17 @@ def get_role_service(
         events=WsMemberEvents(
             getattr(request.app.state, "ws_manager", None)
         ),
+    )
+
+
+def build_edge_guard(settings: Settings) -> EdgeGuard:
+    """Wire the process-wide edge guard to the ScyllaDB counter store."""
+    from auth.repository import CqlRateLimiter
+    from core.guard import EdgeGuard, GuardPolicy
+
+    return EdgeGuard(
+        GuardPolicy.from_settings(settings),
+        CqlRateLimiter(settings.scylla_keyspace).hit,
     )
 
 
