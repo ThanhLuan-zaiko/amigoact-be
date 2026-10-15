@@ -15,6 +15,7 @@ from core.config import get_settings
 from core.database import check_scylla_connection, connect
 from core.exceptions import DomainError, domain_error_handler
 from core.guard_middleware import GuardMiddleware
+from core.no_store_middleware import NoStoreErrorsMiddleware
 from core.realtime import ConnectionManager
 
 logger = logging.getLogger("amigoact")
@@ -110,6 +111,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+# Outermost: 404/410 are HTTP-cacheable by default; API errors must never be.
+app.add_middleware(NoStoreErrorsMiddleware)
 
 from activities.detail_router import router as activity_detail_router  # noqa: E402
 from activities.router import router as activities_router  # noqa: E402
