@@ -7,6 +7,7 @@ from uuid import UUID
 
 from cassandra.cqlengine.connection import get_session
 
+from posts.helpers import post_visibility
 from posts.interfaces import CommentStore, PostStore
 from posts.model import (
     AnnouncementFeed,
@@ -42,6 +43,7 @@ class CqlPostStore(PostStore):
         blocks_json: str = "",
         cover_media_id: UUID | None = None,
         revision_of: UUID | None = None,
+        visibility: str | None = None,
     ) -> OrgPost:
         row = OrgPost.create(
             post_id=post_id,
@@ -53,6 +55,7 @@ class CqlPostStore(PostStore):
             blocks_json=blocks_json,
             cover_media_id=cover_media_id,
             status=status,
+            visibility=visibility,
             revision_of=revision_of,
             published_at=now if status == "active" else None,
             created_at=now,
@@ -73,8 +76,9 @@ class CqlPostStore(PostStore):
             OrgPostFeed.create(
                 org_id=post.org_id, post_id=post.post_id,
                 kind=post.kind or "discussion",
+                visibility=post_visibility(post),
             )
-            if (post.kind or "discussion") == "announcement":
+            if post_visibility(post) == "public":
                 AnnouncementFeed.create(
                     bucket=TIMELINE_BUCKET,
                     post_id=post.post_id,
@@ -84,7 +88,7 @@ class CqlPostStore(PostStore):
     def _unplace(self, post: OrgPost) -> None:
         """Drop every live projection (feed, pin, draft) of the post."""
         if (
-            (post.kind or "discussion") == "announcement"
+            post_visibility(post) == "public"
             and (post.status or "active") != "draft"
         ):
             AnnouncementFeed.objects(
@@ -174,6 +178,32 @@ class CqlPostStore(PostStore):
             OrgPostMedia.create(
                 post_id=post_id, position=position, asset_id=asset_id
             )
+
+    def set_visibility(
+        self, post: OrgPost, visibility: str, now: datetime
+    ) -> None:
+        OrgPost.objects(post_id=post.post_id).update(
+            visibility=visibility, updated_at=now
+        )
+        post.visibility = visibility
+        if (
+            (post.status or "active") == "draft"
+            or getattr(post, "deleted_at", None) is not None
+        ):
+            return
+        OrgPostFeed.objects(
+            org_id=post.org_id, post_id=post.post_id
+        ).update(visibility=visibility)
+        if visibility == "public":
+            AnnouncementFeed.create(
+                bucket=TIMELINE_BUCKET,
+                post_id=post.post_id,
+                org_id=post.org_id,
+            )
+        else:
+            AnnouncementFeed.objects(
+                bucket=TIMELINE_BUCKET, post_id=post.post_id
+            ).delete()
 
     def set_pinned(
         self, post: OrgPost, pinned_at: datetime | None, now: datetime

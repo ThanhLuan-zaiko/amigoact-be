@@ -6,6 +6,7 @@ from types import SimpleNamespace
 from typing import Any
 from uuid import UUID
 
+from posts.helpers import post_visibility
 from posts.interfaces import PostStore
 
 
@@ -33,12 +34,12 @@ class FakePostStore(PostStore):
         self.trash: dict[UUID, list[UUID]] = {}
         self.media: dict[UUID, list[Any]] = {}
 
-    def create(self, post_id, org_id, author_id, kind, title, body, media_ids, now, status="active", blocks_json="", cover_media_id=None, revision_of=None):  # noqa: ANN001, ANN202, E501
+    def create(self, post_id, org_id, author_id, kind, title, body, media_ids, now, status="active", blocks_json="", cover_media_id=None, revision_of=None, visibility=None):  # noqa: ANN001, ANN202, E501
         row = SimpleNamespace(
             post_id=post_id, org_id=org_id, author_id=author_id,
             kind=kind, title=title, body=body, status=status,
             blocks_json=blocks_json, cover_media_id=cover_media_id,
-            revision_of=revision_of,
+            revision_of=revision_of, visibility=visibility,
             pinned_at=None, edited_at=None, deleted_at=None,
             published_at=now if status == "active" else None,
             created_at=now, updated_at=now,
@@ -54,12 +55,12 @@ class FakePostStore(PostStore):
             _add_sorted(self.drafts.setdefault(key, []), post.post_id)
         else:
             _add_sorted(self.feed.setdefault(post.org_id, []), post.post_id)
-            if post.kind == "announcement":
+            if post_visibility(post) == "public":
                 _add_sorted(self.timeline, post.post_id)
                 self.timeline_orgs[post.post_id] = post.org_id
 
     def _unplace(self, post):  # noqa: ANN001, ANN202
-        if post.kind == "announcement" and post.status != "draft":
+        if post_visibility(post) == "public" and post.status != "draft":
             _drop(self.timeline, post.post_id)
             self.timeline_orgs.pop(post.post_id, None)
         _drop(self.feed.get(post.org_id), post.post_id)
@@ -72,7 +73,10 @@ class FakePostStore(PostStore):
     def list_feed(self, org_id, limit):  # noqa: ANN001, ANN202
         rows = self.feed.get(org_id, [])
         return [
-            SimpleNamespace(post_id=p, kind=self.posts[p].kind)
+            SimpleNamespace(
+                post_id=p, kind=self.posts[p].kind,
+                visibility=self.posts[p].visibility,
+            )
             for p in rows[:limit]
             if p in self.posts
         ]
@@ -128,6 +132,18 @@ class FakePostStore(PostStore):
             SimpleNamespace(post_id=post_id, position=i, asset_id=a)
             for i, a in enumerate(media_ids)
         ]
+
+    def set_visibility(self, post, visibility, now):  # noqa: ANN001, ANN202
+        post.visibility = visibility
+        post.updated_at = now
+        if post.status == "draft" or post.deleted_at is not None:
+            return
+        if visibility == "public":
+            _add_sorted(self.timeline, post.post_id)
+            self.timeline_orgs[post.post_id] = post.org_id
+        else:
+            _drop(self.timeline, post.post_id)
+            self.timeline_orgs.pop(post.post_id, None)
 
     def set_pinned(self, post, pinned_at, now):  # noqa: ANN001, ANN202
         post.pinned_at = pinned_at

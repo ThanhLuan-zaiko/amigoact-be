@@ -1283,17 +1283,18 @@ CREATE TABLE IF NOT EXISTS ws_tickets (
 // the author stages edits).
 // (deployed keyspaces: ALTER TABLE org_posts ADD blocks_json text,
 //  ADD cover_media_id uuid, ADD published_at timestamp,
-//  ADD deleted_at timestamp, ADD revision_of uuid)
+//  ADD deleted_at timestamp, ADD revision_of uuid, ADD visibility text)
 CREATE TABLE IF NOT EXISTS org_posts (
     post_id uuid PRIMARY KEY,
     org_id uuid,
     author_id uuid,
-    kind text, // announcement | discussion
+    kind text, // announcement | discussion (post type, not the audience)
     title text,
     body text,
     blocks_json text,
     cover_media_id uuid,
     status text, // active (published) | draft
+    visibility text, // public | members; NULL derives from kind
     revision_of uuid, // draft staging edits for a live post
     pinned_at timestamp,
     edited_at timestamp,
@@ -1327,22 +1328,25 @@ CREATE TABLE IF NOT EXISTS org_posts_trash (
 ) WITH CLUSTERING ORDER BY (post_id DESC);
 
 // Org board, newest first. Rows join back to org_posts at read time;
-// post_id IS the cursor (uuid7 ordering, no timestamp ties). kind is
-// denormalized for filtered page windows and totals.
-// (deployed keyspaces: ALTER TABLE org_posts_feed ADD kind text)
+// post_id IS the cursor (uuid7 ordering, no timestamp ties). kind and
+// visibility are denormalized for filtered page windows and totals.
+// (deployed keyspaces: ALTER TABLE org_posts_feed ADD kind text,
+//  ADD visibility text)
 CREATE TABLE IF NOT EXISTS org_posts_feed (
     org_id uuid,
     post_id uuid,
     kind text,
+    visibility text, // public | members; NULL derives from kind
     PRIMARY KEY ((org_id), post_id)
 ) WITH CLUSTERING ORDER BY (post_id DESC);
 
-// Global public announcement timeline, newest first. One literal 'all'
-// bucket partitions every published announcement so a single bounded
+// Global public post timeline, newest first. One literal 'all' bucket
+// partitions every published public-visibility post so a single bounded
 // read serves the guest feed; rows join back to org_posts at read time
 // (dead rows are skipped lazily, same as org_posts_feed drift).
 // (deployed keyspaces: CREATE TABLE announcements_feed (...); backfill
-//  one row per org_posts_feed row where kind = 'announcement')
+//  one row per org_posts_feed row where kind = 'announcement'; after the
+//  visibility column, also drop rows whose visibility = 'members')
 CREATE TABLE IF NOT EXISTS announcements_feed (
     bucket  text,
     post_id uuid,

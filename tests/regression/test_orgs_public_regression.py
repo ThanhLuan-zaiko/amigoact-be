@@ -41,7 +41,10 @@ async def test_public_page_envelope_contract_locked(client: AsyncClient) -> None
         "id", "name", "slug", "description", "kind", "member_count",
         "join_policy", "city", "country", "verified_at", "logo_url",
         "cover_url", "created_at", "owner_name", "owner_avatar_url",
+        "media", "media_count",
     }
+    assert card["media"] == []
+    assert card["media_count"] == 0
     assert "reg-club" in [o["slug"] for o in body["items"]]
 
 
@@ -138,6 +141,7 @@ async def test_public_announcement_contract_locked(client: AsyncClient) -> None:
         "body", "pinned_at", "edited_at", "media", "comment_count",
         "status", "blocks", "cover_media_id", "published_at",
         "deleted_at", "updated_at", "created_at", "revision_of",
+        "visibility",
     }
     assert article.json()["kind"] == "announcement"
     assert article.json()["status"] == "published"
@@ -150,3 +154,14 @@ async def test_public_announcement_contract_locked(client: AsyncClient) -> None:
         "id", "title", "excerpt", "cover_url", "author_name",
         "published_at", "comment_count",
     }
+
+    # Lightbox feeds: same {items: [{url, kind, mime}]} envelope on both
+    # the org gallery and the per-post media list.
+    gallery = await client.get("/orgs/ann-club/gallery")
+    assert gallery.status_code == 200
+    assert set(gallery.json().keys()) == {"items"}
+    post_media = await client.get(
+        f"/orgs/ann-club/announcements/{post_id}/media"
+    )
+    assert post_media.status_code == 200
+    assert set(post_media.json().keys()) == {"items"}

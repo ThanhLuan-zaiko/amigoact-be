@@ -30,6 +30,25 @@ def is_draft(row: OrgPost) -> bool:
     return (row.status or "active") == "draft"
 
 
+VISIBILITIES: tuple[str, ...] = ("public", "members")
+
+
+def post_visibility(row) -> str:  # noqa: ANN001
+    """Explicit audience, else derived from kind on pre-visibility rows.
+
+    Works on canonical OrgPost rows and on org_posts_feed rows alike
+    (both carry kind + visibility).
+    """
+    explicit = getattr(row, "visibility", None)
+    if explicit in VISIBILITIES:
+        return explicit
+    return (
+        "public"
+        if (getattr(row, "kind", None) or "discussion") == "announcement"
+        else "members"
+    )
+
+
 def post_or_404(posts: PostStore, org_id: UUID, post_id: UUID) -> OrgPost:
     """Load a published, non-trashed post inside one org or fail with 404."""
     row = posts.get(post_id)

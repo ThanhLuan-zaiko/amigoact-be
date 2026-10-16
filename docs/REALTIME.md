@@ -184,12 +184,33 @@ chết cũng không làm hỏng request.
 
 Phát sinh từ: `create_org` → `created`, `update_org` → `updated`,
 `soft_delete_org` → `removed`, `restore_org` → `restored`,
-`hard_delete_org` → `removed` (slug chụp trước khi xóa).
+`hard_delete_org` → `removed` (slug chụp trước khi xóa). `MediaService`
+phát thêm `updated` sau upload/đổi vai trò/thay bytes/xóa media có role
+`gallery`/`cover`/`logo` (đổi logo, cover, danh bạ `media[]`); role
+`attachment` không phát vì nó chỉ thuộc bài đăng, không chạm bề mặt
+public nào.
 
 Payload chỉ chứa field vốn public — guest nào cũng nghe được nên không
 được đưa dữ liệu riêng vào đây. Client coi event là gợi ý refetch và
 gọi lại `GET /orgs` / `GET /orgs/{slug}`: REST mới là fact source nên
 event giả hay cũ không thể "hồi sinh" org đã ẩn.
+
+### Sự kiện bài đăng công khai (posts)
+
+`PostService`/`PostLifecycleService` phát qua port
+`AnnouncementFeedEvents` (`posts/events.py`) mỗi khi một bài
+`visibility='public'` đã đăng thay đổi mặt guest (đăng, sửa, gỡ, thùng
+rác, khôi phục, xóa cứng, flip audience, comment ±). Bài `members`,
+nháp và revision không phát. Action gộp về `created | updated |
+removed`; flip `public→members` phát `removed`, `members→public` phát
+`created`.
+
+| Kênh | `payload.action` | `payload` còn lại |
+|---|---|---|
+| `announcements:feed` | `created`/`updated`/`removed` | `post_id`, `org_id` |
+
+Kênh public (guest subscribe được), payload chỉ chứa id — client
+invalidate query timeline/board rồi refetch qua REST.
 
 ## 6. Cấu hình
 

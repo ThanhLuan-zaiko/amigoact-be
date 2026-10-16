@@ -13,6 +13,8 @@ from orgs.schemas import (
     OrgSort,
     PublicOrgActivityItem,
     PublicOrgDetailResponse,
+    PublicOrgMediaItem,
+    PublicOrgMediaPage,
     PublicOrgPage,
     PublicOrgPostItem,
     PublicOrgResponse,
@@ -42,6 +44,11 @@ def _public_schema(item: PublicOrgSnapshot) -> PublicOrgResponse:
         created_at=item.created_at,
         owner_name=item.owner_name,
         owner_avatar_url=item.owner_avatar_url,
+        media=[
+            PublicOrgMediaItem(url=m.url, kind=m.kind, mime=m.mime)  # type: ignore[arg-type]
+            for m in item.media
+        ],
+        media_count=item.media_count,
     )
 
 
@@ -128,3 +135,23 @@ def get_public_org(
     the {slug} path parameter.
     """
     return _public_detail_schema(service.get_public_org(slug))
+
+
+@router.get("/orgs/{slug}/gallery", response_model=PublicOrgMediaPage)
+def list_public_org_media(
+    slug: str,
+    service: PublicOrgService = Depends(get_public_org_service),
+) -> PublicOrgMediaPage:
+    """Full public media list (cover + gallery, images and videos).
+
+    The directory card only carries a preview strip; the lightbox calls
+    this to reach media hidden behind the +N overflow. Path says
+    /gallery/ because the member route already claims
+    GET /orgs/{org_id}/media and would shadow it.
+    """
+    return PublicOrgMediaPage(
+        items=[
+            PublicOrgMediaItem(url=m.url, kind=m.kind, mime=m.mime)  # type: ignore[arg-type]
+            for m in service.list_public_media(slug)
+        ]
+    )

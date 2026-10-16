@@ -249,13 +249,13 @@ class FakeDirectoryEvents(OrgDirectoryEvents):
         self.calls.append((action, org_id, slug))
 
 
-def make_media_services() -> (
+def make_media_services(events=None) -> (  # noqa: ANN001, ANN202
     tuple[OrgService, MediaService, FakeOrgs, FakeMedia, FakeStore]
 ):
     orgs, media, store = FakeOrgs(), FakeMedia(), FakeStore()
     return (
         OrgService(orgs, media, store),
-        MediaService(orgs, media, store),
+        MediaService(orgs, media, store, events=events),
         orgs,
         media,
         store,

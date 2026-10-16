@@ -103,11 +103,21 @@ def paginate_mine(
 
 
 @dataclass(frozen=True)
+class OrgMediaBrief:
+    """One public card media tile: file URL plus its image/video kind."""
+
+    url: str
+    kind: str
+    mime: str
+
+
+@dataclass(frozen=True)
 class PublicOrgSnapshot:
     """Guest-facing org card; no legal, contact or owner-id fields.
 
     owner_name/owner_avatar_url are public display identity (like a post's
-    author), never the raw owner_id or any legal-rep data.
+    author), never the raw owner_id or any legal-rep data. media carries a
+    small cover-first preview of the org's public gallery plus its total.
     """
 
     id: UUID
@@ -125,6 +135,8 @@ class PublicOrgSnapshot:
     created_at: datetime
     owner_name: str | None = None
     owner_avatar_url: str | None = None
+    media: list[OrgMediaBrief] = field(default_factory=list)
+    media_count: int = 0
 
 
 @dataclass(frozen=True)

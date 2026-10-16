@@ -8,11 +8,12 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from orgs.schemas import PublicOrgPostItem
+from orgs.schemas import PublicOrgMediaItem, PublicOrgPostItem
 from posts.blocks import MAX_BLOCKS, Block, has_content
 
 PostKind = Literal["announcement", "discussion"]
 PostStatus = Literal["published", "draft"]
+PostVisibility = Literal["public", "members"]
 
 
 def _trim(value: str) -> str:
@@ -25,10 +26,16 @@ class CreatePostRequest(BaseModel):
     `blocks` is the long-form article body; legacy clients may still send
     a plain `body` plus image `media_ids`. Published posts need content,
     published announcements need a title; drafts only need something.
+
+    `visibility` is the audience axis orthogonal to kind: "public" posts
+    reach the guest surfaces (org profile, global timeline, public read),
+    "members" stay on the org board. Omitting it derives from kind
+    (announcement -> public, discussion -> members) for old clients.
     """
 
     kind: PostKind = "discussion"
     status: PostStatus = "published"
+    visibility: PostVisibility | None = None
     title: str = Field(default="", max_length=200)
     body: str = Field(default="", max_length=5000)
     blocks: list[Block] = Field(default_factory=list, max_length=MAX_BLOCKS)
@@ -57,6 +64,8 @@ class UpdatePostRequest(BaseModel):
     Omitting `blocks` keeps the legacy title/body-only edit. Sending
     `blocks` replaces the article body; `cover_media_id` is only touched
     when present in the payload. `kind` may change while still a draft.
+    `visibility` flips the audience of the live post (public needs
+    post:announce); revisions inherit the parent's audience.
     """
 
     title: str = Field(default="", max_length=200)
@@ -64,6 +73,7 @@ class UpdatePostRequest(BaseModel):
     blocks: list[Block] | None = Field(default=None, max_length=MAX_BLOCKS)
     cover_media_id: UUID | None = None
     kind: PostKind | None = None
+    visibility: PostVisibility | None = None
 
     _body = field_validator("body", mode="before")(_trim)  # noqa: SLF001
     _title = field_validator("title", mode="before")(_trim)  # noqa: SLF001
@@ -103,6 +113,7 @@ class PostResponse(BaseModel):
     blocks: list[dict[str, Any]] = []
     cover_media_id: UUID | None = None
     revision_of: UUID | None = None
+    visibility: PostVisibility = "members"
     pinned_at: datetime | None = None
     edited_at: datetime | None = None
     published_at: datetime | None = None
@@ -140,7 +151,11 @@ class PublicTimelineOrg(BaseModel):
 
 
 class PublicTimelineItem(BaseModel):
-    """One published announcement teaser on the global guest timeline."""
+    """One published announcement teaser on the global guest timeline.
+
+    media is a small cover-first preview of the post's attachments so
+    the feed card can render the same mosaic shape as the org cards.
+    """
 
     id: UUID
     title: str
@@ -151,6 +166,8 @@ class PublicTimelineItem(BaseModel):
     published_at: datetime | None = None
     comment_count: int = 0
     org: PublicTimelineOrg
+    media: list[PublicOrgMediaItem] = []
+    media_count: int = 0
 
 
 class PublicTimelinePage(BaseModel):

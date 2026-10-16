@@ -8,6 +8,7 @@ from core.security import utc_aware
 from orgs.interfaces import MediaRepository, UserBrief, UserDirectory
 from posts.blocks import load_blocks
 from posts.dtos import PostMediaBrief, PostSnapshot
+from posts.helpers import post_visibility
 from posts.interfaces import CommentStore, PostStore
 from posts.model import OrgPost
 
@@ -78,6 +79,7 @@ class PostSnapshots:
             blocks=load_blocks(getattr(row, "blocks_json", None)),
             cover_media_id=getattr(row, "cover_media_id", None),
             revision_of=getattr(row, "revision_of", None),
+            visibility=post_visibility(row),
             published_at=utc_aware(getattr(row, "published_at", None))
             or (utc_aware(row.created_at) if status == "published" else None),
             deleted_at=utc_aware(getattr(row, "deleted_at", None)),

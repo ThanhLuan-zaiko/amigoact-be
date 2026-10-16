@@ -30,6 +30,7 @@ def to_post(snapshot: PostSnapshot) -> PostResponse:
         blocks=snapshot.blocks,
         cover_media_id=snapshot.cover_media_id,
         revision_of=snapshot.revision_of,
+        visibility=snapshot.visibility,  # type: ignore[arg-type]
         pinned_at=snapshot.pinned_at,
         edited_at=snapshot.edited_at,
         published_at=snapshot.published_at,

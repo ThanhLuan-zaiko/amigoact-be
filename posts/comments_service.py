@@ -10,7 +10,7 @@ from core.security import utc_aware, utcnow
 from orgs.interfaces import MemberRepository, OrgRepository, UserDirectory
 from orgs.member_helpers import is_active_member, live_org
 from posts.dtos import CommentPage, CommentSnapshot
-from posts.helpers import parse_cursor, post_or_404
+from posts.helpers import parse_cursor, post_or_404, post_visibility
 from posts.interfaces import (
     AnnouncementFeedEvents,
     CommentStore,
@@ -118,7 +118,7 @@ class CommentService:
             org_id, actor_id, "comment.create", "post", post_id, "allowed"
         )
         self._emit(org_id, "comment.created", post_id, actor_id)
-        if (post.kind or "discussion") == "announcement":
+        if post_visibility(post) == "public":
             self._emit_public(org_id, post_id)
         return self._snapshot(row)
 
@@ -139,7 +139,7 @@ class CommentService:
             org_id, actor_id, "comment.delete", "post", post_id, "allowed"
         )
         self._emit(org_id, "comment.deleted", post_id, actor_id)
-        if (post.kind or "discussion") == "announcement":
+        if post_visibility(post) == "public":
             self._emit_public(org_id, post_id)
 
     def _snapshot(self, row: OrgPostComment) -> CommentSnapshot:

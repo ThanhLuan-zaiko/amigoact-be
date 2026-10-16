@@ -19,6 +19,7 @@ from posts.helpers import (
     is_trashed,
     notify_announcement,
     post_or_404,
+    post_visibility,
     visible_post_or_404,
 )
 from posts.service_base import (
@@ -109,14 +110,22 @@ class PostService(BoardServiceBase):
         blocks: list[Any] | None = None,
         cover_media_id: UUID | None = None,
         status: str = "published",
+        visibility: str | None = None,
     ) -> PostSnapshot:
         """Members post discussions; announcements need post:announce.
 
+        `visibility` is the audience axis orthogonal to kind: "public"
+        reaches the guest surfaces, "members" stays on the board. Both
+        announcement kind and public audience need post:announce, so a
+        plain member can only ever write member-scoped discussions.
         Drafts land only in the author's draft list: no feed row, no
         realtime fan-out and no announcement notifications until publish.
         """
         org = self._guard.require_member(org_id, actor_id, "post.create")
-        if kind == "announcement":
+        audience = visibility or (
+            "public" if kind == "announcement" else "members"
+        )
+        if kind == "announcement" or audience == "public":
             self._guard.require_announce(
                 org_id, org.owner_id, actor_id, "post.create"
             )
@@ -133,16 +142,17 @@ class PostService(BoardServiceBase):
             check_publishable(kind, title, text, article)
         now = utcnow()
         post_id = uuid7()
-        self._posts.create(
+        created = self._posts.create(
             post_id, org_id, actor_id, kind, title, text, media, now,
             status="draft" if draft else "active",
             blocks_json=dump_blocks(article),
             cover_media_id=cover_media_id,
+            visibility=audience,
         )
         self._guard.record(org_id, actor_id, "post.create", post_id)
         if not draft:
             self._emit(org_id, "post.created", post_id, actor_id, detail=kind)
-            self._emit_public(org_id, "created", post_id, kind)
+            self._emit_public(org_id, "created", created)
             if kind == "announcement":
                 notify_announcement(
                     self._members, self._notifications, org_id, org.name,
@@ -162,6 +172,7 @@ class PostService(BoardServiceBase):
         cover_media_id: UUID | None = None,
         touch_cover: bool = False,
         kind: str | None = None,
+        visibility: str | None = None,
     ) -> PostSnapshot:
         """Only the author edits (drafts too); managers moderate by delete.
 
@@ -184,6 +195,19 @@ class PostService(BoardServiceBase):
                 self._guard.require_announce(
                     org_id, org.owner_id, actor_id, "post.update", post_id
                 )
+        was_public = post_visibility(row) == "public"
+        current_visibility = "public" if was_public else "members"
+        next_visibility = visibility or current_visibility
+        visibility_changed = next_visibility != current_visibility
+        if visibility_changed:
+            if getattr(row, "revision_of", None) is not None:
+                raise InvalidPostStateError(
+                    "Audience follows the live post and cannot change here."
+                )
+            if next_visibility == "public":
+                self._guard.require_announce(
+                    org_id, org.owner_id, actor_id, "post.update", post_id
+                )
         now = utcnow()
         if blocks is None:
             if not is_draft(row):
@@ -200,10 +224,17 @@ class PostService(BoardServiceBase):
                 row, next_kind, title, text, dump_blocks(article), cover, now
             )
             self._posts.replace_media(post_id, media)
+        if visibility_changed:
+            self._posts.set_visibility(row, next_visibility, now)
         self._guard.record(org_id, actor_id, "post.update", post_id)
         if not is_draft(row):
             self._emit(org_id, "post.updated", post_id, actor_id)
-            self._emit_public(org_id, "updated", post_id, next_kind)
+            is_public = next_visibility == "public"
+            if was_public or is_public:
+                action = "updated"
+                if was_public != is_public:
+                    action = "created" if is_public else "removed"
+                self._emit_public(org_id, action, row, force=True)
         return self._snapshots.fresh(post_id)
 
     def set_pinned(

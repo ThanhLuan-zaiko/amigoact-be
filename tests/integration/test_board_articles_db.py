@@ -254,3 +254,75 @@ async def test_public_announcements_guest_surface(client: AsyncClient) -> None:
     ).status_code == 404
     profile = await client.get(f"/orgs/{slug}")
     assert profile.json()["announcements"] == []
+
+
+async def test_visibility_axis_decoupled_from_kind(
+    client: AsyncClient,
+) -> None:
+    """Public discussions reach guests; members-only announcements and
+    member-authored public posts stay on the board; flips cross over."""
+    slug = "ws-vis"
+    org_id, owner_h, member_h, _ = await _org_with_member(client, slug)
+    base = f"/orgs/{org_id}/posts"
+
+    public = await client.post(
+        base,
+        json={
+            "kind": "discussion", "visibility": "public",
+            "title": "Open thread", "body": "guests welcome",
+        },
+        headers=owner_h,
+    )
+    assert public.status_code == 201, public.text
+    assert public.json()["visibility"] == "public"
+    public_id = public.json()["post_id"]
+    internal = await client.post(
+        base,
+        json={
+            "kind": "announcement", "visibility": "members",
+            "title": "Internal", "body": "staff only",
+        },
+        headers=owner_h,
+    )
+    assert internal.status_code == 201, internal.text
+    assert internal.json()["visibility"] == "members"
+    internal_id = internal.json()["post_id"]
+
+    guest_detail = f"/orgs/{slug}/announcements"
+    assert (
+        await client.get(f"{guest_detail}/{public_id}")
+    ).status_code == 200
+    assert (
+        await client.get(f"{guest_detail}/{internal_id}")
+    ).status_code == 404
+    listed = await client.get(guest_detail)
+    assert [a["id"] for a in listed.json()["items"]] == [public_id]
+
+    blocked = await client.post(
+        base,
+        json={
+            "kind": "discussion", "visibility": "public", "body": "nope",
+        },
+        headers=member_h,
+    )
+    assert blocked.status_code == 403
+
+    flip = await client.patch(
+        f"{base}/{public_id}",
+        json={"body": "guests welcome", "visibility": "members"},
+        headers=owner_h,
+    )
+    assert flip.status_code == 200, flip.text
+    assert flip.json()["visibility"] == "members"
+    assert (
+        await client.get(f"{guest_detail}/{public_id}")
+    ).status_code == 404
+    back = await client.patch(
+        f"{base}/{public_id}",
+        json={"body": "guests welcome", "visibility": "public"},
+        headers=owner_h,
+    )
+    assert back.status_code == 200
+    assert (
+        await client.get(f"{guest_detail}/{public_id}")
+    ).status_code == 200

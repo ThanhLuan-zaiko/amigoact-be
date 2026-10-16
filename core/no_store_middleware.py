@@ -20,7 +20,7 @@ class NoStoreErrorsMiddleware:
     """Stamp ``Cache-Control: no-store`` on every ``>=400`` response.
 
     Browsers may heuristically cache 404/410 (cacheable-by-default statuses),
-    which pins a stale error long after the resource recovered — e.g. an
+    which pins a stale error long after the resource recovered - e.g. an
     ORG_DELETED response served from disk cache for a restored org.
     """
 

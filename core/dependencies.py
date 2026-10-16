@@ -113,10 +113,12 @@ def get_org_service(
 
 
 def get_media_service(
+    request: Request,
     settings: Settings = Depends(get_settings),
     access: AccessControl = Depends(get_access_control),
 ) -> MediaService:
     """Build one MediaService per request for the org gallery."""
+    from orgs.directory_events import WsOrgDirectoryEvents
     from orgs.media_service import MediaService
     from orgs.media_repository import CqlMediaRepository
     from orgs.repository import CqlOrgRepository
@@ -128,6 +130,9 @@ def get_media_service(
         max_image_bytes=settings.media_max_image_mb * 1024 * 1024,
         max_video_bytes=settings.media_max_video_mb * 1024 * 1024,
         access=access,
+        events=WsOrgDirectoryEvents(
+            getattr(request.app.state, "ws_manager", None)
+        ),
     )
 
 
@@ -170,8 +175,7 @@ def user_directory(settings: Settings) -> UserDirectory:
         def __init__(self) -> None:
             self._users = CqlUserRepository(settings.scylla_keyspace)
 
-        def get_brief(self, user_id: UUID) -> UserBrief | None:
-            user = self._users.get_by_id(user_id)
+        def _brief(self, user) -> UserBrief | None:  # noqa: ANN001
             if user is None:
                 return None
             return UserBrief(
@@ -182,17 +186,11 @@ def user_directory(settings: Settings) -> UserDirectory:
                 avatar_media_id=getattr(user, "avatar_media_id", None),
             )
 
+        def get_brief(self, user_id: UUID) -> UserBrief | None:
+            return self._brief(self._users.get_by_id(user_id))
+
         def find_by_email(self, email: str) -> UserBrief | None:
-            user = self._users.get_by_email(email)
-            if user is None:
-                return None
-            return UserBrief(
-                id=user.id,
-                full_name=user.full_name,
-                email=user.email,
-                status=user.status,
-                avatar_media_id=getattr(user, "avatar_media_id", None),
-            )
+            return self._brief(self._users.get_by_email(email))
 
     return _UserDirectory()
 

@@ -18,6 +18,7 @@ from orgs.interfaces import (
 from posts.blocks import has_content
 from posts.dtos import PostSnapshot
 from posts.guards import BoardGuard
+from posts.helpers import post_visibility
 from posts.interfaces import (
     AnnouncementFeedEvents,
     CommentStore,
@@ -83,15 +84,20 @@ class BoardServiceBase:
             pass
 
     def _emit_public(
-        self, org_id: UUID, action: str, post_id: UUID, kind: str | None
+        self, org_id: UUID, action: str, row: OrgPost, *, force: bool = False
     ) -> None:
-        """Refetch hint for the guest timeline; announcements only."""
-        if (kind or "discussion") != "announcement":
+        """Refetch hint for the guest timeline; public posts only.
+
+        `force` emits even when the row's stored audience already reads
+        members - for callers that just flipped a live post private and
+        still need guests to drop it.
+        """
+        if not force and post_visibility(row) != "public":
             return
         if self._announcements is None:
             return
         try:
-            self._announcements.feed_changed(action, post_id, org_id)
+            self._announcements.feed_changed(action, row.post_id, org_id)
         except Exception:  # noqa: BLE001 - realtime is best-effort
             pass
 

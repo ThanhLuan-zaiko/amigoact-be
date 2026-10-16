@@ -66,7 +66,9 @@ async def test_announcements_contract_shape(client: AsyncClient) -> None:
     assert set(mine.keys()) == {
         "id", "title", "excerpt", "cover_url", "author_name",
         "author_avatar_url", "published_at", "comment_count", "org",
+        "media", "media_count",
     }
+    assert mine["media"] == [] and mine["media_count"] == 0
     assert set(mine["org"].keys()) == {"id", "name", "slug", "logo_url"}
     assert mine["org"]["slug"] == "reg-feed"
 
@@ -77,6 +79,10 @@ async def test_announcements_never_leaks_member_content(
     org_id, headers = await _owner_headers(client, "reg-leak", "0912347202")
     for payload in (
         {"kind": "discussion", "body": "internal"},
+        {
+            "kind": "announcement", "title": "Internal", "body": "b",
+            "visibility": "members",
+        },
         {
             "kind": "announcement", "title": "Draft", "body": "b",
             "status": "draft",

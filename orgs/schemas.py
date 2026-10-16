@@ -176,11 +176,26 @@ class OrgListPage(BaseModel):
     counts: list[BucketCount] = []
 
 
+class PublicOrgMediaItem(BaseModel):
+    """One media tile on the public org card: file URL plus its kind."""
+
+    url: str
+    kind: Literal["image", "video"]
+    mime: str
+
+
+class PublicOrgMediaPage(BaseModel):
+    """Full cover-first media list behind a card's +N preview."""
+
+    items: list[PublicOrgMediaItem] = []
+
+
 class PublicOrgResponse(BaseModel):
     """Guest-facing org card: no legal, contact or owner-id fields.
 
     owner_name/owner_avatar_url are public display identity like a post's
-    author fields; the raw owner_id never leaves the server.
+    author fields; the raw owner_id never leaves the server. media is a
+    small cover-first preview of the org's public image/video gallery.
     """
 
     id: UUID
@@ -198,6 +213,8 @@ class PublicOrgResponse(BaseModel):
     created_at: datetime
     owner_name: str | None = None
     owner_avatar_url: str | None = None
+    media: list[PublicOrgMediaItem] = []
+    media_count: int = 0
 
 
 class PublicOrgPage(BaseModel):

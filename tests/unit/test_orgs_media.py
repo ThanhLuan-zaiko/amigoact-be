@@ -11,7 +11,11 @@ from core.exceptions import (
     NotFoundError,
     UnsupportedMediaError,
 )
-from tests.unit.org_fakes import make_media_services, new_owner
+from tests.unit.org_fakes import (
+    FakeDirectoryEvents,
+    make_media_services,
+    new_owner,
+)
 
 
 def test_brand_media_ids_follow_roles_and_delete() -> None:
@@ -222,3 +226,39 @@ def test_replace_media_rules() -> None:
         )
     # Failed attempts leave the stored bytes untouched.
     assert media.get_asset(snap.id).size_bytes == 10
+
+
+def test_media_mutations_ping_public_directory() -> None:
+    """Gallery/brand churn emits orgs:directory; attachments stay quiet."""
+    events = FakeDirectoryEvents()
+    orgs_service, service, _, media, _ = make_media_services(events=events)
+    owner = new_owner()
+    org = orgs_service.create_org(owner, "Club A", "club-a", "", "club")
+
+    snap = service.upload_media(
+        org.id, owner, "a.png", "image/png", b"1" * 10
+    )
+    service.upload_media(
+        org.id, owner, "b.png", "image/png", b"2" * 10, "attachment"
+    )
+    assert events.calls == [("updated", org.id, "club-a")]
+
+    service.set_media_role(org.id, owner, snap.id, "cover")
+    service.replace_media(
+        org.id, owner, snap.id, "a2.png", "image/png", b"3" * 10
+    )
+    assert events.calls == [("updated", org.id, "club-a")] * 3
+
+    attachment = service.upload_media(
+        org.id, owner, "c.png", "image/png", b"4" * 10, "attachment"
+    )
+    service.delete_media(org.id, owner, attachment.id)
+    assert events.calls == [("updated", org.id, "club-a")] * 3
+
+    service.delete_media(org.id, owner, snap.id)
+    assert events.calls == [("updated", org.id, "club-a")] * 4
+
+    # Bulk wipe pings once per sweep, and stays quiet when nothing remains.
+    service.delete_all_media(org.id, owner)
+    service.delete_all_media(org.id, owner)
+    assert events.calls == [("updated", org.id, "club-a")] * 5

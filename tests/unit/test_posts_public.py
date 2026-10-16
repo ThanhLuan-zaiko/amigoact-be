@@ -1,7 +1,8 @@
-"""Unit tests for PublicPostService: guest announcement reads.
+"""Unit tests for PublicPostService: guest post reads.
 
-Only published `announcement` posts of a live org are public; drafts,
-revisions, discussions and trash must never leave the member board.
+Only published `public`-visibility posts of a live org reach guests;
+drafts, revisions, member-scoped posts and trash must never leave the
+member board.
 """
 
 from __future__ import annotations
@@ -145,6 +146,7 @@ def test_get_public_post_rejects_everything_not_public() -> None:
     env = Env()
     post = env.post()
     discussion = env.post(kind="discussion")
+    members_ann = env.post(kind="announcement", visibility="members")
     draft = env.post(kind="announcement", status="draft")
     revision = env.post(
         kind="announcement", status="draft", revision_of=post.post_id
@@ -153,7 +155,8 @@ def test_get_public_post_rejects_everything_not_public() -> None:
     env.posts.soft_delete(trashed, NOW)
     for slug, post_id in (
         ("green-org", _uid()),  # missing post
-        ("green-org", discussion.post_id),  # wrong kind
+        ("green-org", discussion.post_id),  # member-scoped
+        ("green-org", members_ann.post_id),  # members-only announcement
         ("green-org", draft.post_id),  # draft
         ("green-org", revision.post_id),  # revision draft
         ("green-org", trashed.post_id),  # in trash
@@ -161,6 +164,21 @@ def test_get_public_post_rejects_everything_not_public() -> None:
     ):
         with pytest.raises(NotFoundError):
             env.service.get_public_post(slug, post_id)
+
+
+def test_audience_axis_decoupled_from_kind() -> None:
+    env = Env()
+    public_discussion = env.post(
+        kind="discussion", visibility="public", title="Open thread"
+    )
+    env.post(kind="announcement", visibility="members", title="Internal")
+    listing = env.service.list_public(env.org.id)
+    assert listing.total == 1
+    assert listing.items[0].id == public_discussion.post_id
+    snap = env.service.get_public_post(
+        "green-org", public_discussion.post_id
+    )
+    assert snap.kind == "discussion" and snap.visibility == "public"
 
 
 def test_list_timeline_returns_org_attributed_teasers() -> None:
@@ -178,6 +196,28 @@ def test_list_timeline_returns_org_attributed_teasers() -> None:
     assert item.org.slug == "green-org"
     assert item.org.name == "Green Org"
     assert item.org.logo_url is None
+
+
+def test_list_timeline_media_is_cover_first() -> None:
+    """The teaser mosaic leads with the cover asset, then position order."""
+    env = Env()
+    first = env.media.create_asset(
+        _uid(), env.org.id, "posts/a.png", "image/png", 10, NOW
+    )
+    cover = env.media.create_asset(
+        _uid(), env.org.id, "posts/c.mp4", "video/mp4", 10, NOW
+    )
+    post = env.post(
+        media_ids=[first.asset_id, cover.asset_id],
+        cover_media_id=cover.asset_id,
+    )
+    item = env.service.list_timeline(None, 10).items[0]
+    assert item.id == post.post_id
+    assert item.media_count == 2
+    assert [m.asset_id for m in item.media] == [
+        cover.asset_id, first.asset_id,
+    ]
+    assert item.media[0].file_url == "/media/posts/c.mp4"
 
 
 def test_list_timeline_carries_author_avatar_url() -> None:
@@ -254,6 +294,41 @@ def test_list_timeline_paginates_by_cursor() -> None:
     second = env.service.list_timeline(UUID(first.next_cursor), 2)
     assert [item.id for item in second.items] == [posts[0].post_id]
     assert second.next_cursor is None
+
+
+def test_public_post_media_lists_everything_cover_first() -> None:
+    """Lightbox list: every attachment, cover first; hidden posts 404."""
+    env = Env()
+    ids = [
+        env.media.create_asset(
+            _uid(), env.org.id, f"posts/{i}.png", "image/png", 10, NOW
+        ).asset_id
+        for i in range(8)
+    ]
+    cover = env.media.create_asset(
+        _uid(), env.org.id, "posts/c.mp4", "video/mp4", 10, NOW
+    )
+    post = env.post(
+        media_ids=[*ids, cover.asset_id], cover_media_id=cover.asset_id
+    )
+    items = env.service.list_public_post_media("green-org", post.post_id)
+    assert len(items) == 9
+    assert items[0].asset_id == cover.asset_id
+    assert {item.asset_id for item in items[1:]} == set(ids)
+
+    hidden = [
+        env.post(kind="announcement", visibility="members").post_id,
+        env.post(status="draft").post_id,
+        env.posts.create(
+            _uid(), _uid(), env.owner, "announcement", "T", "B", [], NOW
+        ).post_id,  # foreign org: org_id mismatch must 404
+    ]
+    for post_id in hidden:
+        with pytest.raises(NotFoundError):
+            env.service.list_public_post_media("green-org", post_id)
+    env.orgs.mark_deleted(env.org.id, NOW)
+    with pytest.raises(NotFoundError):
+        env.service.list_public_post_media("green-org", post.post_id)
 
 
 def test_get_public_post_rejects_foreign_org_and_deleted_org() -> None:

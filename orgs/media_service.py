@@ -19,7 +19,11 @@ from core.exceptions import (
 )
 from core.media import MediaStore, media_kind, normalize_image
 from core.security import utcnow
-from orgs.interfaces import MediaRepository, OrgRepository
+from orgs.interfaces import (
+    MediaRepository,
+    OrgDirectoryEvents,
+    OrgRepository,
+)
 from rbac.interfaces import AccessControl
 
 if TYPE_CHECKING:
@@ -60,6 +64,7 @@ class MediaService:
         max_image_bytes: int = 10 * 1024 * 1024,
         max_video_bytes: int = 100 * 1024 * 1024,
         access: AccessControl | None = None,
+        events: OrgDirectoryEvents | None = None,
     ) -> None:
         self._orgs = orgs
         self._media = media
@@ -67,6 +72,16 @@ class MediaService:
         self._max_image_bytes = max_image_bytes
         self._max_video_bytes = max_video_bytes
         self._access = access
+        self._events = events
+
+    def _emit_updated(self, org: Organization) -> None:
+        """Ping the public directory when a media change reaches it.
+
+        Attachments stay out of every public surface, so their churn never
+        fans out; gallery/cover/logo changes all alter the card or profile.
+        """
+        if self._events is not None:
+            self._events.directory_changed("updated", org.id, org.slug)
 
     def _owned(self, org_id: UUID) -> Organization:
         """Load an org or 404."""
@@ -213,13 +228,15 @@ class MediaService:
         )
         if role in _BRAND_ROLES:
             self._sync_brand(org_id, role, asset_id)
+        if role != "attachment":
+            self._emit_updated(org)
         return self._media_snapshot(org_id, row)
 
     def set_media_role(
         self, org_id: UUID, user_id: UUID, media_id: UUID, role: str
     ) -> MediaSnapshot:
         """Owner or media manager marks cover/logo, or clears it."""
-        self._require_manager(org_id, user_id)
+        org = self._require_manager(org_id, user_id)
         if role not in _MEDIA_ROLES:
             raise InvalidMediaRoleError("Media role is invalid.")
         row = self._media.get_asset(media_id)
@@ -234,6 +251,7 @@ class MediaService:
             self._sync_brand(org_id, role, media_id)
         else:
             self._clear_brand_if(org_id, media_id)
+        self._emit_updated(org)
         return self._media_snapshot(org_id, updated)
 
     def list_media(self, org_id: UUID, user_id: UUID) -> list[MediaSnapshot]:
@@ -265,7 +283,7 @@ class MediaService:
         file plus its metadata change. New file is written before the row
         updates, old file is swept best-effort when the path moves.
         """
-        self._require_manager(org_id, user_id)
+        org = self._require_manager(org_id, user_id)
         row = self._media.get_asset(media_id)
         if row is None or row.owner_id != org_id:
             raise NotFoundError("Media not found.")
@@ -297,22 +315,26 @@ class MediaService:
         assert updated is not None
         if old_relative != new_relative:
             self._store.delete_file(old_relative)
+        if (getattr(row, "role", None) or "gallery") != "attachment":
+            self._emit_updated(org)
         return self._media_snapshot(org_id, updated)
 
     def delete_media(self, org_id: UUID, user_id: UUID, media_id: UUID) -> None:
         """Owner or media manager removes one gallery file."""
-        self._require_manager(org_id, user_id)
+        org = self._require_manager(org_id, user_id)
         row = self._media.get_asset(media_id)
         if row is None or row.owner_id != org_id:
             raise NotFoundError("Media not found.")
         self._clear_brand_if(org_id, media_id)
         self._media.delete_asset(media_id)
         self._store.delete_file(row.file_url)
+        if (getattr(row, "role", None) or "gallery") != "attachment":
+            self._emit_updated(org)
 
     def delete_all_media(self, org_id: UUID, user_id: UUID) -> int:
         """Owner or media manager wipes the gallery, 500 rows per call."""
         # Idempotent: missing rows/files are skipped, safe to retry.
-        self._require_manager(org_id, user_id)
+        org = self._require_manager(org_id, user_id)
         removed = 0
         for row in self._media.list_by_org(org_id)[:500]:
             self._media.delete_asset(row.asset_id)
@@ -320,4 +342,6 @@ class MediaService:
             removed += 1
         self._sync_brand(org_id, "cover", None)
         self._sync_brand(org_id, "logo", None)
+        if removed > 0:
+            self._emit_updated(org)
         return removed

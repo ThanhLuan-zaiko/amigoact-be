@@ -118,6 +118,7 @@ def create_post(
             blocks=body.blocks,
             cover_media_id=body.cover_media_id,
             status=body.status,
+            visibility=body.visibility,
         )
     )
 
@@ -161,6 +162,7 @@ def update_post(
             cover_media_id=body.cover_media_id,
             touch_cover=body.touches_cover,
             kind=body.kind,
+            visibility=body.visibility,
         )
     )
 

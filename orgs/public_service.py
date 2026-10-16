@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import TYPE_CHECKING
 from uuid import UUID
 
 from core.exceptions import NotFoundError
+from core.media import media_kind
 from orgs.interfaces import (
     ActivityDirectory,
     MediaRepository,
@@ -14,6 +16,7 @@ from orgs.interfaces import (
     UserDirectory,
 )
 from orgs.listing import (
+    OrgMediaBrief,
     PublicOrgDetail,
     PublicOrgListResult,
     PublicOrgSnapshot,
@@ -22,6 +25,8 @@ from orgs.listing import (
 
 if TYPE_CHECKING:
     from orgs.model import Organization
+
+_MEDIA_LIST_LIMIT = 100
 
 
 class PublicOrgService:
@@ -90,9 +95,66 @@ class PublicOrgService:
         snapshots = [
             self._public_snapshot(org) for org in self._orgs.list_public()
         ]
-        return paginate_public(
+        page = paginate_public(
             snapshots, q=q, kind=kind, sort=sort, limit=limit, offset=offset
         )
+        # Media previews attach after the slice so only the visible page
+        # pays the per-org gallery reads.
+        items = []
+        for item in page.items:
+            preview, count = self._media_preview(item.id)
+            items.append(replace(item, media=preview, media_count=count))
+        return PublicOrgListResult(
+            items=items, total=page.total, counts=page.counts
+        )
+
+    def _media_preview(
+        self, org_id: UUID, limit: int = 6
+    ) -> tuple[list[OrgMediaBrief], int]:
+        """Cover-first public media strip plus the eligible total count.
+
+        Only gallery/cover roles leave the server: logos already render as
+        the card avatar fallback, attachments stay inside their posts.
+        """
+        if self._media is None:
+            return [], 0
+        covers: list[OrgMediaBrief] = []
+        gallery: list[OrgMediaBrief] = []
+        for asset in self._media.list_by_org(org_id):
+            role = getattr(asset, "role", None) or "gallery"
+            if role not in ("gallery", "cover"):
+                continue
+            if (asset.upload_status or "active") != "active":
+                continue
+            if getattr(asset, "deleted_at", None) is not None:
+                continue
+            kind = media_kind(asset.mime or "")
+            if kind is None:
+                continue
+            brief = OrgMediaBrief(
+                url=f"/media/{asset.file_url}",
+                kind=kind,
+                mime=asset.mime or "",
+            )
+            (covers if role == "cover" else gallery).append(brief)
+        ordered = covers + gallery
+        return ordered[:limit], len(ordered)
+
+    def list_public_media(self, slug: str) -> list[OrgMediaBrief]:
+        """Complete cover-first media list for the in-feed lightbox.
+
+        Unlike the profile gallery strip this keeps videos and has no
+        eight-item cap; attachments and brand-only assets stay out.
+        """
+        org = self._orgs.get_by_slug(slug.strip().lower())
+        if (
+            org is None
+            or org.deleted_at is not None
+            or (getattr(org, "status", "active") or "active") != "active"
+        ):
+            raise NotFoundError("Organization not found.")
+        media, _ = self._media_preview(org.id, limit=_MEDIA_LIST_LIMIT)
+        return media
 
     def _gallery_urls(self, org_id: UUID, limit: int = 8) -> list[str]:
         """Newest gallery-role image URLs for the public profile strip."""

@@ -40,6 +40,7 @@ class PostSnapshot:
     blocks: list[dict[str, Any]] = field(default_factory=list)
     cover_media_id: UUID | None = None
     revision_of: UUID | None = None
+    visibility: str = "members"
     published_at: datetime | None = None
     deleted_at: datetime | None = None
     updated_at: datetime | None = None
@@ -56,6 +57,7 @@ class PostContent:
     cover_media_id: UUID | None = None
     touch_cover: bool = True
     kind: str | None = None
+    visibility: str | None = None
 
 
 @dataclass(frozen=True)
@@ -92,6 +94,8 @@ class TimelineItem:
     comment_count: int
     org: TimelineOrg
     author_avatar_url: str | None = None
+    media: list[PostMediaBrief] = field(default_factory=list)
+    media_count: int = 0
 
 
 @dataclass(frozen=True)

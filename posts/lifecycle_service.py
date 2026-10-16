@@ -27,6 +27,7 @@ from posts.helpers import (
     is_draft,
     is_trashed,
     notify_announcement,
+    post_visibility,
     visible_post_or_404,
 )
 from posts.model import OrgPost
@@ -94,10 +95,9 @@ class PostLifecycleService(BoardServiceBase):
         ids or the org trash projection locate them without a new table.
         """
         if trashed:
-            rows = self._posts.list_trash(post.org_id, SCAN_LIMIT)
             candidates = (
                 self._posts.get(row.post_id)
-                for row in rows
+                for row in self._posts.list_trash(post.org_id, SCAN_LIMIT)
                 if row.author_id == post.author_id
                 and (row.status or "active") == "draft"
             )
@@ -146,6 +146,7 @@ class PostLifecycleService(BoardServiceBase):
             blocks_json=getattr(row, "blocks_json", "") or "",
             cover_media_id=getattr(row, "cover_media_id", None),
             revision_of=post_id,
+            visibility=post_visibility(row),
         )
         self._guard.record(org_id, actor_id, "post.revise", post_id)
         return self._snapshots.fresh(revision_id)
@@ -167,7 +168,7 @@ class PostLifecycleService(BoardServiceBase):
         if not is_draft(row):
             raise InvalidPostStateError("Post is already published.")
         kind = row.kind or "discussion"
-        if kind == "announcement":
+        if kind == "announcement" or post_visibility(row) == "public":
             self._guard.require_announce(
                 org_id, org.owner_id, actor_id, "post.publish", post_id
             )
@@ -180,7 +181,7 @@ class PostLifecycleService(BoardServiceBase):
         self._posts.set_status(row, "active", utcnow())
         self._guard.record(org_id, actor_id, "post.publish", post_id)
         self._emit(org_id, "post.created", post_id, actor_id, detail=kind)
-        self._emit_public(org_id, "created", post_id, kind)
+        self._emit_public(org_id, "created", row)
         if kind == "announcement":
             notify_announcement(
                 self._members, self._notifications, org_id, org.name,
@@ -216,7 +217,7 @@ class PostLifecycleService(BoardServiceBase):
         self._posts.delete(rev)
         self._guard.record(rev.org_id, actor_id, "post.publish", parent.post_id)
         self._emit(rev.org_id, "post.updated", parent.post_id, actor_id)
-        self._emit_public(rev.org_id, "updated", parent.post_id, parent.kind)
+        self._emit_public(rev.org_id, "updated", parent)
         return self._snapshots.fresh(parent.post_id)
 
     def unpublish(
@@ -256,7 +257,7 @@ class PostLifecycleService(BoardServiceBase):
         self._posts.set_status(row, "draft", now)
         self._guard.record(org_id, actor_id, "post.unpublish", post_id)
         self._emit(org_id, "post.unpublished", post_id, actor_id)
-        self._emit_public(org_id, "removed", post_id, row.kind)
+        self._emit_public(org_id, "removed", row)
         return self._snapshots.fresh(post_id)
 
     # ---- trash -----------------------------------------------------------
@@ -285,7 +286,7 @@ class PostLifecycleService(BoardServiceBase):
         self._guard.record(org_id, actor_id, "post.delete", post_id)
         if not was_draft:
             self._emit(org_id, "post.deleted", post_id, actor_id)
-            self._emit_public(org_id, "removed", post_id, row.kind)
+            self._emit_public(org_id, "removed", row)
 
     def restore(
         self, org_id: UUID, post_id: UUID, actor_id: UUID
@@ -303,7 +304,7 @@ class PostLifecycleService(BoardServiceBase):
         self._guard.record(org_id, actor_id, "post.restore", post_id)
         if not is_draft(row):
             self._emit(org_id, "post.restored", post_id, actor_id)
-            self._emit_public(org_id, "created", post_id, row.kind)
+            self._emit_public(org_id, "created", row)
         return self._snapshots.fresh(post_id)
 
     def hard_delete(self, org_id: UUID, post_id: UUID, actor_id: UUID) -> None:
@@ -318,7 +319,7 @@ class PostLifecycleService(BoardServiceBase):
             org_id, org.owner_id, row.author_id, actor_id, "post.purge",
             post_id,
         )
-        was_public = not is_draft(row) and not is_trashed(row)
+        was_live = not is_draft(row) and not is_trashed(row)
         asset_ids = [link.asset_id for link in self._posts.list_media(post_id)]
         if getattr(row, "revision_of", None) is not None:
             parent = self._posts.get(row.revision_of)
@@ -342,8 +343,8 @@ class PostLifecycleService(BoardServiceBase):
         self._posts.delete(row)
         self._media_rules.purge_attachments(org_id, asset_ids)
         self._guard.record(org_id, actor_id, "post.purge", post_id)
-        if was_public:
+        if was_live:
             self._emit(org_id, "post.deleted", post_id, actor_id)
-            self._emit_public(org_id, "removed", post_id, row.kind)
+            self._emit_public(org_id, "removed", row)
         else:
             self._emit(org_id, "post.purged", post_id, actor_id)

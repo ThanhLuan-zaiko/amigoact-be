@@ -22,6 +22,7 @@ from tests.unit.workspace_fakes import (
     FakeBoardEvents,
     FakeCommentStore,
     FakePostStore,
+    FakeTimelineEvents,
     _uid,
     add_org,
 )
@@ -32,17 +33,20 @@ def _service():
     orgs, members, users = FakeOrgs(), FakeMembers(), FakeUsers()
     access, media = FakeAccess(), FakeMedia()
     events = FakeBoardEvents()
+    timeline = FakeTimelineEvents()
     owner = _uid()
     org_id = add_org(orgs, members, users, owner)
     post_service = PostService(
         posts, comments, orgs, members, users, media, access, events,
+        announcements=timeline,
     )
     service = CommentService(
-        posts, comments, orgs, members, users, access, events
+        posts, comments, orgs, members, users, access, events,
+        announcements=timeline,
     )
     return (
         service, post_service, comments, orgs, members, users, access,
-        events, org_id, owner,
+        events, org_id, owner, timeline,
     )
 
 
@@ -64,7 +68,7 @@ def _post(svc: PostService, org_id: UUID, author: UUID) -> UUID:
 
 def test_member_adds_and_lists_comments_oldest_first() -> None:
     (svc, posts_svc, comments, _, _, _, _, events, org_id,
-     owner) = _service()
+     owner, _) = _service()
     post_id = _post(posts_svc, org_id, owner)
     first = svc.add_comment(org_id, post_id, owner, "one")
     second = svc.add_comment(org_id, post_id, owner, "two")
@@ -79,7 +83,7 @@ def test_member_adds_and_lists_comments_oldest_first() -> None:
 
 
 def test_comment_pagination_cursor() -> None:
-    svc, posts_svc, _, _, _, _, _, _, org_id, owner = _service()
+    svc, posts_svc, _, _, _, _, _, _, org_id, owner, _ = _service()
     post_id = _post(posts_svc, org_id, owner)
     ids = [
         svc.add_comment(org_id, post_id, owner, f"c{i}").comment_id
@@ -96,7 +100,7 @@ def test_comment_pagination_cursor() -> None:
 
 def test_comment_delete_author_manager_and_denied() -> None:
     (svc, posts_svc, comments, _, members, users, access, _,
-     org_id, owner) = _service()
+     org_id, owner, _) = _service()
     member = _member(members, users, org_id)
     manager = _member(members, users, org_id, "mgr@x.com")
     access.perms[(org_id, manager)] = {"post:manage"}
@@ -113,7 +117,7 @@ def test_comment_delete_author_manager_and_denied() -> None:
 
 def test_comment_guards() -> None:
     (svc, posts_svc, _, _, members, users, _, _, org_id,
-     owner) = _service()
+     owner, _) = _service()
     outsider = _uid()
     post_id = _post(posts_svc, org_id, owner)
     with pytest.raises(NotFoundError):
@@ -128,7 +132,7 @@ def test_comment_guards() -> None:
 
 def test_soft_delete_keeps_thread_hard_delete_wipes_it() -> None:
     (svc, posts_svc, comments, orgs, members, users, access, events,
-     org_id, owner) = _service()
+     org_id, owner, _) = _service()
     lifecycle = PostLifecycleService(
         posts_svc._posts, comments, orgs, members, users, FakeMedia(),
         access, events,
@@ -142,3 +146,29 @@ def test_soft_delete_keeps_thread_hard_delete_wipes_it() -> None:
     lifecycle.hard_delete(org_id, post_id, owner)
     assert comments.count(post_id) == 0
     assert comments.comments.get(post_id) in (None, [])
+
+
+def test_comment_pings_guest_feed_by_audience_not_kind() -> None:
+    """announcements:feed follows visibility: a public discussion pings
+    it, a members-only announcement stays silent."""
+    (svc, posts_svc, _, _, _, _, _, _, org_id, owner,
+     timeline) = _service()
+    public_post = posts_svc.create_post(
+        org_id, owner, "discussion", "", "body", [],
+        visibility="public",
+    ).post_id
+    internal_post = posts_svc.create_post(
+        org_id, owner, "announcement", "T", "body", [],
+        visibility="members",
+    ).post_id
+    timeline.calls.clear()
+    comment = svc.add_comment(org_id, public_post, owner, "hi")
+    assert timeline.calls == [("updated", public_post, org_id)]
+    svc.delete_comment(org_id, public_post, comment.comment_id, owner)
+    assert timeline.calls == [
+        ("updated", public_post, org_id),
+        ("updated", public_post, org_id),
+    ]
+    timeline.calls.clear()
+    svc.add_comment(org_id, internal_post, owner, "shh")
+    assert timeline.calls == []

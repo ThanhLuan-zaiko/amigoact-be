@@ -4,13 +4,19 @@
 
 Bảng tin tổ chức là không gian viết bài dạng báo/blog: nội dung là danh sách
 `blocks` có kiểu (đoạn văn, tiêu đề phụ, trích dẫn, danh sách, ảnh, video,
-đường kẻ), kèm `title`, `cover_media_id` và `kind` (`discussion` mặc định,
-`announcement` cần `post:announce`).
+đường kẻ), kèm `title`, `cover_media_id`, `kind` (`discussion` mặc định,
+`announcement` cần `post:announce`) và `visibility` (`public` | `members` —
+phạm vi độc giả, tách hẳn `kind`; `public` cũng cần `post:announce`).
 
 Vòng đời bài viết giống CRUD tổ chức: tạo/sửa/đăng, gỡ xuống, xóa mềm
-vào thùng rác, khôi phục, xóa cứng. Hai trục trạng thái độc lập cộng một
+vào thùng rác, khôi phục, xóa cứng. Ba trục trạng thái độc lập cộng một
 liên kết nháp song song:
 
+- `visibility`: `public` (khách đọc được — trang tổ chức, timeline,
+  public read) ↔ `members` (chỉ thành viên trên board). `NULL` trên row cũ
+  derive theo `kind` (`announcement` → `public`). Đổi audience trên bài đã
+  đăng được phép và đồng bộ luôn projection + timeline; trên revision thì
+  bị khóa theo bài gốc (revision kế thừa audience của bài gốc).
 - `status`: `draft` (nháp riêng tư của tác giả) ↔ `active` (đã đăng; API trả
   `published`).
 - `deleted_at`: khác `None` nghĩa là đang ở thùng rác — trùng được với cả hai
@@ -58,8 +64,8 @@ vẫn phân trang cursor `next_cursor`.
 | Nháp của tôi | `GET /orgs/{id}/posts/drafts` | member (chỉ bài mình) |
 | Thùng rác | `GET /orgs/{id}/posts/trash` | member thấy bài mình; manager thấy hết |
 | Chi tiết | `GET /orgs/{id}/posts/{post}` | member; nháp chỉ tác giả đọc |
-| Tạo | `POST /orgs/{id}/posts` | member; `status=draft` cho nháp |
-| Sửa | `PATCH /orgs/{id}/posts/{post}` | chỉ tác giả; `kind` đổi được khi còn nháp độc lập |
+| Tạo | `POST /orgs/{id}/posts` | member; `status=draft` cho nháp; `visibility=public` cần `post:announce` |
+| Sửa | `PATCH /orgs/{id}/posts/{post}` | chỉ tác giả; `kind` đổi được khi còn nháp độc lập; `visibility` flip được trên bài đã đăng (lên public cần `post:announce`, xuống members thì tự do) |
 | Nháp chờ đăng | `POST .../posts/{post}/revisions` | tác giả của bài đang live; idempotent — trả revision đang mở nếu có |
 | Đăng nháp | `POST .../publish` | tác giả (announcement cần `post:announce`); revision gộp vào bài gốc |
 | Gỡ xuống | `POST .../unpublish` | tác giả; hấp thụ revision đang mở trước khi chuyển draft |
@@ -71,8 +77,10 @@ vẫn phân trang cursor `next_cursor`.
 
 ## 3.1. Cổng public
 
-Chỉ bài `announcement` đã đăng (không nháp, không revision, không thùng rác)
-là public; `discussion` và mọi nội dung khác ở lại board nội bộ.
+Chỉ bài `visibility='public'` đã đăng (không nháp, không revision, không
+thùng rác) là public — `kind` không còn quyết định phạm vi độc giả nữa:
+`announcement` members-only và `discussion` public đều hợp lệ; bài members
+và mọi nội dung khác ở lại board nội bộ.
 
 - Teaser (`title`, `excerpt`, `cover_url`, `author_name`, `published_at`,
   `comment_count`) nhúng trong `GET /orgs/{slug}` qua field `announcements`
@@ -82,23 +90,33 @@ là public; `discussion` và mọi nội dung khác ở lại board nội bộ.
   (shape y hệt API nội bộ). Segment `announcements` cố ý để không đụng route
   member `/orgs/{id}/posts/{post_id}` cùng shape. `404` khi org chết/xóa,
   bài không public, hoặc bài thuộc org khác.
+- Media đầy đủ của một bài: `GET /orgs/{slug}/announcements/{post_id}/media`
+  → `PublicOrgMediaPage` (`items[{url,kind,mime}]`, cover dẫn đầu) — phục vụ
+  lightbox trên feed khi teaser chỉ mang 6 tile preview. Cùng ranh giới
+  `404` với endpoint đọc bài.
 - Danh sách đầy đủ: `GET /orgs/{slug}/announcements?limit&page` →
   `PublicAnnouncementPage` (`items` teaser + `total` chính xác; `limit` 1–30
   mặc định 9, `page` ≥ 1 mặc định 1). Trang vượt tổng trả `items` rỗng.
 - Timeline toàn cục: `GET /announcements?limit&cursor` →
   `PublicTimelinePage` (`items` teaser kèm `author_avatar_url` (avatar người
-  đăng, resolve từ `avatar_media_id` qua media) và
-  `org{id,name,slug,logo_url}` +
+  đăng, resolve từ `avatar_media_id` qua media), `org{id,name,slug,logo_url}`
+  và preview `media[]`/`media_count` — tối đa 6 attachment `{url,kind,mime}`
+  cover-dẫn-đầu để card feed render mosaic như card tổ chức +
   `next_cursor`; `limit` 1–30 mặc định 12; `cursor` là `post_id` cuối trang
   trước, cursor rác bị bỏ qua). Đọc từ projection `announcements_feed`
   (partition `bucket='all'`, cluster `post_id` DESC) — một read bounded phục
   vụ mọi guest; row có post/org đã chết bị skip lười và cursor vẫn tiến qua
-  chúng nên không kẹt pager. Mọi announcement mới đăng/ghép trang đều ghi
-  row này trong `_place` của `CqlPostStore`; keyspace đã deploy chạy
+  chúng nên không kẹt pager. Mọi bài public mới đăng/ghép trang/đổi audience
+  đều ghi row này trong `_place`/`set_visibility` của `CqlPostStore`;
+  keyspace đã deploy chạy
   `uv run python -m migrate.announcements_feed` (`--dry-run` để xem
   trước) — script tạo bảng nếu thiếu rồi backfill từ `org_posts_feed` nơi
   `kind='announcement'`, upsert nên chạy lại bao nhiêu lần cũng an toàn,
-  không đụng dữ liệu khác. Migration mới thêm file `migrate/<chủ_đề>.py`.
+  không đụng dữ liệu khác. Kèm `uv run python -m migrate.post_visibility`
+  để ALTER cột `visibility` cho `org_posts` + `org_posts_feed` và backfill
+  audience cũ theo `kind` (row NULL vẫn đọc đúng nhờ fallback, nên chạy
+  script nào trước cũng an toàn). Migration mới thêm file
+  `migrate/<chủ_đề>.py`.
 
 Lỗi riêng: `INVALID_POST_STATE` (đăng bài đã đăng, khôi phục bài không ở thùng
 rác…), `POST_CONTENT_REQUIRED`, `POST_TITLE_REQUIRED` (announcement đăng cần
@@ -112,8 +130,10 @@ Mọi thay đổi bảng tin phát lên kênh `posts:{org_id}` với `action` �
 post.unpublished | post.restored | post.purged` kèm `post_id`, `actor_id`
 (`detail` = kind khi tạo/đăng). Client invalidate query, không mutate cache.
 
-Song song đó, mọi thao tác đổi visibility của một **announcement đã đăng**
-(created/updated/unpublished/trashed/restored/purged, cả comment ±) phát
+Song song đó, mọi thao tác đổi độ hiển thị guest của một **bài public đã
+đăng** (created/updated/unpublished/trashed/restored/purged, cả flip
+audience lẫn comment ±) phát
 thêm hint `{action, post_id, org_id}` lên kênh public `announcements:feed`
 (guest subscribe được) qua port `AnnouncementFeedEvents` — action gộp về
-`created | updated | removed` đủ cho việc refetch timeline.
+`created | updated | removed` đủ cho việc refetch timeline; flip
+public→members phát `removed`, members→public phát `created`.

@@ -30,6 +30,7 @@ class PostStore(ABC):
         blocks_json: str = "",
         cover_media_id: UUID | None = None,
         revision_of: UUID | None = None,
+        visibility: str | None = None,
     ) -> OrgPost:
         """Insert the canonical row, its feed or draft entry, media links."""
 
@@ -89,6 +90,12 @@ class PostStore(ABC):
     @abstractmethod
     def replace_media(self, post_id: UUID, media_ids: list[UUID]) -> None:
         """Swap the post media link rows for the given ordered ids."""
+
+    @abstractmethod
+    def set_visibility(
+        self, post: OrgPost, visibility: str, now: datetime
+    ) -> None:
+        """Flip the audience: canonical row, feed denorm, timeline bucket."""
 
     @abstractmethod
     def set_pinned(

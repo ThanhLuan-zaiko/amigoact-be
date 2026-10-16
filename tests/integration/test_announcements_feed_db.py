@@ -160,6 +160,87 @@ async def test_timeline_excludes_everything_not_public(
     assert draft.json()["post_id"] not in ids
 
 
+async def test_post_media_endpoint_lists_everything_cover_first(
+    client: AsyncClient,
+) -> None:
+    """GET /orgs/{slug}/announcements/{id}/media feeds the lightbox:
+    every attachment, cover first, guest-readable; member posts 404."""
+    org_id, owner_h, _ = await _org_with_announcements(
+        client, "feed-med", ["Warmup"], "0912347105"
+    )
+    png = b"\x89PNG" + b"4" * 120
+
+    async def upload(name: str, payload: bytes, mime: str) -> str:
+        made = await client.post(
+            f"/orgs/{org_id}/media",
+            files={"file": (name, payload, mime)},
+            data={"role": "attachment"},
+            headers=owner_h,
+        )
+        assert made.status_code == 201, made.text
+        return made.json()["id"]
+
+    images = [await upload(f"i{i}.png", png, "image/png") for i in range(3)]
+    clip = await upload("v.mp4", b"\x00\x00" + b"3" * 64, "video/mp4")
+    cover = await upload("c.png", png, "image/png")
+
+    made = await client.post(
+        f"/orgs/{org_id}/posts",
+        json={
+            "kind": "announcement",
+            "title": "Media",
+            "body": "b",
+            "cover_media_id": cover,
+            "blocks": [
+                *[
+                    {"type": "image", "asset_id": a, "caption": ""}
+                    for a in images
+                ],
+                {"type": "video", "asset_id": clip, "caption": ""},
+            ],
+        },
+        headers=owner_h,
+    )
+    assert made.status_code == 201, made.text
+    post_id = made.json()["post_id"]
+    url_by_id = {
+        m["asset_id"]: m["file_url"] for m in made.json()["media"]
+    }
+
+    listed = await client.get(
+        f"/orgs/feed-med/announcements/{post_id}/media"
+    )  # guest: no auth
+    assert listed.status_code == 200, listed.text
+    body = listed.json()
+    assert set(body.keys()) == {"items"}
+    urls = [item["url"] for item in body["items"]]
+    assert urls[0] == url_by_id[cover]
+    assert len(urls) == 5  # cover + 3 image blocks + 1 video block
+    for tile in body["items"]:
+        assert set(tile.keys()) == {"url", "kind", "mime"}
+
+    member_only = await client.post(
+        f"/orgs/{org_id}/posts",
+        json={
+            "kind": "announcement", "title": "Secret", "body": "b",
+            "visibility": "members",
+        },
+        headers=owner_h,
+    )
+    assert member_only.status_code == 201, member_only.text
+    blocked = await client.get(
+        f"/orgs/feed-med/announcements/"
+        f"{member_only.json()['post_id']}/media"
+    )
+    assert blocked.status_code == 404
+    from core.ids import uuid7
+
+    missing = await client.get(
+        f"/orgs/feed-med/announcements/{uuid7()}/media"
+    )
+    assert missing.status_code == 404
+
+
 async def test_timeline_paginates_by_cursor(client: AsyncClient) -> None:
     _, _, post_ids = await _org_with_announcements(
         client, "feed-page", ["One", "Two", "Three"], "0912347103"

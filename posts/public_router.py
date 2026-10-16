@@ -13,7 +13,12 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Query
 
 from core.dependencies_workspace import get_public_post_service
-from orgs.schemas import PublicOrgPostItem
+from core.media import media_kind
+from orgs.schemas import (
+    PublicOrgMediaItem,
+    PublicOrgMediaPage,
+    PublicOrgPostItem,
+)
 from posts.helpers import parse_cursor
 from posts.mappers import to_post
 from posts.schemas import (
@@ -56,6 +61,15 @@ def _item(item: TimelineItem) -> PublicTimelineItem:
         author_avatar_url=item.author_avatar_url,
         published_at=item.published_at,
         comment_count=item.comment_count,
+        media=[
+            PublicOrgMediaItem(
+                url=media.file_url,
+                kind=media_kind(media.mime) or "image",
+                mime=media.mime,
+            )
+            for media in item.media
+        ],
+        media_count=item.media_count,
         org=PublicTimelineOrg(
             id=item.org.id,
             name=item.org.name,
@@ -106,3 +120,25 @@ def get_public_announcement(
 ) -> PostResponse:
     """Guest read of one published announcement post (no auth)."""
     return to_post(service.get_public_post(slug, post_id))
+
+
+@router.get(
+    "/orgs/{slug}/announcements/{post_id}/media",
+    response_model=PublicOrgMediaPage,
+)
+def list_public_announcement_media(
+    slug: str,
+    post_id: UUID,
+    service: PublicPostService = Depends(get_public_post_service),
+) -> PublicOrgMediaPage:
+    """Full media list of one public post for the in-feed lightbox."""
+    return PublicOrgMediaPage(
+        items=[
+            PublicOrgMediaItem(
+                url=item.file_url,
+                kind=media_kind(item.mime) or "image",
+                mime=item.mime,
+            )
+            for item in service.list_public_post_media(slug, post_id)
+        ]
+    )

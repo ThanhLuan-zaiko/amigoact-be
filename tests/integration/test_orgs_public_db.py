@@ -87,6 +87,102 @@ async def test_public_directory_carries_owner_avatar(
     assert card["owner_avatar_url"] == uploaded.json()["avatar_url"]
 
 
+async def test_public_directory_card_media_preview(
+    client: AsyncClient,
+) -> None:
+    """Org cards carry a cover-first media strip: images and videos."""
+    access = await _token(client, "pub-med@example.com", "0912345025")
+    headers = {"Authorization": f"Bearer {access}"}
+    org_id = await _make_org(client, headers, "pub-med")
+    png = b"\x89PNG" + b"4" * 120
+
+    image = await client.post(
+        f"/orgs/{org_id}/media",
+        files={"file": ("pic.png", png, "image/png")},
+        data={"role": "cover"},
+        headers=headers,
+    )
+    assert image.status_code == 201, image.text
+    clip = await client.post(
+        f"/orgs/{org_id}/media",
+        files={"file": ("v.mp4", b"\x00\x00" + b"3" * 64, "video/mp4")},
+        headers=headers,
+    )
+    assert clip.status_code == 201, clip.text
+
+    guests = await client.get("/orgs")
+    assert guests.status_code == 200, guests.text
+    card = next(
+        o for o in guests.json()["items"] if o["slug"] == "pub-med"
+    )
+    assert card["media_count"] == 2
+    assert len(card["media"]) == 2
+    assert card["media"][0]["url"] == image.json()["file_url"]
+    assert {m["kind"] for m in card["media"]} == {"image", "video"}
+    for tile in card["media"]:
+        assert set(tile.keys()) == {"url", "kind", "mime"}
+
+
+async def test_public_gallery_endpoint_lists_everything(
+    client: AsyncClient,
+) -> None:
+    """GET /orgs/{slug}/gallery feeds the lightbox: cover-first, videos
+    included, attachments out, guest-readable, dead orgs 404."""
+    access = await _token(client, "pub-gal@example.com", "0912345026")
+    headers = {"Authorization": f"Bearer {access}"}
+    org_id = await _make_org(client, headers, "pub-gal")
+    png = b"\x89PNG" + b"4" * 120
+
+    cover = await client.post(
+        f"/orgs/{org_id}/media",
+        files={"file": ("c.png", png, "image/png")},
+        data={"role": "cover"},
+        headers=headers,
+    )
+    assert cover.status_code == 201, cover.text
+    gallery: list[str] = []
+    for index in range(3):
+        made = await client.post(
+            f"/orgs/{org_id}/media",
+            files={"file": (f"g{index}.png", png, "image/png")},
+            headers=headers,
+        )
+        assert made.status_code == 201, made.text
+        gallery.append(made.json()["file_url"])
+    clip = await client.post(
+        f"/orgs/{org_id}/media",
+        files={"file": ("v.mp4", b"\x00\x00" + b"3" * 64, "video/mp4")},
+        headers=headers,
+    )
+    assert clip.status_code == 201, clip.text
+    hidden = await client.post(
+        f"/orgs/{org_id}/media",
+        files={"file": ("p.png", png, "image/png")},
+        data={"role": "attachment"},
+        headers=headers,
+    )
+    assert hidden.status_code == 201, hidden.text
+
+    listed = await client.get("/orgs/pub-gal/gallery")  # guest: no auth
+    assert listed.status_code == 200, listed.text
+    body = listed.json()
+    assert set(body.keys()) == {"items"}
+    urls = [item["url"] for item in body["items"]]
+    assert urls[0] == cover.json()["file_url"]
+    assert set(gallery) <= set(urls)
+    assert clip.json()["file_url"] in urls
+    assert hidden.json()["file_url"] not in urls
+    assert len(urls) == 5  # cover + 3 gallery + 1 video
+    for tile in body["items"]:
+        assert set(tile.keys()) == {"url", "kind", "mime"}
+
+    missing = await client.get("/orgs/no-such-org/gallery")
+    assert missing.status_code == 404
+    await client.delete(f"/orgs/{org_id}", headers=headers)
+    trashed = await client.get("/orgs/pub-gal/gallery")
+    assert trashed.status_code == 404
+
+
 async def test_public_directory_hides_trashed_and_revives(
     client: AsyncClient,
 ) -> None:
