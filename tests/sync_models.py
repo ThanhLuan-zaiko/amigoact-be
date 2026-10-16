@@ -118,6 +118,7 @@ SYNC_MODELS = [
     cert_models.Certificate,
     cert_models.CertificatesByStudent,
     cert_models.CertificatesBySerial,
+    cert_models.CertificatesById,
     cert_models.CertificateRevocation,
     cert_models.CertificateTemplate,
     realtime_models.WsTicket,

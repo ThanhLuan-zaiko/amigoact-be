@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import pathlib
+import re
 import sys
 import types
 from dataclasses import dataclass
@@ -127,15 +128,28 @@ def connect(cfg: Config):
 def schema_statements(
     cql_path: pathlib.Path, keyspace: str, table: str
 ) -> list[str]:
-    """DDL for one table: CREATE KEYSPACE + USE + its CREATE TABLE."""
+    """DDL for one table: CREATE KEYSPACE + USE + its CREATE TABLE.
+
+    The CREATE TABLE is qualified with the keyspace because migration
+    sessions have no default keyspace (the USE statement is skipped by
+    callers that must not leave the session keyspace changed).
+    """
     statements, _ = load_statements(cql_path, keyspace)
     prefix = ("CREATE KEYSPACE", "USE")
     target = f"CREATE TABLE IF NOT EXISTS {table.upper()}"
-    wanted = [
-        stmt
-        for stmt in statements
-        if stmt.upper().startswith(prefix) or stmt.upper().startswith(target)
-    ]
+    wanted = []
+    for stmt in statements:
+        upper = stmt.upper()
+        if upper.startswith(prefix):
+            wanted.append(stmt)
+        elif upper.startswith(target):
+            wanted.append(
+                re.sub(
+                    rf"(?i)^(CREATE TABLE IF NOT EXISTS\s+){re.escape(table)}\b",
+                    rf"\g<1>{keyspace}.{table}",
+                    stmt,
+                )
+            )
     if not any(table in stmt for stmt in wanted):
         raise RuntimeError(f"No CREATE TABLE for {table} in {cql_path}")
     return wanted

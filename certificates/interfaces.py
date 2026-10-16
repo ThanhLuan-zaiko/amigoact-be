@@ -37,6 +37,16 @@ class CertificateStore(ABC):
         """Load the canonical row by its composite key."""
 
     @abstractmethod
+    def get_by_id(self, certificate_id: UUID) -> Certificate | None:
+        """Resolve a certificate_id to the canonical row (via by-id feed)."""
+
+    @abstractmethod
+    def attach_file(
+        self, certificate: Certificate, media_id: UUID, now: datetime
+    ) -> Certificate:
+        """Link the generated PDF media asset onto the canonical row."""
+
+    @abstractmethod
     def get_by_serial(
         self, serial_no: str
     ) -> CertificatesBySerial | None:
@@ -63,6 +73,24 @@ class CertificateStore(ABC):
         self, activity_id: UUID, limit: int = 500
     ) -> list[Certificate]:
         """All certificates of one activity (partition-local read)."""
+
+
+class CertificateRenderer(ABC):
+    """Turns certificate data into PDF bytes (Pillow impl in pdf.py)."""
+
+    @abstractmethod
+    def render(
+        self,
+        *,
+        student_name: str,
+        org_name: str,
+        activity_title: str,
+        serial_no: str,
+        issued_at: datetime | None,
+        background: bytes | None,
+        layout: dict,
+    ) -> bytes:
+        """Return one-page landscape PDF bytes for the certificate."""
 
 
 class TemplateStore(ABC):

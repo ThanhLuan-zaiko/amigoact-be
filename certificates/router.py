@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 from uuid import UUID
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Response
 
 from certificates.schemas import (
     CertificateResponse,
@@ -18,12 +18,14 @@ from certificates.schemas import (
     VerifyResponse,
 )
 from core.dependencies import CurrentUser, get_current_user
-from core.dependencies_features import (
+from core.dependencies_certificates import (
+    get_certificate_file_service,
     get_certificate_service,
     get_template_service,
 )
 
 if TYPE_CHECKING:
+    from certificates.file_service import CertificateFileService
     from certificates.model import Certificate, CertificateTemplate
     from certificates.service import CertificateService
     from certificates.template_service import TemplateService
@@ -118,6 +120,28 @@ def my_certificates(
         )
         for item in service.mine(current.id)
     ]
+
+
+@router.get("/certificates/{certificate_id}/file")
+def download_file(
+    certificate_id: UUID,
+    current: CurrentUser = Depends(get_current_user),
+    service: "CertificateFileService" = Depends(
+        get_certificate_file_service
+    ),
+) -> Response:
+    """Stream the certificate PDF; rendered lazily on first download."""
+    blob = service.download(certificate_id, current.id)
+    return Response(
+        content=blob.content,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": (
+                f'attachment; filename="{blob.filename}"'
+            ),
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
 
 
 @router.get(

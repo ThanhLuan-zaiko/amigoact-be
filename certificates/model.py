@@ -56,6 +56,17 @@ class CertificatesBySerial(models.Model):
     status = columns.Text()
 
 
+class CertificatesById(models.Model):
+    """Certificate-id lookup feeding the PDF download endpoint."""
+
+    __table_name__ = "certificates_by_id"
+    __keyspace__ = "amigoact"
+
+    certificate_id = columns.UUID(primary_key=True)
+    activity_id = columns.UUID()
+    student_id = columns.UUID()
+
+
 class CertificateRevocation(models.Model):
     """Append-only revocation trail."""
 

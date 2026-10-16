@@ -14,8 +14,6 @@ if TYPE_CHECKING:  # pragma: no cover - type imports only
     from activities.detail_service import ActivityDetailService
     from activities.service import ActivityService
     from admin.service import AdminService
-    from certificates.service import CertificateService
-    from certificates.template_service import TemplateService
     from hours.rule_service import RuleService
     from hours.service import HourService
     from notifications.service import NotificationService
@@ -248,47 +246,8 @@ def get_audit_service(
     )
 
 
-def get_certificate_service(
-    settings: Settings = Depends(get_settings),
-    access: AccessControl = Depends(get_access_control),
-    notifications: NotificationService = Depends(get_notification_service),
-) -> CertificateService:
-    """Build one CertificateService per request over cert tables."""
-    from activities.repository import CqlActivityStore
-    from certificates.repository import (
-        CqlCertificateStore,
-        CqlTemplateStore,
-    )
-    from certificates.service import CertificateService
-    from orgs.repository import CqlOrgRepository
-    from registrations.repository import CqlRegistrationStore
-
-    return CertificateService(
-        certificates=CqlCertificateStore(settings.scylla_keyspace),
-        registrations=CqlRegistrationStore(settings.scylla_keyspace),
-        activities=CqlActivityStore(settings.scylla_keyspace),
-        orgs=CqlOrgRepository(settings.scylla_keyspace),
-        users=user_directory(settings),
-        access=access,
-        notifications=notifications,
-        templates=CqlTemplateStore(),
-    )
-
-
-def get_template_service(
-    settings: Settings = Depends(get_settings),
-    access: AccessControl = Depends(get_access_control),
-) -> TemplateService:
-    """Build one TemplateService per request over template rows."""
-    from certificates.repository import CqlTemplateStore
-    from certificates.template_service import TemplateService
-    from orgs.repository import CqlOrgRepository
-
-    return TemplateService(
-        templates=CqlTemplateStore(),
-        orgs=CqlOrgRepository(settings.scylla_keyspace),
-        access=access,
-    )
+# Certificate providers (issue/revoke/file/templates) live in
+# core/dependencies_certificates.py (split for the 350-line rule).
 
 
 def get_profile_service(

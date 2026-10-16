@@ -39,7 +39,13 @@ VIDEO_MIMES = {
     "video/quicktime": ".mov",
 }
 
-MEDIA_MIMES = {**IMAGE_MIMES, **VIDEO_MIMES}
+# Generated documents (certificate PDFs) are stored through save_typed but
+# never user-uploaded: media_kind() intentionally returns None for them.
+DOCUMENT_MIMES = {
+    "application/pdf": ".pdf",
+}
+
+MEDIA_MIMES = {**IMAGE_MIMES, **VIDEO_MIMES, **DOCUMENT_MIMES}
 
 # Decompression-bomb guard: reject images above this pixel count.
 MAX_IMAGE_PIXELS = 25_000_000
@@ -48,7 +54,7 @@ MAX_IMAGE_EDGE = 4096
 
 # Allowlisted on-disk suffixes. Anything else is rejected at save time.
 ALLOWED_EXTENSIONS = frozenset({".jpg", ".png", ".webp", ".gif", ".avif",
-    ".bmp", ".tiff", ".heic", ".heif", ".mp4", ".webm", ".mov"})
+    ".bmp", ".tiff", ".heic", ".heif", ".mp4", ".webm", ".mov", ".pdf"})
 
 
 def media_kind(mime: str) -> str | None:
@@ -154,6 +160,12 @@ class MediaStore(ABC):
     @abstractmethod
     def save(self, org_id: UUID, media_id: UUID, filename: str, content: bytes) -> str:
         """Persist bytes, return the relative path (orgs/<org_id>/...)."""
+
+    @abstractmethod
+    def save_typed(
+        self, org_id: UUID, media_id: UUID, mime: str, filename: str, content: bytes
+    ) -> str:
+        """Persist bytes with the mime-mapped extension on disk."""
 
     @abstractmethod
     def resolve(self, relative_path: str) -> Path:

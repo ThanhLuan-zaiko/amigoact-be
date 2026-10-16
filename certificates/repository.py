@@ -16,6 +16,7 @@ from certificates.model import (
     Certificate,
     CertificateRevocation,
     CertificateTemplate,
+    CertificatesById,
     CertificatesBySerial,
     CertificatesByStudent,
 )
@@ -69,6 +70,11 @@ class CqlCertificateStore(CertificateStore):
             serial_no=serial_no,
             status="issued",
         )
+        CertificatesById.create(
+            certificate_id=certificate_id,
+            activity_id=activity_id,
+            student_id=student_id,
+        )
         return row
 
     def get(
@@ -80,6 +86,27 @@ class CqlCertificateStore(CertificateStore):
             )
         except Certificate.DoesNotExist:
             return None
+
+    def get_by_id(self, certificate_id: UUID) -> Certificate | None:
+        """Follow the by-id feed to the canonical partition."""
+        try:
+            link = CertificatesById.get(certificate_id=certificate_id)
+        except CertificatesById.DoesNotExist:
+            return None
+        if link.activity_id is None or link.student_id is None:
+            return None
+        return self.get(link.activity_id, link.student_id)
+
+    def attach_file(
+        self, certificate: Certificate, media_id: UUID, now: datetime
+    ) -> Certificate:
+        Certificate.objects(
+            activity_id=certificate.activity_id,
+            student_id=certificate.student_id,
+        ).update(file_media_id=media_id)
+        updated = self.get(certificate.activity_id, certificate.student_id)
+        assert updated is not None
+        return updated
 
     def get_by_serial(
         self, serial_no: str

@@ -1003,7 +1003,7 @@ CREATE TABLE IF NOT EXISTS leaderboard_terms (
 );
 
 // -----------------------------------------------------------------------------
-// 9. CERTIFICATES (5 tables)
+// 9. CERTIFICATES (6 tables)
 // One certificate per (activity, student). PDFs are stored as media_assets.
 // -----------------------------------------------------------------------------
 
@@ -1052,6 +1052,14 @@ CREATE TABLE IF NOT EXISTS certificates_by_serial (
     activity_id uuid,
     student_id uuid,
     status text
+);
+
+// certificate_id -> canonical (activity_id, student_id); feeds the PDF
+// download endpoint, which cannot query the canonical table by id alone.
+CREATE TABLE IF NOT EXISTS certificates_by_id (
+    certificate_id uuid PRIMARY KEY,
+    activity_id uuid,
+    student_id uuid
 );
 
 CREATE TABLE IF NOT EXISTS certificate_revocations (

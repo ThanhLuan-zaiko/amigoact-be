@@ -124,6 +124,11 @@ Hai endpoint guest (không auth), phục vụ trang khám phá `/orgs` bên FE:
   một thư mục, tên file là UUID nên không đụng độ và không lộ tên gốc.
 - ScyllaDB chỉ giữ metadata (`media_assets` + `media_by_owner` với
   `owner_type = organization`); bytes nằm ở `MediaStore`.
+- Tài liệu sinh tự động (PDF chứng nhận) lưu qua `save_typed` với
+  `role = attachment`, `owner_type = certificate` — không vào gallery,
+  tải qua endpoint có phân quyền `GET /certificates/{id}/file` chứ không
+  qua upload. `application/pdf`/`.pdf` nằm trong allowlist nhưng
+  `media_kind` trả `None` nên user không upload được.
 - Xóa cứng gọi `delete_org_dir` rồi `sweep_orphans` (xóa thư mục không còn
   org nào trỏ tới). Thư mục `media/` đã gitignore, không bao giờ commit.
 
@@ -150,7 +155,10 @@ test (viết fake `MediaStore` như test media hiện tại). Đường dẫn t�
   mutation nên tự đồng bộ (org cũ trước bảng này cần backfill một lần,
   `CREATE TABLE IF NOT EXISTS` không đụng data hiện có).
 - `media_assets` + `media_by_owner`: metadata (`role` = `gallery`/`cover`/
-  `logo`) và feed mới-nhất-trước của từng org.
+  `logo`/`attachment`) và feed mới-nhất-trước của từng org.
+- `certificates_by_id`: feed `certificate_id -> (activity_id, student_id)`
+  cho download PDF (bảng chính partition theo `activity_id`); tạo bằng
+  `migrate/certificate_files.py` (additive, backfill idempotent).
 
 ## 8. Quy tắc quyền
 

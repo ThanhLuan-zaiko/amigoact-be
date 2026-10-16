@@ -18,10 +18,12 @@ def _uid() -> UUID:
 def test_kind_and_extension_mapping() -> None:
     assert media_kind("image/jpeg") == "image"
     assert media_kind("video/mp4; charset=binary") == "video"
+    # Documents (generated certificate PDFs) are saveable via save_typed
+    # but never classified as image/video, so uploads stay gated.
     assert media_kind("application/pdf") is None
     assert extension_for("image/jpeg", "photo.jpeg") == ".jpg"
     assert extension_for("video/mp4", "clip.MP4") == ".mp4"
-    assert extension_for("application/pdf", "doc.pdf") is None
+    assert extension_for("application/pdf", "doc.pdf") == ".pdf"
 
 
 def test_save_resolve_delete_roundtrip(tmp_path: Path) -> None:

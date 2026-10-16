@@ -87,6 +87,7 @@ class FakeCertificates(CertificateStore):
     def __init__(self) -> None:
         self.rows: dict[tuple[UUID, UUID], Any] = {}
         self.serials: dict[str, Any] = {}
+        self.by_id: dict[UUID, Any] = {}
 
     def issue(self, certificate_id, activity_id, student_id, registration_id, serial_no, issued_by, now, template_id=None):  # noqa: ANN001, ANN202
         from core.exceptions import CertificateExistsError
@@ -101,10 +102,18 @@ class FakeCertificates(CertificateStore):
         )
         self.rows[(activity_id, student_id)] = row
         self.serials[serial_no] = row
+        self.by_id[certificate_id] = row
         return row
 
     def get(self, activity_id, student_id):  # noqa: ANN001, ANN202
         return self.rows.get((activity_id, student_id))
+
+    def get_by_id(self, certificate_id):  # noqa: ANN001, ANN202
+        return self.by_id.get(certificate_id)
+
+    def attach_file(self, certificate, media_id, now):  # noqa: ANN001, ANN202
+        certificate.file_media_id = media_id
+        return certificate
 
     def get_by_serial(self, serial_no):  # noqa: ANN001, ANN202
         row = self.serials.get(serial_no)
