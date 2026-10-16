@@ -231,7 +231,7 @@ CREATE TABLE IF NOT EXISTS org_types (
 CREATE TABLE IF NOT EXISTS organization_members (
     org_id uuid,
     user_id uuid,
-    status text, // active | invited | suspended | left
+    status text, // active | invited | suspended | left | revoked
     invited_by uuid, // (deployed keyspaces: ALTER TABLE organization_members ADD invited_by uuid)
     joined_at timestamp,
     PRIMARY KEY ((org_id), user_id)
@@ -240,7 +240,7 @@ CREATE TABLE IF NOT EXISTS organization_members (
 CREATE TABLE IF NOT EXISTS members_by_user (
     user_id uuid,
     org_id uuid,
-    status text,
+    status text, // active | invited | suspended | left | revoked
     invited_by uuid, // (deployed keyspaces: ALTER TABLE members_by_user ADD invited_by uuid)
     joined_at timestamp,
     PRIMARY KEY ((user_id), org_id)

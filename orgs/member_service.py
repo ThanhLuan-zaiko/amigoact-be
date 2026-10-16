@@ -6,17 +6,11 @@ from typing import TYPE_CHECKING
 from uuid import UUID
 
 from core.exceptions import (
-    AlreadyInvitedError,
     AlreadyMemberError,
     ForbiddenError,
-    InvalidMemberStateError,
-    InvalidRoleError,
     InviteOnlyError,
     MemberNotFoundError,
-    NotFoundError,
-    OrgDeletedError,
     OwnerImmutableError,
-    UserNotFoundError,
 )
 from core.security import utcnow
 from orgs.interfaces import (
@@ -33,6 +27,7 @@ from orgs.member_helpers import (
     my_memberships,
     role_of,
 )
+from orgs.member_invitations import MemberInvitationsMixin
 from orgs.member_matching import MemberMatchingMixin
 from orgs.member_moderation import MemberModerationMixin
 from orgs.member_listing import (
@@ -50,7 +45,9 @@ if TYPE_CHECKING:
     from orgs.model import Organization
 
 
-class MemberService(MemberModerationMixin, MemberMatchingMixin):
+class MemberService(
+    MemberInvitationsMixin, MemberModerationMixin, MemberMatchingMixin
+):
     """Invite/accept/decline/join/leave/suspend/remove/role for orgs."""
 
     def __init__(
@@ -179,109 +176,6 @@ class MemberService(MemberModerationMixin, MemberMatchingMixin):
             self._members, self._orgs, self._access, self._users, user_id, status
         )
 
-    def invite_member(
-        self, org_id: UUID, actor_id: UUID, email: str, role: str = "member"
-    ) -> MemberSnapshot:
-        """Manager invites an account; left rows are re-invited in place."""
-        org = live_org(self._orgs, org_id)
-        self._require_manager(org, actor_id, "member:invite", "member.invite")
-        brief = self._users.find_by_email(email)
-        if brief is None or brief.status != "active":
-            raise UserNotFoundError("No account uses this email.")
-        if brief.id == org.owner_id:
-            raise AlreadyMemberError("The owner is already a member.")
-        row = self._members.get(org_id, brief.id)
-        if row is not None:
-            state = getattr(row, "status", "active") or "active"
-            if state == "invited":
-                raise AlreadyInvitedError("This user was already invited.")
-            if state in ("active", "suspended"):
-                raise AlreadyMemberError("This user is already a member.")
-        if role != "member":
-            if self._access.role_permissions_of(org_id, role) is None:
-                raise InvalidRoleError("Role is invalid.")
-            if role == "admin" and org.owner_id != actor_id:
-                raise self._deny(org.id, actor_id, "member.invite", brief.id)
-            if role != "admin" and org.owner_id != actor_id:
-                # Inviting straight into a custom role is a role-assign
-                # act: needs member:role-assign plus the subset rule.
-                assignable = (
-                    is_active_member(self._members, org_id, actor_id)
-                    and self._access.has_permission(
-                        org_id, actor_id, "member:role-assign"
-                    )
-                    and self._access.role_permissions_of(
-                        org_id, role
-                    )
-                    <= self._access.effective_permissions(org_id, actor_id)
-                )
-                if not assignable:
-                    raise self._deny(
-                        org.id, actor_id, "member.invite", brief.id
-                    )
-        now = utcnow()
-        if row is None:
-            self._members.put(
-                org_id, brief.id, "invited", now, invited_by=actor_id
-            )
-        else:
-            self._members.set_status(
-                org_id, brief.id, "invited", now, invited_by=actor_id
-            )
-        if role != "member":
-            self._access.assign(org_id, actor_id, brief.id, role)
-        self._audit(org_id, actor_id, "member.invite", brief.id)
-        self._emit(org_id, "invited", brief.id, actor_id, notify=brief.id)
-        if self._notifications is not None:
-            try:
-                self._notifications.notify(
-                    brief.id,
-                    "membership",
-                    f"L\u1eddi m\u1eddi v\u00e0o {org.name}",
-                    "B\u1ea1n \u0111\u01b0\u1ee3c m\u1eddi tham gia t\u1ed5 ch\u1ee9c. V\u00e0o H\u1ed9p th\u01b0 l\u1eddi m\u1eddi \u0111\u1ec3 ph\u1ea3n h\u1ed3i.",
-                    f'{{"org_id": "{org_id}", "org_slug": "{org.slug}"}}',
-                )
-            except Exception:  # noqa: BLE001 - notifications are best-effort
-                pass
-        fresh = self._members.get(org_id, brief.id)
-        assert fresh is not None
-        return member_snapshot(
-            self._users, org, fresh, self._access.role_map(org_id), show_email=True
-        )
-
-    def _transition_invite(
-        self,
-        org_id: UUID,
-        user_id: UUID,
-        target: str,
-        action: str,
-        event: str,
-    ) -> MemberSnapshot:
-        org = live_org(self._orgs, org_id)
-        row = self._members.get(org_id, user_id)
-        if row is None or row.status != "invited":
-            raise InvalidMemberStateError("No pending invitation found.")
-        self._members.set_status(org_id, user_id, target, utcnow())
-        self._audit(org_id, user_id, action, user_id)
-        self._emit(org_id, event, user_id, user_id, notify=user_id)
-        fresh = self._members.get(org_id, user_id)
-        assert fresh is not None
-        return member_snapshot(
-            self._users, org, fresh, self._access.role_map(org_id), show_email=True
-        )
-
-    def accept_invitation(self, org_id: UUID, user_id: UUID) -> MemberSnapshot:
-        """Invitee accepts: invited -> active."""
-        return self._transition_invite(
-            org_id, user_id, "active", "member.accept", "accepted"
-        )
-
-    def decline_invitation(self, org_id: UUID, user_id: UUID) -> MemberSnapshot:
-        """Invitee declines: invited -> left (audit kept)."""
-        return self._transition_invite(
-            org_id, user_id, "left", "member.decline", "declined"
-        )
-
     def join_org(self, org_id: UUID, user_id: UUID) -> MemberSnapshot:
         """Open orgs admit anyone instantly; invite orgs reject here."""
         org = live_org(self._orgs, org_id)
@@ -317,7 +211,7 @@ class MemberService(MemberModerationMixin, MemberMatchingMixin):
         if user_id == org.owner_id:
             raise OwnerImmutableError("The owner cannot leave or be removed.")
         row = self._members.get(org_id, user_id)
-        if row is None or row.status == "left":
+        if row is None or row.status in ("left", "revoked"):
             raise MemberNotFoundError("Member not found.")
         action = "member.leave" if actor_id == user_id else "member.remove"
         if actor_id != user_id:

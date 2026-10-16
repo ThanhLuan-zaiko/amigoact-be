@@ -8,12 +8,19 @@ from contextlib import asynccontextmanager
 from typing import Any
 
 from fastapi import FastAPI
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.routing import APIRoute, APIWebSocketRoute
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from core.config import get_settings
 from core.database import check_scylla_connection, connect
-from core.exceptions import DomainError, domain_error_handler
+from core.exceptions import (
+    DomainError,
+    domain_error_handler,
+    http_error_handler,
+    validation_error_handler,
+)
 from core.guard_middleware import GuardMiddleware
 from core.idempotency_middleware import IdempotencyMiddleware
 from core.no_store_middleware import NoStoreErrorsMiddleware
@@ -106,6 +113,8 @@ async def lifespan(app: FastAPI):
 
 app: FastAPI = FastAPI(title="AmigoACT API", lifespan=lifespan)
 app.add_exception_handler(DomainError, domain_error_handler)
+app.add_exception_handler(RequestValidationError, validation_error_handler)
+app.add_exception_handler(StarletteHTTPException, http_error_handler)
 # Guard sits inside CORS so its rejections still carry CORS headers.
 app.add_middleware(GuardMiddleware)
 app.add_middleware(IdempotencyMiddleware)

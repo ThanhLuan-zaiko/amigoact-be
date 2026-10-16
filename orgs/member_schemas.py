@@ -13,7 +13,7 @@ from orgs.schemas import BucketCount
 
 _EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
-MemberStatus = Literal["active", "invited", "suspended", "left"]
+MemberStatus = Literal["active", "invited", "suspended", "left", "revoked"]
 MemberSort = Literal["newest", "name", "role"]
 JoinPolicy = Literal["invite", "open"]
 

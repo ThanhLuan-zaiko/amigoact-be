@@ -121,7 +121,7 @@ class MemberModerationMixin:
         if user_id == org.owner_id:
             raise OwnerImmutableError("The owner cannot be modified.")
         row = self._members.get(org_id, user_id)
-        if row is None or row.status == "left":
+        if row is None or row.status in ("left", "revoked"):
             raise MemberNotFoundError("Member not found.")
         events: list[tuple[str, str | None]] = []
         if roles is not None:

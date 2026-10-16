@@ -127,3 +127,36 @@ async def test_left_audit_rows_survive(client: AsyncClient) -> None:
     assert left[0]["status"] == "left"
     counts = {c["bucket"]: c["count"] for c in roster.json()["counts"]}
     assert counts["left"] == 1
+
+
+async def test_revoked_invitation_contract(client: AsyncClient) -> None:
+    """DELETE .../invitation lands on 'revoked', distinct from 'left'."""
+    owner = await _token(client, "vown@example.com", "0912347007")
+    headers = _headers(owner)
+    org_id = await _make_org(client, headers, "v-club")
+
+    await _token(client, "vmem@example.com", "0912347008")
+    invited = await client.post(
+        f"/orgs/{org_id}/members", json={"email": "vmem@example.com"}, headers=headers
+    )
+    assert invited.status_code == 201
+    member_id = invited.json()["user_id"]
+
+    revoked = await client.delete(
+        f"/orgs/{org_id}/members/{member_id}/invitation", headers=headers
+    )
+    assert revoked.status_code == 204
+
+    roster = await client.get(f"/orgs/{org_id}/members", headers=headers)
+    row = [i for i in roster.json()["items"] if i["user_id"] == member_id]
+    assert len(row) == 1
+    assert row[0]["status"] == "revoked"
+    counts = {c["bucket"]: c["count"] for c in roster.json()["counts"]}
+    assert counts["revoked"] == 1
+
+    # A revoked link is no longer a member for remove/update purposes.
+    gone = await client.delete(
+        f"/orgs/{org_id}/members/{member_id}", headers=headers
+    )
+    assert gone.status_code == 404
+    assert gone.json()["code"] == "MEMBER_NOT_FOUND"

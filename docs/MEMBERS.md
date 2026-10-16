@@ -10,13 +10,17 @@ thành viên của một tổ chức. Phần phân quyền dựa trên hạ tầ
 
 | Trạng thái | Ý nghĩa | Chuyển tiếp hợp lệ |
 |---|---|---|
-| `invited` | Đã được mời, chờ chấp nhận | `accept` → `active`; `decline`/`remove` → `left` |
+| `invited` | Đã được mời, chờ chấp nhận | `accept` → `active`; `decline`/`remove` → `left`; `revoke` → `revoked` |
 | `active` | Thành viên chính thức | `suspend` → `suspended`; `leave`/`remove` → `left` |
 | `suspended` | Tạm khóa (mất quyền truy cập) | `reactivate` → `active`; `remove` → `left` |
-| `left` | Đã rời/bị xóa — **giữ lại làm audit, không xóa row** | mời lại → `invited`; `open` join → `active` |
+| `left` | Đã rời/từ chối/bị xóa — **giữ lại làm audit, không xóa row** | mời lại → `invited`; `open` join → `active` |
+| `revoked` | Lời mời bị quản lý thu hồi trước khi được phản hồi — audit riêng, không trùng `left` | mời lại → `invited`; `open` join → `active` |
 
 Mọi hành động rời/từ chối/xóa đều ghi `status='left'` thay vì xóa bản
-ghi, đúng ý đồ audit của `schemas.cql`.
+ghi, đúng ý đồ audit của `schemas.cql`. Riêng thu hồi lời mời ghi
+`status='revoked'` để nhật ký phân biệt "tổ chức rút lời mời" với
+"người dùng tự rời/từ chối". Row `revoked` không còn là member:
+`PATCH`/`DELETE member` trả `404 MEMBER_NOT_FOUND`.
 
 ### 1.2 Chính sách gia nhập (`organizations.join_policy`)
 
@@ -49,6 +53,7 @@ Tất cả endpoint yêu cầu Bearer token. Lỗi trả về envelope `{code, m
 | `POST /orgs/{id}/members` `{email, role?}` | owner, admin | `201` row `invited` |
 | `PATCH /orgs/{id}/members/{uid}` `{role?|status?}` | role: owner; status: owner/admin | `200` |
 | `DELETE /orgs/{id}/members/{uid}` | owner/admin; self = rời | `204`, status `left` |
+| `DELETE /orgs/{id}/members/{uid}/invitation` | quyền `member:invite` | `204`, status `revoked`; `400 INVALID_MEMBER_STATE` nếu không còn chờ |
 | `POST /orgs/{id}/members/join` | ai cũng được | `open`: `201 active`; `invite`: `403 INVITE_ONLY` |
 | `POST /orgs/{id}/members/me/accept` | người được mời | `200` `invited → active` |
 | `POST /orgs/{id}/members/me/decline` | người được mời | `200` `invited → left` |
@@ -101,6 +106,7 @@ làm hỏng request.
 | Xem roster đầy đủ + email | ✅ | ✅ | chỉ `active`, không email | ❌ |
 | Mời | ✅ | ✅ | ❌ | ❌ |
 | Mời làm admin | ✅ | ❌ | ❌ | ❌ |
+| Thu hồi lời mời đang chờ | ✅ | ✅ (trừ invite gắn role admin) | ❌ | ❌ |
 | Suspend/reactivate/remove member thường | ✅ | ✅ | ❌ | ❌ |
 | Đụng owner/admin (status/remove) | owner đụng admin ✅ | ❌ | ❌ | ❌ |
 | Gán/thu hồi admin | ✅ | ❌ | ❌ | ❌ |
@@ -115,7 +121,7 @@ Admin muốn quản lý phải đồng thời là member `active` và có quyề
 | HTTP | `code` | Ý nghĩa |
 |---|---|---|
 | 400 | `OWNER_IMMUTABLE` | Owner không thể rời/bị xóa/bị sửa |
-| 400 | `INVALID_MEMBER_STATE` | Chuyển trạng thái không hợp lệ |
+| 400 | `INVALID_MEMBER_STATE` | Chuyển trạng thái không hợp lệ (kể cả thu hồi lời mời không còn chờ) |
 | 400 | `INVALID_ROLE` | Vai trò không tồn tại |
 | 403 | `FORBIDDEN` | Thiếu quyền (member thường/khách) |
 | 403 | `INVITE_ONLY` | Org chỉ nhận lời mời |
@@ -131,7 +137,7 @@ Sau mỗi mutation thành công, `MemberService` phát qua port
 
 - `members:{org_id}`: roster đổi — action
   `invited`/`accepted`/`declined`/`joined`/`promoted`/`demoted`/
-  `suspended`/`reactivated`/`removed`/`left`.
+  `suspended`/`reactivated`/`removed`/`left`/`revoked`.
 - `notifications:{user_id}`: người được mời/bị tác động nhận push
   `scope: "membership"` để inbox/badge cập nhật ngay cả khi họ chưa
   (hoặc không còn) là member.

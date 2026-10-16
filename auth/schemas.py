@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from typing import Annotated, Literal
 from uuid import UUID
 
@@ -183,7 +183,7 @@ class ChangePasswordRequest(BaseModel):
 
 def validate_date_of_birth(value: date) -> date:
     """Reject future birthdays and implausible old ones."""
-    today = datetime.now().date()
+    today = datetime.now(timezone.utc).date()
     if value > today or value.year < 1900:
         raise ValueError("Date of birth must be a past date after 1900.")
     return value

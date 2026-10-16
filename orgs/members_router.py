@@ -196,6 +196,23 @@ def remove_member(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
+@router.delete(
+    "/orgs/{org_id}/members/{user_id}/invitation",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_class=Response,
+    response_model=None,
+)
+def revoke_invitation(
+    org_id: UUID,
+    user_id: UUID,
+    current_user: CurrentUser = Depends(get_current_user),
+    service: MemberService = Depends(get_member_service),
+) -> Response:
+    """Inviter withdraws a pending invitation; status revoked."""
+    service.revoke_invitation(org_id, current_user.id, user_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @router.post(
     "/orgs/{org_id}/members/join",
     response_model=MemberResponse,

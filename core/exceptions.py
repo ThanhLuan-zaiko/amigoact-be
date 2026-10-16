@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 from fastapi import Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 
 class DomainError(Exception):
@@ -251,4 +253,42 @@ async def domain_error_handler(_: Request, exc: DomainError) -> JSONResponse:
     """Render every domain failure as {"code": ..., "message": ...}."""
     return JSONResponse(
         status_code=exc.status, content={"code": exc.code, "message": exc.message}
+    )
+
+
+def validation_message(errors: list[dict]) -> str:
+    """First pydantic error as 'field: reason' for API consumers."""
+    if not errors:
+        return "Request validation failed."
+    first = errors[0]
+    loc = ".".join(
+        str(part) for part in first.get("loc", ()) if part != "body"
+    )
+    message = first.get("msg", "Invalid value.")
+    return f"{loc}: {message}" if loc else message
+
+
+async def validation_error_handler(
+    _: Request, exc: RequestValidationError
+) -> JSONResponse:
+    """Reshape pydantic 422s into the shared {code, message} envelope."""
+    return JSONResponse(
+        status_code=422,
+        content={
+            "code": "VALIDATION_ERROR",
+            "message": validation_message(exc.errors()),
+        },
+    )
+
+
+async def http_error_handler(
+    _: Request, exc: StarletteHTTPException
+) -> JSONResponse:
+    """Same envelope for stray HTTP errors (unknown routes, 405s)."""
+    code = "NOT_FOUND" if exc.status_code == 404 else "REQUEST_FAILED"
+    message = exc.detail if isinstance(exc.detail, str) else "Request failed."
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"code": code, "message": message},
+        headers=getattr(exc, "headers", None),
     )

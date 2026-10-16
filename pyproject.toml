@@ -1,7 +1,7 @@
 [project]
 name = "amigoact-be"
 version = "0.1.0"
-description = "Add your description here"
+description = "AmigoACT backend: FastAPI + ScyllaDB platform for volunteer orgs"
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
