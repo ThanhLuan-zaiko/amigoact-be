@@ -9,16 +9,24 @@ from fastapi import APIRouter, Depends
 
 from certificates.schemas import (
     CertificateResponse,
+    IssueBody,
     MyCertificateResponse,
     RevokeBody,
+    TemplateBody,
+    TemplatePatchBody,
+    TemplateResponse,
     VerifyResponse,
 )
 from core.dependencies import CurrentUser, get_current_user
-from core.dependencies_features import get_certificate_service
+from core.dependencies_features import (
+    get_certificate_service,
+    get_template_service,
+)
 
 if TYPE_CHECKING:
-    from certificates.model import Certificate
+    from certificates.model import Certificate, CertificateTemplate
     from certificates.service import CertificateService
+    from certificates.template_service import TemplateService
 
 router = APIRouter(tags=["certificates"])
 
@@ -42,12 +50,16 @@ def _response(row: Certificate) -> CertificateResponse:
 def issue(
     activity_id: UUID,
     student_id: UUID,
+    body: IssueBody | None = None,
     current: CurrentUser = Depends(get_current_user),
     service: CertificateService = Depends(get_certificate_service),
 ) -> CertificateResponse:
     """Issue a certificate for an attended registration."""
     return _response(
-        service.issue(activity_id, student_id, current.id)
+        service.issue(
+            activity_id, student_id, current.id,
+            body.template_id if body else None,
+        )
     )
 
 
@@ -123,4 +135,71 @@ def verify(
         activity_title=result.activity_title,
         student_name=result.student_name,
         issued_at=result.issued_at,  # type: ignore[arg-type]
+    )
+
+
+def _template(row: CertificateTemplate) -> TemplateResponse:
+    return TemplateResponse(
+        template_id=row.template_id,
+        org_id=row.org_id,
+        name=row.name,
+        background_media_id=row.background_media_id,
+        layout_json=row.layout_json,
+        is_active=row.is_active,
+        created_at=row.created_at,
+    )
+
+
+@router.get(
+    "/orgs/{org_id}/certificate-templates",
+    response_model=list[TemplateResponse],
+)
+def list_templates(
+    org_id: UUID,
+    current: CurrentUser = Depends(get_current_user),
+    service: TemplateService = Depends(get_template_service),
+) -> list[TemplateResponse]:
+    """Manager reads the org's certificate template library."""
+    return [
+        _template(t) for t in service.list(org_id, current.id)
+    ]
+
+
+@router.post(
+    "/orgs/{org_id}/certificate-templates",
+    response_model=TemplateResponse,
+    status_code=201,
+)
+def create_template(
+    org_id: UUID,
+    body: TemplateBody,
+    current: CurrentUser = Depends(get_current_user),
+    service: TemplateService = Depends(get_template_service),
+) -> TemplateResponse:
+    """Register a background/layout pair for certificate issuance."""
+    return _template(
+        service.create(
+            org_id, current.id, body.name,
+            body.background_media_id, body.layout_json,
+        )
+    )
+
+
+@router.patch(
+    "/orgs/{org_id}/certificate-templates/{template_id}",
+    response_model=TemplateResponse,
+)
+def update_template(
+    org_id: UUID,
+    template_id: UUID,
+    body: TemplatePatchBody,
+    current: CurrentUser = Depends(get_current_user),
+    service: TemplateService = Depends(get_template_service),
+) -> TemplateResponse:
+    """Patch name/background/layout or toggle active."""
+    return _template(
+        service.update(
+            org_id, template_id, current.id, body.name,
+            body.background_media_id, body.layout_json, body.is_active,
+        )
     )

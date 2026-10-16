@@ -78,20 +78,7 @@ def test_db() -> str:
     from cassandra.cqlengine.management import sync_table
     from cassandra.io.asyncioreactor import AsyncioConnection
 
-    import activities.model as activity_models
-    import admin.model as admin_models
-    import auth.model as models
-    import certificates.model as cert_models
-    import chat.model as chat_models
-    import hours.model as hour_models
-    import notifications.model as notification_models
-    import orgs.model as org_models
-    import posts.model as post_models
-    import profiles.model as profile_models
-    import rbac.model as rbac_models
-    import realtime.model as realtime_models
-    import registrations.model as reg_models
-    import reviews.model as review_models
+    from tests.sync_models import SYNC_MODELS
 
     cluster = Cluster(
         ["127.0.0.1"],
@@ -110,98 +97,7 @@ def test_db() -> str:
     finally:
         cluster.shutdown()
 
-    targets = [
-        models.User,
-        models.UsersByEmail,
-        models.UsersByPhone,
-        models.AuthRefreshToken,
-        models.RefreshTokenByUser,
-        models.RefreshTokenByFamily,
-        models.EmailVerification,
-        models.PasswordReset,
-        org_models.Organization,
-        org_models.OrganizationsBySlug,
-        org_models.OrganizationsByTaxCode,
-        org_models.OrganizationsByLegalStatus,
-        org_models.OrganizationsPublic,
-        org_models.OrganizationMember,
-        org_models.MemberByUser,
-        org_models.MediaAsset,
-        org_models.MediaByOwner,
-        org_models.MediaByHash,
-        org_models.MediaByUploader,
-        rbac_models.Role,
-        rbac_models.RolesByOrg,
-        rbac_models.Permission,
-        rbac_models.RolePermission,
-        rbac_models.UserRole,
-        rbac_models.RolesByUser,
-        rbac_models.UserPermissionGrant,
-        rbac_models.AccessAuditLog,
-        rbac_models.AccessAuditByResource,
-        admin_models.PlatformUserRole,
-        admin_models.PlatformRoleRoster,
-        notification_models.Notification,
-        notification_models.NotificationsByUser,
-        profile_models.StudentProfile,
-        profile_models.EmergencyContact,
-        profile_models.Skill,
-        profile_models.SkillBySlug,
-        profile_models.UserSkill,
-        profile_models.UserBySkill,
-        activity_models.Activity,
-        activity_models.ActivitiesByOrg,
-        activity_models.ActivitiesByStatus,
-        activity_models.ActivitiesByCategory,
-        activity_models.ActivitiesBySlug,
-        activity_models.ActivityCategory,
-        activity_models.ActivitySkill,
-        activity_models.ActivityPartner,
-        activity_models.PartnerActivitiesByOrg,
-        activity_models.ActivitySchedule,
-        activity_models.ScheduleByActivity,
-        activity_models.ActivityStaff,
-        activity_models.ActivityAnnouncement,
-        reg_models.Registration,
-        reg_models.RegistrationsByActivity,
-        reg_models.RegistrationsByStudent,
-        reg_models.RegistrationsByActivityStudent,
-        reg_models.RegistrationsByToken,
-        reg_models.RegistrationStatusHistory,
-        reg_models.WaitlistEntry,
-        reg_models.AttendanceRecord,
-        reg_models.AttendanceByRegistration,
-        reg_models.AttendanceByActivity,
-        reg_models.AttendanceByStudent,
-        hour_models.VolunteerHourEntry,
-        hour_models.HoursByStudent,
-        hour_models.HourEntriesByStudent,
-        hour_models.HoursByActivity,
-        hour_models.PendingHoursByOrg,
-        hour_models.HourAdjustment,
-        hour_models.LeaderboardByTerm,
-        hour_models.LeaderboardTerm,
-        review_models.ReviewsByActivity,
-        review_models.ReviewsByStudent,
-        notification_models.NotificationPreference,
-        cert_models.Certificate,
-        cert_models.CertificatesByStudent,
-        cert_models.CertificatesBySerial,
-        cert_models.CertificateRevocation,
-        realtime_models.WsTicket,
-        post_models.OrgPost,
-        post_models.OrgPostFeed,
-        post_models.AnnouncementFeed,
-        post_models.OrgPostPinned,
-        post_models.OrgPostDraft,
-        post_models.OrgPostTrash,
-        post_models.OrgPostMedia,
-        post_models.OrgPostComment,
-        chat_models.OrgRoomMessage,
-        chat_models.OrgRoomRead,
-        chat_models.OrgDmPair,
-        chat_models.OrgDmRoom,
-    ]
+    targets = SYNC_MODELS
     saved = {model: model.__keyspace__ for model in targets}
     try:
         for model in targets:

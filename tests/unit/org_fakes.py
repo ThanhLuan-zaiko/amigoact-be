@@ -139,12 +139,13 @@ class FakeMedia(MediaRepository):
     def __init__(self) -> None:
         self.assets: dict[UUID, Any] = {}
 
-    def create_asset(self, asset_id, org_id, file_url, mime, size_bytes, now, role="gallery", file_hash=None, uploader_id=None, original_name=None):  # noqa: ANN001, ANN202
+    def create_asset(self, asset_id, org_id, file_url, mime, size_bytes, now, role="gallery", file_hash=None, uploader_id=None, original_name=None, owner_type="organization"):  # noqa: ANN001, ANN202
         row = SimpleNamespace(
             asset_id=asset_id, owner_id=org_id, file_url=file_url,
             mime=mime, size_bytes=size_bytes, role=role, created_at=now,
             file_hash=file_hash, uploader_id=uploader_id,
             original_name=original_name, upload_status="active",
+            owner_type=owner_type,
         )
         self.assets[asset_id] = row
         return row
@@ -176,6 +177,11 @@ class FakeMedia(MediaRepository):
 
     def delete_asset(self, asset_id):  # noqa: ANN001, ANN202
         return self.assets.pop(asset_id, None)
+
+    def set_upload_status(self, asset_id, status):  # noqa: ANN001, ANN202
+        row = self.assets.get(asset_id)
+        if row is not None:
+            row.upload_status = status
 
     def known_org_ids(self):  # noqa: ANN001, ANN202
         return {str(a.owner_id) for a in self.assets.values()}

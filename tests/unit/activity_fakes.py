@@ -17,6 +17,7 @@ from activities.interfaces import (
     AnnouncementStore,
     CategoryStore,
     ScheduleStore,
+    SlotStore,
 )
 from activities.service import ActivityService
 from tests.unit.member_fakes import FakeAccess, FakeUsers
@@ -175,6 +176,47 @@ class FakeSchedules(ScheduleStore):
         if row is None or row.activity_id != activity_id:
             return False
         del self.rows[schedule_id]
+        return True
+
+
+class FakeSlots(SlotStore):
+    """Resolves activity-wide listing through the schedules feed."""
+
+    def __init__(self, schedules: FakeSchedules | None = None) -> None:
+        self.rows: dict[UUID, Any] = {}
+        self._schedules = schedules
+
+    def list(self, schedule_id):  # noqa: ANN001, ANN202
+        return [
+            r for r in self.rows.values() if r.schedule_id == schedule_id
+        ]
+
+    def list_for_activity(self, activity_id):  # noqa: ANN001, ANN202
+        schedule_ids = (
+            {s.id for s in self._schedules.list(activity_id)}
+            if self._schedules is not None
+            else set(self.rows.keys())
+        )
+        return [
+            r
+            for r in self.rows.values()
+            if r.schedule_id in schedule_ids
+        ]
+
+    def create(self, slot_id, schedule_id, title, capacity, start_at, end_at):  # noqa: ANN001, ANN202
+        row = SimpleNamespace(
+            slot_id=slot_id, schedule_id=schedule_id, title=title,
+            capacity=capacity, registered=0, start_at=start_at,
+            end_at=end_at,
+        )
+        self.rows[slot_id] = row
+        return row
+
+    def delete(self, schedule_id, slot_id):  # noqa: ANN001, ANN202
+        row = self.rows.get(slot_id)
+        if row is None or row.schedule_id != schedule_id:
+            return False
+        del self.rows[slot_id]
         return True
 
 

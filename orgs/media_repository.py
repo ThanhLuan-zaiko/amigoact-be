@@ -44,11 +44,12 @@ class CqlMediaRepository(MediaRepository):
         file_hash: str | None = None,
         uploader_id: UUID | None = None,
         original_name: str | None = None,
+        owner_type: str = "organization",
     ) -> MediaAsset:
         row = MediaAsset.create(
             asset_id=asset_id,
             owner_id=org_id,
-            owner_type="organization",
+            owner_type=owner_type,
             file_url=file_url,
             file_hash=file_hash,
             mime=mime,
@@ -69,7 +70,7 @@ class CqlMediaRepository(MediaRepository):
             asset_id=asset_id,
             file_url=file_url,
             mime=mime,
-            owner_type="organization",
+            owner_type=owner_type,
         )
         if file_hash:
             MediaByHash.create(file_hash=file_hash, asset_id=asset_id)
@@ -155,6 +156,9 @@ class CqlMediaRepository(MediaRepository):
         media_feeds_delete(row)
         row.delete()
         return row
+
+    def set_upload_status(self, asset_id: UUID, status: str) -> None:
+        MediaAsset.objects(asset_id=asset_id).update(upload_status=status)
 
     def known_org_ids(self) -> set[str]:
         return {str(org.id) for org in Organization.objects.all()}

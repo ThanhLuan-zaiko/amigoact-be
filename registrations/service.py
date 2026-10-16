@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
 from uuid import UUID
 
-from activities.interfaces import ActivityStore
+from activities.interfaces import (
+    ActivityStore,
+    RegistrationFormStore,
+    SlotStore,
+)
 from core.exceptions import (
     ForbiddenError,
     InvalidRegistrationStateError,
@@ -24,26 +27,14 @@ from registrations.interfaces import (
     AttendanceStore,
     RegistrationStore,
 )
-from registrations.model import Registration, RegistrationStatusHistory
+from registrations.model import Registration
+from registrations.queries import RegistrationQueriesMixin
+from registrations.waitlist import WaitlistMixin
 
 APPLYABLE_STATUSES = {"published", "ongoing"}
 REVIEW_TARGETS = {"approved", "rejected", "waitlisted"}
 CANCELLABLE_STATUSES = {"pending", "approved", "waitlisted"}
 TERMINAL_STATUSES = {"cancelled", "rejected"}
-
-
-@dataclass(frozen=True)
-class RosterItem:
-    """Manager view of one application with student contact."""
-
-    registration_id: UUID
-    student_id: UUID
-    student_name: str
-    student_email: str | None
-    status: str
-    note: str | None
-    review_note: str | None
-    registered_at: object
 
 
 class _RegistrationBase:
@@ -60,6 +51,8 @@ class _RegistrationBase:
         notifications: NotificationPort | None = None,
         hours: HourRecorder | None = None,
         events: AttendanceEvents | None = None,
+        forms: RegistrationFormStore | None = None,
+        slots: SlotStore | None = None,
     ) -> None:
         self._registrations = registrations
         self._attendance = attendance
@@ -70,6 +63,8 @@ class _RegistrationBase:
         self._notifications = notifications
         self._hours = hours
         self._events = events
+        self._forms = forms
+        self._slots = slots
 
     def _activity(self, activity_id: UUID) -> object:
         row = self._activities.get(activity_id)
@@ -108,11 +103,43 @@ class _RegistrationBase:
             pass
 
 
-class RegistrationService(_RegistrationBase):
+class RegistrationService(
+    RegistrationQueriesMixin, WaitlistMixin, _RegistrationBase
+):
     """Apply/review/cancel flows around the activity lifecycle."""
 
+    def _validate_form(
+        self, activity_id: UUID, answers: dict | None
+    ) -> str | None:
+        """Check required custom questions; return JSON for storage."""
+        questions = (
+            self._forms.list_form(activity_id) if self._forms else []
+        )
+        if not questions:
+            return None
+        answers = answers or {}
+        for q in questions:
+            if q.required and not str(
+                answers.get(str(q.question_id), "")
+            ).strip():
+                raise InvalidRegistrationStateError(
+                    f"Missing required answer: {q.label}"
+                )
+        keep = {
+            str(q.question_id)
+            for q in questions
+        }
+        return json.dumps(
+            {k: str(v)[:2000] for k, v in answers.items() if k in keep}
+        )
+
     def apply(
-        self, activity_id: UUID, student_id: UUID, note: str | None
+        self,
+        activity_id: UUID,
+        student_id: UUID,
+        note: str | None,
+        form_data: dict | None = None,
+        slot_id: UUID | None = None,
     ) -> Registration:
         """Published/ongoing activities accept applications until deadline."""
         activity = self._activity(activity_id)
@@ -125,9 +152,24 @@ class RegistrationService(_RegistrationBase):
             raise RegistrationClosedError(
                 "The registration deadline has passed."
             )
+        form_json = self._validate_form(activity_id, form_data)
+        slot = None
+        if slot_id is not None:
+            if self._slots is not None:
+                slot = next(
+                    (
+                        s
+                        for s in self._slots.list_for_activity(activity_id)
+                        if s.slot_id == slot_id
+                    ),
+                    None,
+                )
+            if slot is None:
+                raise NotFoundError("Slot not found.")
+        effective_slot = slot.slot_id if slot is not None else UUID(int=0)
         now = utcnow()
         guard = self._registrations.get_for_student(
-            activity_id, student_id, UUID(int=0)
+            activity_id, student_id, effective_slot
         )
         token = uuid7()
         if guard is not None and guard.status not in TERMINAL_STATUSES:
@@ -136,28 +178,32 @@ class RegistrationService(_RegistrationBase):
             raise AlreadyRegisteredError(
                 "You already registered for this activity."
             )
-        capacity = getattr(activity, "max_participants", None)
+        capacity = (
+            getattr(slot, "capacity", None)
+            if slot is not None
+            else getattr(activity, "max_participants", None)
+        )
         status = "pending"
-        if (
-            capacity is not None
-            and self._registrations.count_active(activity_id) >= capacity
-        ):
+        if capacity is not None and self._registrations.count_active(
+            activity_id,
+            effective_slot if slot is not None else None,
+        ) >= capacity:
             status = "waitlisted"
         if guard is not None:
             row = self._registrations.reapply(
                 uuid7(), activity_id, student_id, note, token, now,
-                status=status,
+                status=status, form_data=form_json, slot_id=effective_slot,
             )
             from_status = guard.status
         else:
             row = self._registrations.create(
                 activity_id, student_id, note, token, now,
-                status=status,
+                status=status, form_data=form_json, slot_id=effective_slot,
             )
             from_status = None
         if status == "waitlisted":
             self._registrations.enqueue_waitlist(
-                activity_id, student_id, now
+                activity_id, student_id, effective_slot, now
             )
         self._registrations.record_history(
             row.registration_id, from_status, status, student_id,
@@ -198,7 +244,9 @@ class RegistrationService(_RegistrationBase):
         )
         assert updated is not None
         if target == "approved" and from_status == "waitlisted":
-            self._mark_waitlist(activity_id, row.student_id, "promoted", now)
+            self._mark_waitlist(
+                activity_id, row.student_id, row.slot_id, "promoted", now
+            )
         self._registrations.record_history(
             registration_id, from_status, target, reviewer_id,
             review_note, now,
@@ -250,130 +298,8 @@ class RegistrationService(_RegistrationBase):
         )
         if from_status == "waitlisted":
             self._mark_waitlist(
-                activity_id, student_id, "expired", None
+                activity_id, student_id, row.slot_id, "expired", None
             )
         elif from_status == "approved":
-            self._promote_next(activity, student_id)
+            self._promote_next(activity, row.slot_id, student_id)
         return updated
-
-    def _mark_waitlist(
-        self,
-        activity_id: UUID,
-        student_id: UUID,
-        status: str,
-        promoted_at,
-    ) -> None:
-        """Flip the student's waiting entry, if one exists."""
-        for entry in self._registrations.list_waitlist(
-            activity_id, "waiting"
-        ):
-            if entry.student_id == student_id:
-                self._registrations.mark_waitlist(
-                    activity_id, entry.joined_at, entry.waitlist_id,
-                    status, promoted_at,
-                )
-
-    def _promote_next(self, activity: object, actor_id: UUID) -> None:
-        """A freed slot approves the oldest still-waitlisted applicant."""
-        capacity = getattr(activity, "max_participants", None)
-        if capacity is None or (
-            self._registrations.count_active(activity.id) >= capacity
-        ):
-            return
-        now = utcnow()
-        for entry in self._registrations.list_waitlist(
-            activity.id, "waiting"
-        ):
-            guard = self._registrations.get_for_student(
-                activity.id, entry.student_id, UUID(int=0)
-            )
-            row = (
-                self._registrations.get(guard.registration_id)
-                if guard is not None
-                else None
-            )
-            if row is None or row.status != "waitlisted":
-                self._registrations.mark_waitlist(
-                    activity.id, entry.joined_at, entry.waitlist_id,
-                    "expired", None,
-                )
-                continue
-            self._registrations.set_status(
-                row.registration_id, "approved", None,
-                "promoted from waitlist", now,
-            )
-            self._registrations.mark_waitlist(
-                activity.id, entry.joined_at, entry.waitlist_id,
-                "promoted", now,
-            )
-            self._registrations.record_history(
-                row.registration_id, "waitlisted", "approved", actor_id,
-                "promoted from waitlist", now,
-            )
-            self._notify(
-                row.student_id,
-                "\u0110\u0103ng k\u00fd \u0111\u01b0\u1ee3c duy\u1ec7t",
-                f"\u0110\u01a1n tham gia {activity.title} \u0111\u01b0\u1ee3c duy\u1ec7t t\u1eeb danh s\u00e1ch ch\u1edd.",
-                {
-                    "activity_id": str(activity.id),
-                    "org_id": str(activity.org_id),
-                    "activity_slug": activity.slug,
-                },
-            )
-            return
-
-    def list_for_activity(
-        self, activity_id: UUID, viewer_id: UUID
-    ) -> list[RosterItem]:
-        """Manager roster with the applicant's name and email attached."""
-        activity = self._activity(activity_id)
-        self._require_manager(
-            activity.org_id, viewer_id, "registration.list"
-        )
-        rows = self._registrations.list_by_activity(activity_id)
-        return [
-            RosterItem(
-                registration_id=row.registration_id,
-                student_id=row.student_id,
-                student_name=(
-                    brief.full_name
-                    if (brief := self._users.get_brief(row.student_id))
-                    else "Ng\u01b0\u1eddi d\u00f9ng"
-                ),
-                student_email=brief.email if brief else None,
-                status=row.status,
-                note=row.note,
-                review_note=row.review_note,
-                registered_at=row.registered_at,
-            )
-            for row in rows
-        ]
-
-    def list_mine(self, student_id: UUID) -> list[Registration]:
-        """Applicant's own history, newest first."""
-        return self._registrations.list_by_student(student_id)
-
-    def history(
-        self, activity_id: UUID, registration_id: UUID, viewer_id: UUID
-    ) -> list[RegistrationStatusHistory]:
-        """Audit feed visible to the applicant and org managers."""
-        activity = self._activity(activity_id)
-        row = self._registrations.get(registration_id)
-        if row is None or row.activity_id != activity_id:
-            raise NotFoundError("Registration not found.")
-        if row.student_id != viewer_id:
-            self._require_manager(
-                activity.org_id, viewer_id, "registration.history"
-            )
-        return self._registrations.list_history(registration_id)
-
-    def my_ticket(
-        self, activity_id: UUID, registration_id: UUID, user_id: UUID
-    ) -> Registration:
-        """QR payload only resolves for the applicant themselves."""
-        row = self._registrations.get(registration_id)
-        if row is None or row.activity_id != activity_id:
-            raise NotFoundError("Registration not found.")
-        if row.student_id != user_id:
-            raise ForbiddenError("Only the applicant can view this ticket.")
-        return row

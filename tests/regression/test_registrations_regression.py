@@ -16,6 +16,7 @@ _REG_KEYS = {
     "registered_at",
     "reviewed_at",
     "cancelled_at",
+    "slot_id",
 }
 _ROSTER_KEYS = {
     "registration_id",
@@ -26,6 +27,8 @@ _ROSTER_KEYS = {
     "note",
     "review_note",
     "registered_at",
+    "form_data",
+    "slot_id",
 }
 _TICKET_KEYS = {"registration_id", "checkin_token", "activity_id", "status"}
 _ATT_KEYS = {

@@ -18,6 +18,8 @@ from core.dependencies import (
 )
 
 if TYPE_CHECKING:
+    from activities.form_service import FormService
+    from activities.slot_service import SlotService
     from chat.service import ChatService
     from notifications.service import NotificationService
     from posts.comments_service import CommentService
@@ -151,4 +153,99 @@ def get_chat_service(
         access=access,
         events=WsChatEvents(getattr(request.app.state, "ws_manager", None)),
         activities=CqlActivityStore(settings.scylla_keyspace),
+    )
+
+
+def get_form_service(
+    request: Request,
+    settings: Settings = Depends(get_settings),
+    access: AccessControl = Depends(get_access_control),
+) -> "FormService":
+    """Build one FormService over the registration_forms table."""
+    from activities.events import WsActivityEvents
+    from activities.form_service import FormService
+    from activities.slot_service import SlotService
+    from activities.links_repository import CqlRegistrationFormStore
+    from activities.repository import CqlActivityStore
+    from orgs.repository import CqlOrgRepository
+
+    return FormService(
+        activities=CqlActivityStore(settings.scylla_keyspace),
+        forms=CqlRegistrationFormStore(),
+        orgs=CqlOrgRepository(settings.scylla_keyspace),
+        access=access,
+        events=WsActivityEvents(
+            getattr(request.app.state, "ws_manager", None)
+        ),
+    )
+
+
+def get_slot_service(
+    request: Request,
+    settings: Settings = Depends(get_settings),
+    access: AccessControl = Depends(get_access_control),
+) -> "SlotService":
+    """Build one SlotService over activity_slots + registrations."""
+    from activities.events import WsActivityEvents
+    from activities.ops_repository import CqlScheduleStore, CqlSlotStore
+    from activities.repository import CqlActivityStore
+    from activities.slot_service import SlotService
+    from orgs.repository import CqlOrgRepository
+    from registrations.repository import CqlRegistrationStore
+
+    return SlotService(
+        activities=CqlActivityStore(settings.scylla_keyspace),
+        schedules=CqlScheduleStore(),
+        slots=CqlSlotStore(),
+        orgs=CqlOrgRepository(settings.scylla_keyspace),
+        access=access,
+        registrations=CqlRegistrationStore(settings.scylla_keyspace),
+        events=WsActivityEvents(
+            getattr(request.app.state, "ws_manager", None)
+        ),
+    )
+
+
+def get_activity_media_service(
+    settings: Settings = Depends(get_settings),
+    access: AccessControl = Depends(get_access_control),
+) -> "ActivityMediaService":
+    """Build one ActivityMediaService over activity_media + media_assets."""
+    from activities.media_repository import CqlActivityMediaStore
+    from activities.media_service import ActivityMediaService
+    from activities.repository import CqlActivityStore
+    from admin.repository import CqlModerationStore
+    from core.dependencies import get_media_store
+    from orgs.media_repository import CqlMediaRepository
+    from orgs.repository import CqlOrgRepository
+
+    return ActivityMediaService(
+        activities=CqlActivityStore(settings.scylla_keyspace),
+        orgs=CqlOrgRepository(settings.scylla_keyspace),
+        media=CqlMediaRepository(),
+        entries=CqlActivityMediaStore(),
+        store=get_media_store(settings),
+        access=access,
+        max_image_bytes=settings.media_max_image_mb * 1024 * 1024,
+        max_video_bytes=settings.media_max_video_mb * 1024 * 1024,
+        moderation=CqlModerationStore(),
+    )
+
+
+def get_structure_service(
+    settings: Settings = Depends(get_settings),
+    access: AccessControl = Depends(get_access_control),
+) -> "StructureService":
+    """Build one StructureService over campuses + departments."""
+    from orgs.repository import CqlOrgRepository
+    from orgs.structure_repository import CqlOrgTypeStore, CqlStructureStore
+    from orgs.structure_service import StructureService
+    from profiles.repository import CqlProfileStore
+
+    return StructureService(
+        orgs=CqlOrgRepository(settings.scylla_keyspace),
+        structure=CqlStructureStore(),
+        access=access,
+        profiles=CqlProfileStore(),
+        types=CqlOrgTypeStore(),
     )

@@ -10,21 +10,18 @@ from core.config import Settings, get_settings
 from core.dependencies import get_access_control, get_media_store
 from core.dependencies import get_notification_service, user_directory
 
-if TYPE_CHECKING:
-    from uuid import UUID
-
+if TYPE_CHECKING:  # pragma: no cover - type imports only
     from activities.detail_service import ActivityDetailService
     from activities.service import ActivityService
     from admin.service import AdminService
     from certificates.service import CertificateService
-    from core.realtime import ConnectionManager
+    from certificates.template_service import TemplateService
+    from hours.rule_service import RuleService
     from hours.service import HourService
     from notifications.service import NotificationService
     from orgs.public_service import PublicOrgService
     from profiles.service import ProfileService
     from rbac.interfaces import AccessControl
-    from registrations.attendance_service import AttendanceService
-    from registrations.service import RegistrationService
     from reviews.service import ReviewService
     from stats.service import OrgStatsService
     from audit.service import AuditService
@@ -37,9 +34,10 @@ def get_admin_service(
     notifications: NotificationService = Depends(get_notification_service),
 ) -> AdminService:
     """Build one AdminService per request over org plus platform tables."""
-    from admin.repository import CqlPlatformRoleStore
+    from admin.repository import CqlModerationStore, CqlPlatformRoleStore
     from admin.service import AdminService
     from orgs.directory_events import WsOrgDirectoryEvents
+    from orgs.media_repository import CqlMediaRepository
     from orgs.repository import CqlOrgRepository
 
     return AdminService(
@@ -52,6 +50,8 @@ def get_admin_service(
         directory_events=WsOrgDirectoryEvents(
             getattr(request.app.state, "ws_manager", None)
         ),
+        moderation=CqlModerationStore(),
+        media=CqlMediaRepository(),
     )
 
 
@@ -129,91 +129,6 @@ def get_activity_detail_service(
     )
 
 
-def get_registration_service(
-    settings: Settings = Depends(get_settings),
-    access: AccessControl = Depends(get_access_control),
-    notifications: NotificationService = Depends(get_notification_service),
-) -> RegistrationService:
-    """Build one RegistrationService per request over reg tables."""
-    from activities.repository import CqlActivityStore
-    from orgs.repository import CqlOrgRepository
-    from registrations.attendance_repository import CqlAttendanceStore
-    from registrations.repository import CqlRegistrationStore
-    from registrations.service import RegistrationService
-
-    return RegistrationService(
-        registrations=CqlRegistrationStore(settings.scylla_keyspace),
-        attendance=CqlAttendanceStore(settings.scylla_keyspace),
-        activities=CqlActivityStore(settings.scylla_keyspace),
-        orgs=CqlOrgRepository(settings.scylla_keyspace),
-        users=user_directory(settings),
-        access=access,
-        notifications=notifications,
-    )
-
-
-def get_attendance_service(
-    request: Request,
-    settings: Settings = Depends(get_settings),
-    access: AccessControl = Depends(get_access_control),
-    notifications: NotificationService = Depends(get_notification_service),
-) -> AttendanceService:
-    """Build one AttendanceService per request over attendance tables."""
-    from activities.repository import CqlActivityStore
-    from hours.repository import CqlHourLedgerStore
-    from hours.service import HourService
-    from orgs.repository import CqlOrgRepository
-    from registrations.attendance_repository import CqlAttendanceStore
-    from registrations.attendance_service import AttendanceService
-    from registrations.interfaces import AttendanceEvents
-    from registrations.repository import CqlRegistrationStore
-
-    class _WsAttendanceEvents(AttendanceEvents):
-        """Fan check-in/out events onto the socket registry (best-effort)."""
-
-        def __init__(self, manager: ConnectionManager | None) -> None:
-            self._manager = manager
-
-        def attendance_changed(
-            self,
-            activity_id: UUID,
-            action: str,
-            record_id: UUID,
-            student_id: UUID,
-            actor_id: UUID,
-        ) -> None:
-            if self._manager is not None:
-                self._manager.schedule_publish(
-                    f"attendance:{activity_id}",
-                    {
-                        "action": action,
-                        "record_id": str(record_id),
-                        "student_id": str(student_id),
-                        "actor_id": str(actor_id),
-                    },
-                )
-
-    return AttendanceService(
-        registrations=CqlRegistrationStore(settings.scylla_keyspace),
-        attendance=CqlAttendanceStore(settings.scylla_keyspace),
-        activities=CqlActivityStore(settings.scylla_keyspace),
-        orgs=CqlOrgRepository(settings.scylla_keyspace),
-        users=user_directory(settings),
-        access=access,
-        notifications=notifications,
-        events=_WsAttendanceEvents(
-            getattr(request.app.state, "ws_manager", None)
-        ),
-        hours=HourService(
-            ledger=CqlHourLedgerStore(settings.scylla_keyspace),
-            activities=CqlActivityStore(settings.scylla_keyspace),
-            orgs=CqlOrgRepository(settings.scylla_keyspace),
-            access=access,
-            notifications=notifications,
-        ),
-    )
-
-
 def get_hour_service(
     settings: Settings = Depends(get_settings),
     access: AccessControl = Depends(get_access_control),
@@ -223,6 +138,7 @@ def get_hour_service(
     from activities.repository import CqlActivityStore
     from hours.repository import (
         CqlHourLedgerStore,
+        CqlHourRuleStore,
         CqlLeaderboardStore,
     )
     from hours.service import HourService
@@ -236,6 +152,33 @@ def get_hour_service(
         notifications=notifications,
         leaderboard=CqlLeaderboardStore(),
         users=user_directory(settings),
+        rules=CqlHourRuleStore(),
+    )
+
+
+def get_rule_service(
+    settings: Settings = Depends(get_settings),
+    access: AccessControl = Depends(get_access_control),
+    notifications: NotificationService = Depends(get_notification_service),
+) -> RuleService:
+    """Build one RuleService per request over rules/adjustments."""
+    from activities.repository import CqlActivityStore
+    from hours.repository import (
+        CqlAdjustmentStore,
+        CqlHourLedgerStore,
+        CqlHourRuleStore,
+    )
+    from hours.rule_service import RuleService
+    from orgs.repository import CqlOrgRepository
+
+    return RuleService(
+        rules=CqlHourRuleStore(),
+        adjustments=CqlAdjustmentStore(),
+        ledger=CqlHourLedgerStore(settings.scylla_keyspace),
+        activities=CqlActivityStore(settings.scylla_keyspace),
+        orgs=CqlOrgRepository(settings.scylla_keyspace),
+        access=access,
+        notifications=notifications,
     )
 
 
@@ -312,7 +255,10 @@ def get_certificate_service(
 ) -> CertificateService:
     """Build one CertificateService per request over cert tables."""
     from activities.repository import CqlActivityStore
-    from certificates.repository import CqlCertificateStore
+    from certificates.repository import (
+        CqlCertificateStore,
+        CqlTemplateStore,
+    )
     from certificates.service import CertificateService
     from orgs.repository import CqlOrgRepository
     from registrations.repository import CqlRegistrationStore
@@ -325,6 +271,23 @@ def get_certificate_service(
         users=user_directory(settings),
         access=access,
         notifications=notifications,
+        templates=CqlTemplateStore(),
+    )
+
+
+def get_template_service(
+    settings: Settings = Depends(get_settings),
+    access: AccessControl = Depends(get_access_control),
+) -> TemplateService:
+    """Build one TemplateService per request over template rows."""
+    from certificates.repository import CqlTemplateStore
+    from certificates.template_service import TemplateService
+    from orgs.repository import CqlOrgRepository
+
+    return TemplateService(
+        templates=CqlTemplateStore(),
+        orgs=CqlOrgRepository(settings.scylla_keyspace),
+        access=access,
     )
 
 
@@ -348,3 +311,30 @@ def get_profile_service(
 
 # Member-workspace dependencies (posts/comments/chat) live in
 # core/dependencies_workspace.py (split for the 350-line rule).
+
+
+def get_projection_service(
+    settings: Settings = Depends(get_settings),
+    access: AccessControl = Depends(get_access_control),
+) -> "StatsProjectionService":
+    """Build one StatsProjectionService over feeds + rollup tables."""
+    from activities.repository import CqlActivityStore
+    from certificates.repository import CqlCertificateStore
+    from hours.repository import CqlHourLedgerStore
+    from orgs.repository import CqlOrgRepository
+    from registrations.attendance_repository import CqlAttendanceStore
+    from registrations.repository import CqlRegistrationStore
+    from stats.projection_service import StatsProjectionService
+    from stats.repository import CqlDailyStatsStore, CqlMonthlyStatsStore
+
+    return StatsProjectionService(
+        orgs=CqlOrgRepository(settings.scylla_keyspace),
+        activities=CqlActivityStore(settings.scylla_keyspace),
+        registrations=CqlRegistrationStore(settings.scylla_keyspace),
+        attendance=CqlAttendanceStore(settings.scylla_keyspace),
+        hours=CqlHourLedgerStore(settings.scylla_keyspace),
+        certificates=CqlCertificateStore(settings.scylla_keyspace),
+        daily=CqlDailyStatsStore(),
+        monthly=CqlMonthlyStatsStore(),
+        access=access,
+    )

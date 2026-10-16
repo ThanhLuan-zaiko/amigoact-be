@@ -30,3 +30,17 @@ class PlatformRoleRoster(models.Model):
     granted_by = columns.UUID(required=True)
     granted_at = columns.DateTime(required=True)
     expires_at = columns.DateTime(required=False)
+
+
+class MediaModeration(models.Model):
+    """Moderation queue bucketed by status (pending/approved/rejected)."""
+
+    __table_name__ = "media_moderation"
+    __keyspace__ = "amigoact"
+
+    status = columns.Text(primary_key=True, partition_key=True)
+    created_at = columns.DateTime(primary_key=True, clustering_order="DESC")
+    moderation_id = columns.UUID(primary_key=True)
+    asset_id = columns.UUID(required=True)
+    reviewed_by = columns.UUID(required=False)
+    note = columns.Text(required=False)

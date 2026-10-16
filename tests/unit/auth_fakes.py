@@ -11,6 +11,7 @@ from auth.interfaces import (
     PasswordResetStore,
     RateLimiter,
     RefreshTokenStore,
+    SessionStore,
     UserRepository,
     VerificationCodeStore,
 )
@@ -121,6 +122,40 @@ class FakeRefresh(RefreshTokenStore):
                 row.revoked_at = now
 
 
+class FakeSessions(SessionStore):
+    def __init__(self) -> None:
+        self.rows: dict[UUID, Any] = {}
+
+    def create(self, user_id, session_id, device_label, user_agent, ip, expires_at, now):  # noqa: ANN001, ANN202
+        row = SimpleNamespace(
+            user_id=user_id, session_id=session_id, device_label=device_label,
+            user_agent=user_agent, ip=ip, created_at=now, last_seen_at=now,
+            expires_at=expires_at, revoked_at=None,
+        )
+        self.rows[session_id] = row
+        return row
+
+    def touch(self, user_id, session_id, now):  # noqa: ANN001, ANN202
+        if session_id in self.rows:
+            self.rows[session_id].last_seen_at = now
+
+    def list_mine(self, user_id):  # noqa: ANN001, ANN202
+        return [r for r in self.rows.values() if r.user_id == user_id]
+
+    def get(self, user_id, session_id):  # noqa: ANN001, ANN202
+        row = self.rows.get(session_id)
+        return row if row is not None and row.user_id == user_id else None
+
+    def revoke(self, user_id, session_id, now):  # noqa: ANN001, ANN202
+        row = self.get(user_id, session_id)
+        if row is not None:
+            row.revoked_at = now
+
+    def revoke_all(self, user_id, now):  # noqa: ANN001, ANN202
+        for row in self.list_mine(user_id):
+            row.revoked_at = now
+
+
 class FakeCodes(VerificationCodeStore, PasswordResetStore):
     def __init__(self) -> None:
         self.rows: dict[str, Any] = {}
@@ -191,6 +226,7 @@ def make_service(**overrides: Any) -> tuple[AuthService, dict[str, Any]]:
         "mailer": FakeMailer(),
         "settings": Settings(jwt_secret="unit-test-secret-32-bytes-long!!"),
         "media": FakeMedia(),
+        "sessions": FakeSessions(),
     }
     parts.update(overrides)
     return AuthService(**parts), parts  # type: ignore[arg-type]

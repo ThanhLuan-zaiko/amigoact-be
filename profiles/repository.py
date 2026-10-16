@@ -10,6 +10,7 @@ from profiles.model import (
     EmergencyContact,
     Skill,
     StudentProfile,
+    StudentProfileByCode,
     UserBySkill,
     UserSkill,
 )
@@ -25,6 +26,8 @@ class CqlProfileStore(ProfileStore):
         self,
         user_id: UUID,
         student_code: str | None,
+        campus_id: UUID | None,
+        department_id: UUID | None,
         class_name: str | None,
         enrollment_year: int | None,
         school_name: str | None,
@@ -33,10 +36,13 @@ class CqlProfileStore(ProfileStore):
         status: str | None,
         now: datetime,
     ) -> StudentProfile:
-        if self.get_profile(user_id) is None:
+        old = self.get_profile(user_id)
+        if old is None:
             row = StudentProfile(
                 user_id=user_id,
                 student_code=student_code,
+                campus_id=campus_id,
+                department_id=department_id,
                 class_name=class_name,
                 enrollment_year=enrollment_year,
                 school_name=school_name,
@@ -48,8 +54,18 @@ class CqlProfileStore(ProfileStore):
             )
             row.save()
         else:
+            old_code = getattr(old, "student_code", None)
+            old_campus = getattr(old, "campus_id", None)
+            if old_code and old_campus and (
+                old_code != student_code or old_campus != campus_id
+            ):
+                StudentProfileByCode.objects(
+                    campus_id=old_campus, student_code=old_code
+                ).delete()
             StudentProfile.objects(user_id=user_id).update(
                 student_code=student_code,
+                campus_id=campus_id,
+                department_id=department_id,
                 class_name=class_name,
                 enrollment_year=enrollment_year,
                 school_name=school_name,
@@ -58,7 +74,20 @@ class CqlProfileStore(ProfileStore):
                 status=status,
                 updated_at=now,
             )
+        if student_code and campus_id:
+            StudentProfileByCode.create(
+                campus_id=campus_id,
+                student_code=student_code,
+                user_id=user_id,
+            )
         return StudentProfile.objects(user_id=user_id).first()
+
+    def lookup_code(
+        self, campus_id: UUID, student_code: str
+    ) -> StudentProfileByCode | None:
+        return StudentProfileByCode.objects(
+            campus_id=campus_id, student_code=student_code
+        ).first()
 
     def list_contacts(self, user_id: UUID) -> list[EmergencyContact]:
         return list(EmergencyContact.objects(user_id=user_id).all())

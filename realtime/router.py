@@ -8,10 +8,9 @@ import logging
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 
 from core.config import Settings, get_settings
-from core.dependencies import (
-    CurrentUser,
+from core.dependencies import CurrentUser, get_current_user
+from core.dependencies_realtime import (
     get_connection_manager,
-    get_current_user,
     get_realtime_service,
 )
 from core.exceptions import TooManyRequestsError

@@ -192,3 +192,90 @@ class AttendanceByStudent(models.Model):
     activity_id = columns.UUID()
     session_id = columns.UUID()
     method = columns.Text()
+
+
+class AttendanceSession(models.Model):
+    """One check-in window inside a schedule, guarded by its QR code."""
+
+    __table_name__ = "attendance_sessions"
+    __keyspace__ = "amigoact"
+
+    schedule_id = columns.UUID(primary_key=True)
+    session_id = columns.UUID(
+        primary_key=True, clustering_order="ASC", default=uuid7
+    )
+    title = columns.Text()
+    qr_code = columns.Text()
+    opens_at = columns.DateTime()
+    closes_at = columns.DateTime()
+    status = columns.Text()
+    created_by = columns.UUID()
+
+
+class QrCode(models.Model):
+    """One scannable code; the code string is the whole lookup path."""
+
+    __table_name__ = "qr_codes"
+    __keyspace__ = "amigoact"
+
+    code = columns.Text(primary_key=True)
+    session_id = columns.UUID()
+    schedule_id = columns.UUID()
+    activity_id = columns.UUID()
+    expires_at = columns.DateTime()
+    max_uses = columns.Integer()
+    used_count = columns.Integer()
+    status = columns.Text()
+
+
+class AttendanceAppeal(models.Model):
+    """Student dispute over their attendance, resolved by a manager."""
+
+    __table_name__ = "attendance_appeals"
+    __keyspace__ = "amigoact"
+
+    activity_id = columns.UUID(primary_key=True)
+    student_id = columns.UUID(primary_key=True, clustering_order="ASC")
+    appeal_id = columns.UUID(
+        primary_key=True, clustering_order="ASC", default=uuid7
+    )
+    record_id = columns.UUID()
+    reason = columns.Text()
+    status = columns.Text()
+    resolved_by = columns.UUID()
+    resolved_at = columns.DateTime()
+    created_at = columns.DateTime()
+
+
+class AttendanceSummary(models.Model):
+    """Materialized per-registration attendance rollup."""
+
+    __table_name__ = "attendance_summaries"
+    __keyspace__ = "amigoact"
+
+    registration_id = columns.UUID(primary_key=True)
+    activity_id = columns.UUID()
+    student_id = columns.UUID()
+    sessions_total = columns.Integer()
+    sessions_attended = columns.Integer()
+    minutes_attended = columns.Integer()
+    status = columns.Text()
+    updated_at = columns.DateTime()
+
+
+class QrScanLog(models.Model):
+    """Every scan attempt on one code, newest first (audit)."""
+
+    __table_name__ = "qr_scan_logs"
+    __keyspace__ = "amigoact"
+
+    qr_code = columns.Text(primary_key=True)
+    scanned_at = columns.DateTime(
+        primary_key=True, clustering_order="DESC"
+    )
+    log_id = columns.UUID(
+        primary_key=True, clustering_order="ASC", default=uuid7
+    )
+    student_id = columns.UUID()
+    result = columns.Text()
+    device_info = columns.Text()

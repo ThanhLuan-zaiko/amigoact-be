@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from uuid import UUID
 
 from activities.interfaces import ActivityStore
-from certificates.interfaces import CertificateStore
+from certificates.interfaces import CertificateStore, TemplateStore
 from certificates.model import Certificate
 from core.exceptions import (
     CertificateExistsError,
@@ -56,6 +56,7 @@ class CertificateService:
         users: UserDirectory,
         access: AccessControl,
         notifications: NotificationPort | None = None,
+        templates: TemplateStore | None = None,
     ) -> None:
         self._certificates = certificates
         self._registrations = registrations
@@ -64,6 +65,7 @@ class CertificateService:
         self._users = users
         self._access = access
         self._notifications = notifications
+        self._templates = templates
 
     def _require_manager(self, org_id: UUID, actor: UUID, action: str) -> None:
         org = self._orgs.get_by_id(org_id)
@@ -99,6 +101,7 @@ class CertificateService:
         activity_id: UUID,
         student_id: UUID,
         staff_id: UUID,
+        template_id: UUID | None = None,
     ) -> Certificate:
         """One certificate per attended registration, once only."""
         activity = self._activities.get(activity_id)
@@ -107,6 +110,16 @@ class CertificateService:
         self._require_manager(
             activity.org_id, staff_id, "certificate.issue"
         )
+        if template_id is not None:
+            if self._templates is None:
+                raise NotFoundError("Template not found.")
+            tpl = self._templates.get(template_id)
+            if (
+                tpl is None
+                or tpl.org_id != activity.org_id
+                or tpl.is_active is not True
+            ):
+                raise NotFoundError("Template not found.")
         existing = self._certificates.get(activity_id, student_id)
         if existing is not None and existing.status == "issued":
             raise CertificateExistsError(
@@ -126,7 +139,7 @@ class CertificateService:
                 row = self._certificates.issue(
                     uuid7(), activity_id, student_id,
                     guard.registration_id, self._serial(now),
-                    staff_id, now,
+                    staff_id, now, template_id,
                 )
             except CertificateExistsError as exc:  # serial collision
                 last_error = exc

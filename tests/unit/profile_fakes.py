@@ -30,7 +30,7 @@ class FakeProfiles(ProfileStore):
     def get_profile(self, user_id):  # noqa: ANN001, ANN202
         return self.profiles.get(user_id)
 
-    def upsert_profile(self, user_id, student_code, class_name, enrollment_year, school_name, bio, interests, status, now):  # noqa: ANN001, ANN202
+    def upsert_profile(self, user_id, student_code, campus_id, department_id, class_name, enrollment_year, school_name, bio, interests, status, now):  # noqa: ANN001, ANN202
         row = self.profiles.get(user_id)
         if row is None:
             row = SimpleNamespace(
@@ -39,6 +39,8 @@ class FakeProfiles(ProfileStore):
             )
             self.profiles[user_id] = row
         row.student_code = student_code
+        row.campus_id = campus_id
+        row.department_id = department_id
         row.class_name = class_name
         row.enrollment_year = enrollment_year
         row.school_name = school_name
@@ -47,6 +49,15 @@ class FakeProfiles(ProfileStore):
         row.status = status or "studying"
         row.updated_at = now
         return row
+
+    def lookup_code(self, campus_id, student_code):  # noqa: ANN001, ANN202
+        for row in self.profiles.values():
+            if getattr(row, "campus_id", None) == campus_id and getattr(row, "student_code", None) == student_code:
+                return SimpleNamespace(
+                    campus_id=campus_id, student_code=student_code,
+                    user_id=row.user_id,
+                )
+        return None
 
     def list_contacts(self, user_id):  # noqa: ANN001, ANN202
         return list(self.contacts.get(user_id, {}).values())

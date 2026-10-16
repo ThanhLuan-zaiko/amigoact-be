@@ -59,6 +59,8 @@ class ProfileBody(BaseModel):
     """
 
     student_code: str | None = Field(default=None, max_length=40)
+    campus_id: UUID | None = None
+    department_id: UUID | None = None
     class_name: str | None = Field(default=None, max_length=60)
     enrollment_year: int | None = Field(default=None, ge=1950, le=2100)
     school_name: str | None = Field(default=None, max_length=160)
@@ -126,6 +128,8 @@ class ProfileResponse(BaseModel):
     """Everything /profiles/me renders: profile, skills, contacts, avatar."""
 
     student_code: str | None
+    campus_id: UUID | None
+    department_id: UUID | None
     class_name: str | None
     enrollment_year: int | None
     school_name: str | None

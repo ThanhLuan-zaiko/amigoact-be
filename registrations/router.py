@@ -8,7 +8,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends
 
 from core.dependencies import CurrentUser, get_current_user
-from core.dependencies_features import (
+from core.dependencies_registrations import (
     get_attendance_service,
     get_registration_service,
 )
@@ -27,7 +27,8 @@ from registrations.schemas import (
 if TYPE_CHECKING:
     from registrations.attendance_service import AttendanceService
     from registrations.model import AttendanceRecord, Registration
-    from registrations.service import RegistrationService, RosterItem
+    from registrations.queries import RosterItem
+    from registrations.service import RegistrationService
 
 router = APIRouter(tags=["registrations"])
 
@@ -43,6 +44,7 @@ def _response(row: Registration) -> RegistrationResponse:
         registered_at=row.registered_at,
         reviewed_at=row.reviewed_at,
         cancelled_at=row.cancelled_at,
+        slot_id=None if row.slot_id == UUID(int=0) else row.slot_id,
     )
 
 
@@ -70,6 +72,8 @@ def _roster(item: RosterItem) -> RosterResponse:
         note=item.note,
         review_note=item.review_note,
         registered_at=item.registered_at,  # type: ignore[arg-type]
+        form_data=item.form_data,
+        slot_id=item.slot_id,
     )
 
 
@@ -86,7 +90,9 @@ def apply(
 ) -> RegistrationResponse:
     """Apply to a published activity; duplicates hit the guard."""
     return _response(
-        service.apply(activity_id, current.id, body.note)
+        service.apply(
+            activity_id, current.id, body.note, body.form_data, body.slot_id
+        )
     )
 
 

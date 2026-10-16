@@ -148,7 +148,7 @@ def ws_app(
     """App with realtime deps swapped for in-memory fakes (no ScyllaDB)."""
     import main
     from core.config import get_settings
-    from core.dependencies import get_realtime_service
+    from core.dependencies_realtime import get_realtime_service
     from core.realtime import ConnectionManager
 
     store = MemTickets()

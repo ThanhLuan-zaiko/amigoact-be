@@ -136,3 +136,18 @@ class HourAdjustment(models.Model):
     reason = columns.Text()
     created_by = columns.UUID()
     created_at = columns.DateTime()
+
+
+class HourRule(models.Model):
+    """Per-org multiplier/cap applied to recorded attendance hours."""
+
+    __table_name__ = "hour_rules"
+    __keyspace__ = "amigoact"
+
+    rule_id = columns.UUID(primary_key=True, default=uuid7)
+    org_id = columns.UUID(index=True)
+    category_id = columns.UUID()
+    multiplier = columns.Double()
+    cap_hours = columns.Double()
+    term = columns.Text()
+    is_active = columns.Boolean()

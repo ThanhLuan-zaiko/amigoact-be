@@ -163,6 +163,7 @@ class MediaRepository(ABC):
         file_hash: str | None = None,
         uploader_id: UUID | None = None,
         original_name: str | None = None,
+        owner_type: str = "organization",
     ) -> MediaAsset:
         """Insert the metadata row plus the owner/uploader/hash feeds."""
 
@@ -194,6 +195,10 @@ class MediaRepository(ABC):
     @abstractmethod
     def delete_asset(self, asset_id: UUID) -> MediaAsset | None:
         """Remove metadata rows, return the removed row for file cleanup."""
+
+    @abstractmethod
+    def set_upload_status(self, asset_id: UUID, status: str) -> None:
+        """Flip active/rejected visibility after moderation review."""
 
     @abstractmethod
     def known_org_ids(self) -> set[str]:

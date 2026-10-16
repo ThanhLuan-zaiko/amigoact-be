@@ -15,6 +15,7 @@ from core.config import get_settings
 from core.database import check_scylla_connection, connect
 from core.exceptions import DomainError, domain_error_handler
 from core.guard_middleware import GuardMiddleware
+from core.idempotency_middleware import IdempotencyMiddleware
 from core.no_store_middleware import NoStoreErrorsMiddleware
 from core.realtime import ConnectionManager
 
@@ -93,6 +94,9 @@ async def lifespan(app: FastAPI):
         await asyncio.to_thread(seed_rbac)
         await asyncio.to_thread(seed_skills)
         await asyncio.to_thread(seed_categories)
+        from orgs.seed import seed_org_types
+
+        await asyncio.to_thread(seed_org_types)
     except Exception as exc:
         logger.error("cqlengine connection setup failed: %s", exc)
     app.state.ws_manager = ConnectionManager()
@@ -104,6 +108,7 @@ app: FastAPI = FastAPI(title="AmigoACT API", lifespan=lifespan)
 app.add_exception_handler(DomainError, domain_error_handler)
 # Guard sits inside CORS so its rejections still carry CORS headers.
 app.add_middleware(GuardMiddleware)
+app.add_middleware(IdempotencyMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=get_settings().frontend_urls_list,
@@ -116,7 +121,11 @@ app.add_middleware(NoStoreErrorsMiddleware)
 
 from activities.detail_router import router as activity_detail_router  # noqa: E402
 from activities.router import router as activities_router  # noqa: E402
+from activities.slots_router import router as slots_router  # noqa: E402
+from activities.media_router import router as activity_media_router  # noqa: E402
+from orgs.structure_router import router as structure_router  # noqa: E402
 from admin.router import router as admin_router  # noqa: E402
+from apikeys.router import router as apikeys_router  # noqa: E402
 from audit.router import router as audit_router  # noqa: E402
 from auth.router import router as auth_router  # noqa: E402
 from certificates.router import router as certificates_router  # noqa: E402
@@ -134,6 +143,9 @@ from profiles.router import router as profiles_router  # noqa: E402
 from rbac.router import router as rbac_router  # noqa: E402
 from realtime.router import router as realtime_router  # noqa: E402
 from registrations.router import router as registrations_router  # noqa: E402
+from registrations.sessions_router import router as sessions_router  # noqa: E402
+from registrations.appeals_router import router as appeals_router  # noqa: E402
+from reports.router import router as reports_router  # noqa: E402
 from reviews.router import router as reviews_router  # noqa: E402
 from stats.router import router as stats_router  # noqa: E402
 
@@ -141,6 +153,8 @@ app.include_router(auth_router)
 app.include_router(orgs_router)
 app.include_router(orgs_public_router)  # after orgs: /orgs/mine beats {slug}
 app.include_router(members_router)
+app.include_router(structure_router)
+app.include_router(apikeys_router)
 app.include_router(rbac_router)
 app.include_router(realtime_router)
 app.include_router(admin_router)
@@ -148,7 +162,12 @@ app.include_router(notifications_router)
 app.include_router(profiles_router)
 app.include_router(activities_router)
 app.include_router(activity_detail_router)
+app.include_router(slots_router)
+app.include_router(activity_media_router)
 app.include_router(registrations_router)
+app.include_router(sessions_router)
+app.include_router(appeals_router)
+app.include_router(reports_router)
 app.include_router(hours_router)
 app.include_router(certificates_router)
 app.include_router(reviews_router)

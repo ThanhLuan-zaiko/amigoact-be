@@ -12,10 +12,13 @@ from activities.model import (
     Activity,
     ActivityAnnouncement,
     ActivityCategory,
+    ActivityMedia,
     ActivityPartner,
     ActivitySchedule,
     ActivitySkill,
+    ActivitySlot,
     ActivityStaff,
+    RegistrationForm,
 )
 
 
@@ -258,3 +261,82 @@ class ActivityEvents(ABC):
         status: str,
     ) -> None:
         """Publish lifecycle changes onto activities:{org_id}."""
+
+
+class RegistrationFormStore(ABC):
+    """Persistence port for per-activity sign-up form questions."""
+
+    @abstractmethod
+    def list_form(self, activity_id: UUID) -> list[RegistrationForm]:
+        """Questions in display order."""
+
+    @abstractmethod
+    def replace_form(
+        self,
+        activity_id: UUID,
+        questions: list[tuple[UUID, str, str, bool]],
+    ) -> None:
+        """Rewrite the form; each tuple is
+        (question_id, label, field_type, required) at list position."""
+
+
+class SlotStore(ABC):
+    """Persistence port for per-schedule capacity slots."""
+
+    @abstractmethod
+    def list(self, schedule_id: UUID) -> list[ActivitySlot]:
+        """All slots of one schedule."""
+
+    @abstractmethod
+    def list_for_activity(self, activity_id: UUID) -> list[ActivitySlot]:
+        """All slots across the activity's schedules."""
+
+    @abstractmethod
+    def create(
+        self,
+        slot_id: UUID,
+        schedule_id: UUID,
+        title: str,
+        capacity: int | None,
+        start_at: datetime | None,
+        end_at: datetime | None,
+    ) -> ActivitySlot:
+        """Insert one slot."""
+
+    @abstractmethod
+    def delete(self, schedule_id: UUID, slot_id: UUID) -> bool:
+        """Remove one slot. False when it never existed."""
+
+
+class ActivityMediaStore(ABC):
+    """Persistence port for the ordered activity_media gallery."""
+
+    @abstractmethod
+    def list_for_activity(self, activity_id: UUID) -> list[ActivityMedia]:
+        """All entries ordered by position."""
+
+    @abstractmethod
+    def create(
+        self,
+        activity_id: UUID,
+        position: int,
+        asset_id: UUID,
+        role: str,
+        caption: str | None,
+    ) -> ActivityMedia:
+        """Insert one gallery entry."""
+
+    @abstractmethod
+    def update(
+        self,
+        activity_id: UUID,
+        position: int,
+        asset_id: UUID,
+        caption: str | None,
+        role: str,
+    ) -> None:
+        """Replace caption/role of one entry."""
+
+    @abstractmethod
+    def delete(self, activity_id: UUID, position: int, asset_id: UUID) -> None:
+        """Remove one gallery entry."""

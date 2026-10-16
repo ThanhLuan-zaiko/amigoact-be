@@ -6,16 +6,22 @@ from dataclasses import dataclass
 from datetime import datetime
 from uuid import UUID
 
-from admin.interfaces import PlatformRoleStore
+from admin.interfaces import ModerationStore, PlatformRoleStore
 from core.exceptions import (
     ForbiddenError,
     InvalidOrgStateError,
     NotFoundError,
     UserNotFoundError,
 )
+from core.ids import uuid7
 from core.security import utcnow
 from notifications.interfaces import NotificationPort
-from orgs.interfaces import OrgDirectoryEvents, OrgRepository, UserDirectory
+from orgs.interfaces import (
+    MediaRepository,
+    OrgDirectoryEvents,
+    OrgRepository,
+    UserDirectory,
+)
 from rbac.catalog import PLATFORM_ADMIN_ROLE_ID
 from rbac.interfaces import AccessControl
 
@@ -50,6 +56,18 @@ class AdminUserSnapshot:
     email: str
 
 
+@dataclass(frozen=True)
+class ModerationItem:
+    """One moderation queue row for the admin page."""
+
+    moderation_id: UUID
+    asset_id: UUID
+    status: str
+    created_at: datetime | None
+    note: str | None
+    file_url: str | None
+
+
 class AdminService:
     """Verification queue consumption and platform role management."""
 
@@ -62,7 +80,11 @@ class AdminService:
         access: AccessControl,
         admin_emails: frozenset[str] = frozenset(),
         directory_events: OrgDirectoryEvents | None = None,
+        moderation: ModerationStore | None = None,
+        media: MediaRepository | None = None,
     ) -> None:
+        self._moderation = moderation
+        self._media = media
         self._orgs = orgs
         self._roles = platform_roles
         self._users = users
@@ -236,3 +258,58 @@ class AdminService:
         """Demote a platform administrator (self-demotion allowed)."""
         self._require_admin(actor_id, actor_email)
         self._roles.revoke(target_id, PLATFORM_ADMIN_ROLE_ID)
+
+    def enqueue_moderation(self, asset_id: UUID) -> None:
+        """Queue one uploaded asset for review (called by upload services)."""
+        if self._moderation is not None:
+            self._moderation.enqueue(uuid7(), asset_id, utcnow())
+
+    def list_moderation(
+        self, actor_id: UUID, actor_email: str, status: str = "pending"
+    ) -> list[ModerationItem]:
+        """Newest queue rows for the admin page."""
+        self._require_admin(actor_id, actor_email)
+        if self._moderation is None:
+            return []
+        return [
+            ModerationItem(
+                moderation_id=row.moderation_id,
+                asset_id=row.asset_id,
+                status=row.status,
+                created_at=row.created_at,
+                note=row.note,
+                file_url=self._file_url_of(row.asset_id),
+            )
+            for row in self._moderation.list_by_status(status)
+        ]
+
+    def review_moderation(
+        self,
+        actor_id: UUID,
+        actor_email: str,
+        from_status: str,
+        created_at: datetime,
+        moderation_id: UUID,
+        approve: bool,
+        note: str | None,
+    ) -> None:
+        """Move a queue row to approved/rejected and flip the asset."""
+        self._require_admin(actor_id, actor_email)
+        if self._moderation is None:
+            raise NotFoundError("Moderation entry not found.")
+        target = "approved" if approve else "rejected"
+        row = self._moderation.mark(
+            from_status, created_at, moderation_id, target, actor_id, note, utcnow()
+        )
+        if row is None:
+            raise NotFoundError("Moderation entry not found.")
+        if self._media is not None:
+            self._media.set_upload_status(
+                row.asset_id, "active" if approve else "rejected"
+            )
+
+    def _file_url_of(self, asset_id: UUID) -> str | None:
+        if self._media is None:
+            return None
+        asset = self._media.get_asset(asset_id)
+        return getattr(asset, "file_url", None) if asset is not None else None

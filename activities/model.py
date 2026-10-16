@@ -87,6 +87,19 @@ class ActivitiesByCategory(models.Model):
     title = columns.Text(required=True)
 
 
+class ActivityMedia(models.Model):
+    """Ordered gallery entries bound to one activity."""
+
+    __table_name__ = "activity_media"
+    __keyspace__ = "amigoact"
+
+    activity_id = columns.UUID(partition_key=True, primary_key=True)
+    position = columns.Integer(primary_key=True)
+    asset_id = columns.UUID(primary_key=True)
+    role = columns.Text(required=True, default="gallery")
+    caption = columns.Text(required=False)
+
+
 class ActivitiesBySlug(models.Model):
     """Pretty-URL lookup; also the per-org slug uniqueness claim."""
 
@@ -215,3 +228,38 @@ class ActivityAnnouncement(models.Model):
     title = columns.Text(required=True)
     body = columns.Text(required=False)
     created_by = columns.UUID(required=True)
+
+
+class RegistrationForm(models.Model):
+    """One custom question on an activity's sign-up form."""
+
+    __table_name__ = "registration_forms"
+    __keyspace__ = "amigoact"
+
+    activity_id = columns.UUID(primary_key=True, partition_key=True)
+    position = columns.Integer(
+        primary_key=True, clustering_order="ASC"
+    )
+    question_id = columns.UUID(
+        primary_key=True, clustering_order="ASC", default=uuid7
+    )
+    label = columns.Text(required=True)
+    field_type = columns.Text(required=True, default="text")
+    required = columns.Boolean(required=True, default=False)
+
+
+class ActivitySlot(models.Model):
+    """One capacity-bounded shift inside a schedule."""
+
+    __table_name__ = "activity_slots"
+    __keyspace__ = "amigoact"
+
+    schedule_id = columns.UUID(primary_key=True, partition_key=True)
+    slot_id = columns.UUID(
+        primary_key=True, clustering_order="ASC", default=uuid7
+    )
+    title = columns.Text(required=True)
+    capacity = columns.Integer(required=False)
+    registered = columns.Integer(required=False, default=0)
+    start_at = columns.DateTime(required=False)
+    end_at = columns.DateTime(required=False)

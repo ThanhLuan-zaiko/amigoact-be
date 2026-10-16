@@ -8,6 +8,7 @@ from uuid import UUID
 
 from auth.model import (
     AuthRefreshToken,
+    AuthSession,
     EmailVerification,
     PasswordReset,
     User,
@@ -177,3 +178,40 @@ class PasswordHasherPort(ABC):
     @abstractmethod
     def needs_rehash(self, stored_hash: str) -> bool:
         """Report whether a stored hash uses outdated parameters."""
+
+
+class SessionStore(ABC):
+    """Persistence port for per-device auth_sessions."""
+
+    @abstractmethod
+    def create(
+        self,
+        user_id: UUID,
+        session_id: UUID,
+        device_label: str | None,
+        user_agent: str | None,
+        ip: str | None,
+        expires_at: datetime,
+        now: datetime,
+    ) -> AuthSession:
+        """Insert one session row at login."""
+
+    @abstractmethod
+    def touch(self, user_id: UUID, session_id: UUID, now: datetime) -> None:
+        """Refresh last_seen_at on token rotation."""
+
+    @abstractmethod
+    def list_mine(self, user_id: UUID) -> list[AuthSession]:
+        """Every session row of one user."""
+
+    @abstractmethod
+    def get(self, user_id: UUID, session_id: UUID) -> AuthSession | None:
+        """Load one session by its family id."""
+
+    @abstractmethod
+    def revoke(self, user_id: UUID, session_id: UUID, now: datetime) -> None:
+        """Mark one session revoked."""
+
+    @abstractmethod
+    def revoke_all(self, user_id: UUID, now: datetime) -> None:
+        """Mark every session of the user revoked."""

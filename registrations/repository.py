@@ -77,11 +77,14 @@ class CqlRegistrationStore(RegistrationStore):
         checkin_token: UUID,
         now: datetime,
         status: str = "pending",
+        form_data: str | None = None,
+        slot_id: UUID | None = None,
     ) -> Registration:
-        """Claim the (activity, student, zero-slot) row, then fan out."""
+        """Claim the (activity, student, slot) row, then fan out."""
         from core.ids import uuid7
 
         registration_id = uuid7()
+        slot = slot_id or UUID(int=0)
         claim = get_session().execute(
             f"INSERT INTO {self._keyspace}.registrations_by_activity_student"
             " (activity_id, student_id, slot_id, registration_id, status,"
@@ -90,7 +93,7 @@ class CqlRegistrationStore(RegistrationStore):
             [
                 activity_id,
                 student_id,
-                UUID(int=0),
+                slot,
                 registration_id,
                 status,
                 now,
@@ -104,9 +107,10 @@ class CqlRegistrationStore(RegistrationStore):
             registration_id=registration_id,
             activity_id=activity_id,
             student_id=student_id,
-            slot_id=UUID(int=0),
+            slot_id=slot,
             status=status,
             note=note,
+            form_data=form_data,
             checkin_token=checkin_token,
             registered_at=now,
         )
@@ -123,12 +127,15 @@ class CqlRegistrationStore(RegistrationStore):
         checkin_token: UUID,
         now: datetime,
         status: str = "pending",
+        form_data: str | None = None,
+        slot_id: UUID | None = None,
     ) -> Registration:
         """Flip a terminal guard row back to life under a new id."""
+        slot = slot_id or UUID(int=0)
         RegistrationsByActivityStudent.objects(
             activity_id=activity_id,
             student_id=student_id,
-            slot_id=UUID(int=0),
+            slot_id=slot,
         ).update(
             registration_id=registration_id,
             status=status,
@@ -138,9 +145,10 @@ class CqlRegistrationStore(RegistrationStore):
             registration_id=registration_id,
             activity_id=activity_id,
             student_id=student_id,
-            slot_id=UUID(int=0),
+            slot_id=slot,
             status=status,
             note=note,
+            form_data=form_data,
             checkin_token=checkin_token,
             registered_at=now,
         )
@@ -228,19 +236,23 @@ class CqlRegistrationStore(RegistrationStore):
             if (row := self.get(r.registration_id)) is not None
         ]
 
-    def count_active(self, activity_id: UUID) -> int:
+    def count_active(
+        self, activity_id: UUID, slot_id: UUID | None = None
+    ) -> int:
         return sum(
             1
             for r in RegistrationsByActivity.objects(
                 activity_id=activity_id
             ).limit(1000)
             if r.status in ("approved", "attended")
+            and (slot_id is None or r.slot_id == slot_id)
         )
 
     def enqueue_waitlist(
         self,
         activity_id: UUID,
         student_id: UUID,
+        slot_id: UUID,
         now: datetime,
     ) -> WaitlistEntry:
         from core.ids import uuid7
@@ -250,7 +262,7 @@ class CqlRegistrationStore(RegistrationStore):
             joined_at=now,
             waitlist_id=uuid7(),
             student_id=student_id,
-            slot_id=UUID(int=0),
+            slot_id=slot_id,
             status="waiting",
         )
 

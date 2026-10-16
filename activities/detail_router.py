@@ -13,9 +13,11 @@ from activities.schemas import (
     ActivitySummary,
     AnnouncementBody,
     AnnouncementItem,
+    FormQuestionItem,
     PartnerDetail,
     ScheduleBody,
     ScheduleItem,
+    SetFormBody,
     SetPartnersBody,
     SetSkillsBody,
     SetStaffBody,
@@ -28,12 +30,14 @@ from core.dependencies import (
     get_optional_user,
 )
 from core.dependencies_features import get_activity_detail_service
+from core.dependencies_workspace import get_form_service
 
 if TYPE_CHECKING:
     from activities.detail_service import (
         ActivityDetail,
         ActivityDetailService,
     )
+    from activities.form_service import FormService
 
 router = APIRouter(tags=["activities"])
 
@@ -239,6 +243,58 @@ def add_announcement(
     return _detail_response(
         service.add_announcement(
             org_id, activity_id, current.id, body.title, body.body
+        )
+    )
+
+
+def _form_response(rows) -> list[FormQuestionItem]:  # noqa: ANN001, ANN202
+    return [
+        FormQuestionItem(
+            question_id=q.question_id,
+            label=q.label,
+            field_type=q.field_type,
+            required=q.required,
+        )
+        for q in rows
+    ]
+
+
+@router.get(
+    "/orgs/{org_id}/activities/{activity_id}/form",
+    response_model=list[FormQuestionItem],
+)
+def get_form(
+    org_id: UUID,
+    activity_id: UUID,
+    viewer: CurrentUser | None = Depends(get_optional_user),
+    service: FormService = Depends(get_form_service),
+) -> list[FormQuestionItem]:
+    """Sign-up form; public while registration is open."""
+    return _form_response(
+        service.get_form(
+            org_id, activity_id, viewer.id if viewer else None
+        )
+    )
+
+
+@router.put(
+    "/orgs/{org_id}/activities/{activity_id}/form",
+    response_model=list[FormQuestionItem],
+)
+def set_form(
+    org_id: UUID,
+    activity_id: UUID,
+    body: SetFormBody,
+    current: CurrentUser = Depends(get_current_user),
+    service: FormService = Depends(get_form_service),
+) -> list[FormQuestionItem]:
+    """Managers replace the sign-up form questions."""
+    return _form_response(
+        service.set_form(
+            org_id,
+            activity_id,
+            current.id,
+            [(q.label, q.field_type, q.required) for q in body.questions],
         )
     )
 

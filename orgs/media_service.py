@@ -27,6 +27,7 @@ from orgs.interfaces import (
 from rbac.interfaces import AccessControl
 
 if TYPE_CHECKING:
+    from admin.interfaces import ModerationStore
     from orgs.model import MediaAsset, Organization
 
 # "attachment" marks post-uploaded assets: members may add them and they
@@ -65,6 +66,7 @@ class MediaService:
         max_video_bytes: int = 100 * 1024 * 1024,
         access: AccessControl | None = None,
         events: OrgDirectoryEvents | None = None,
+        moderation: "ModerationStore | None" = None,
     ) -> None:
         self._orgs = orgs
         self._media = media
@@ -73,13 +75,10 @@ class MediaService:
         self._max_video_bytes = max_video_bytes
         self._access = access
         self._events = events
+        self._moderation = moderation
 
     def _emit_updated(self, org: Organization) -> None:
-        """Ping the public directory when a media change reaches it.
-
-        Attachments stay out of every public surface, so their churn never
-        fans out; gallery/cover/logo changes all alter the card or profile.
-        """
+        """Ping the public directory; attachments never fan out."""
         if self._events is not None:
             self._events.directory_changed("updated", org.id, org.slug)
 
@@ -226,6 +225,8 @@ class MediaService:
             uploader_id=user_id,
             original_name=filename,
         )
+        if self._moderation is not None:
+            self._moderation.enqueue(uuid7(), asset_id, now)
         if role in _BRAND_ROLES:
             self._sync_brand(org_id, role, asset_id)
         if role != "attachment":

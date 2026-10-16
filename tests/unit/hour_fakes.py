@@ -8,9 +8,14 @@ from uuid import UUID
 
 import uuid_utils
 
-from certificates.interfaces import CertificateStore
+from certificates.interfaces import CertificateStore, TemplateStore
 from certificates.service import CertificateService
-from hours.interfaces import HourLedgerStore
+from certificates.template_service import TemplateService
+from hours.interfaces import (
+    AdjustmentStore,
+    HourLedgerStore,
+    HourRuleStore,
+)
 from hours.service import HourService
 from tests.unit.activity_fakes import FakeActivities
 from tests.unit.member_fakes import FakeAccess, FakeUsers
@@ -83,7 +88,7 @@ class FakeCertificates(CertificateStore):
         self.rows: dict[tuple[UUID, UUID], Any] = {}
         self.serials: dict[str, Any] = {}
 
-    def issue(self, certificate_id, activity_id, student_id, registration_id, serial_no, issued_by, now):  # noqa: ANN001, ANN202
+    def issue(self, certificate_id, activity_id, student_id, registration_id, serial_no, issued_by, now, template_id=None):  # noqa: ANN001, ANN202
         from core.exceptions import CertificateExistsError
 
         if serial_no in self.serials:
@@ -92,7 +97,7 @@ class FakeCertificates(CertificateStore):
             certificate_id=certificate_id, activity_id=activity_id,
             student_id=student_id, registration_id=registration_id,
             serial_no=serial_no, issued_at=now, issued_by=issued_by,
-            status="issued", template_id=None, file_media_id=None,
+            status="issued", template_id=template_id, file_media_id=None,
         )
         self.rows[(activity_id, student_id)] = row
         self.serials[serial_no] = row
@@ -128,6 +133,42 @@ class FakeCertificates(CertificateStore):
         ][:limit]
 
 
+class FakeTemplates(TemplateStore):
+    """In-memory template library keyed by template_id."""
+
+    def __init__(self) -> None:
+        self.rows: dict[UUID, Any] = {}
+
+    def create(self, template_id, org_id, name, background_media_id, layout_json, now):  # noqa: ANN001, ANN202
+        row = SimpleNamespace(
+            template_id=template_id, org_id=org_id, name=name,
+            background_media_id=background_media_id,
+            layout_json=layout_json, is_active=True, created_at=now,
+        )
+        self.rows[template_id] = row
+        return row
+
+    def get(self, template_id):  # noqa: ANN001, ANN202
+        return self.rows.get(template_id)
+
+    def list_by_org(self, org_id):  # noqa: ANN001, ANN202
+        return [r for r in self.rows.values() if r.org_id == org_id]
+
+    def update(self, template_id, name=None, background_media_id=None, layout_json=None, is_active=None):  # noqa: ANN001, ANN202
+        row = self.rows.get(template_id)
+        if row is None:
+            return None
+        if name is not None:
+            row.name = name
+        if background_media_id is not None:
+            row.background_media_id = background_media_id
+        if layout_json is not None:
+            row.layout_json = layout_json
+        if is_active is not None:
+            row.is_active = is_active
+        return row
+
+
 class FakeLeaderboard:
     """In-memory LeaderboardStore: rows keyed (term, student_id)."""
 
@@ -153,8 +194,54 @@ class FakeLeaderboard:
         return sorted({t for (t, _) in self.rows})
 
 
+class FakeRules(HourRuleStore):
+    """In-memory rule set keyed by rule_id."""
+
+    def __init__(self) -> None:
+        self.rows: dict[UUID, Any] = {}
+
+    def create(self, rule_id, org_id, category_id, multiplier, cap_hours, term):  # noqa: ANN001, ANN202
+        row = SimpleNamespace(
+            rule_id=rule_id, org_id=org_id, category_id=category_id,
+            multiplier=multiplier, cap_hours=cap_hours, term=term,
+            is_active=True,
+        )
+        self.rows[rule_id] = row
+        return row
+
+    def get(self, rule_id):  # noqa: ANN001, ANN202
+        return self.rows.get(rule_id)
+
+    def list_by_org(self, org_id):  # noqa: ANN001, ANN202
+        return [r for r in self.rows.values() if r.org_id == org_id]
+
+    def set_active(self, rule_id, is_active):  # noqa: ANN001, ANN202
+        row = self.rows.get(rule_id)
+        if row is None:
+            return None
+        row.is_active = is_active
+        return row
+
+
+class FakeAdjustments(AdjustmentStore):
+    def __init__(self) -> None:
+        self.rows: dict[UUID, Any] = {}
+
+    def create(self, adjustment_id, student_id, activity_id, delta_hours, reason, created_by, now):  # noqa: ANN001, ANN202
+        row = SimpleNamespace(
+            adjustment_id=adjustment_id, student_id=student_id,
+            activity_id=activity_id, delta_hours=delta_hours,
+            reason=reason, created_by=created_by, created_at=now,
+        )
+        self.rows[adjustment_id] = row
+        return row
+
+    def get(self, adjustment_id):  # noqa: ANN001, ANN202
+        return self.rows.get(adjustment_id)
+
+
 def make_hour_service(
-    leaderboard=None, users=None,
+    leaderboard=None, users=None, rules=None,
 ) -> tuple[
     HourService, FakeLedger, FakeActivities, FakeOrgs, FakeAccess,
     FakeNotifications,
@@ -167,12 +254,12 @@ def make_hour_service(
     service = HourService(
         ledger=ledger, activities=activities, orgs=orgs,
         access=access, notifications=notes,
-        leaderboard=leaderboard, users=users,
+        leaderboard=leaderboard, users=users, rules=rules,
     )
     return service, ledger, activities, orgs, access, notes
 
 
-def make_cert_service() -> tuple[
+def make_cert_service(templates=None) -> tuple[
     CertificateService, FakeCertificates, FakeRegistrations,
     FakeActivities, FakeOrgs, FakeAccess, FakeUsers, FakeNotifications,
 ]:
@@ -186,8 +273,21 @@ def make_cert_service() -> tuple[
     service = CertificateService(
         certificates=certs, registrations=regs, activities=activities,
         orgs=orgs, users=users, access=access, notifications=notes,
+        templates=templates,
     )
     return service, certs, regs, activities, orgs, access, users, notes
+
+
+def make_template_service() -> tuple[
+    TemplateService, FakeTemplates, FakeOrgs, FakeAccess,
+]:
+    templates = FakeTemplates()
+    orgs = FakeOrgs()
+    access = FakeAccess()
+    service = TemplateService(
+        templates=templates, orgs=orgs, access=access
+    )
+    return service, templates, orgs, access
 
 
 def uid() -> UUID:

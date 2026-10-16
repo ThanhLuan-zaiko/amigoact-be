@@ -36,6 +36,8 @@ async def test_profile_response_shape_locked(client: AsyncClient) -> None:
     assert response.status_code == 200
     assert set(response.json()) == {
         "student_code",
+        "campus_id",
+        "department_id",
         "class_name",
         "enrollment_year",
         "school_name",

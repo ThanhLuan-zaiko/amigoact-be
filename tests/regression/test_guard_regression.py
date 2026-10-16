@@ -64,8 +64,11 @@ async def test_rate_limit_envelope_frozen(client: AsyncClient) -> None:
     main.app.dependency_overrides[get_settings] = lambda: (
         _test_settings().model_copy(update={"guard_ip_max_hits": 1})
     )
-    assert (await client.get("/")).status_code == 200
-    blocked = await client.get("/")
+    # One IP per test: counter buckets survive TRUNCATE as stale shards, so
+    # sharing an IP across tests can resurrect an old count (see conftest).
+    ip = {"cf-connecting-ip": "10.9.1.1"}
+    assert (await client.get("/", headers=ip)).status_code == 200
+    blocked = await client.get("/", headers=ip)
     assert blocked.status_code == 429
     assert set(blocked.json()) == {"code", "message"}
     assert blocked.json()["code"] == "TOO_MANY_REQUESTS"
@@ -82,6 +85,7 @@ async def test_exempt_probe_contract(client: AsyncClient) -> None:
     main.app.dependency_overrides[get_settings] = lambda: (
         _test_settings().model_copy(update={"guard_ip_max_hits": 1})
     )
-    assert (await client.get("/")).status_code == 200
+    ip = {"cf-connecting-ip": "10.9.1.2"}
+    assert (await client.get("/", headers=ip)).status_code == 200
     for path in ("/health", "/docs", "/openapi.json"):
-        assert (await client.get(path)).status_code == 200
+        assert (await client.get(path, headers=ip)).status_code == 200

@@ -240,3 +240,69 @@ class ActivityDetailResponse(BaseModel):
     staff: list[StaffDetail]
     schedules: list[ScheduleItem]
     announcements: list[AnnouncementItem]
+
+
+class FormQuestionBody(BaseModel):
+    """One custom sign-up question; 'choice' options ride in the label
+    after a '|' separator (schema has no options column)."""
+
+    label: str = Field(min_length=1, max_length=300)
+    field_type: str = "text"
+    required: bool = False
+
+
+class SetFormBody(BaseModel):
+    """Replace the whole question list."""
+
+    questions: list[FormQuestionBody] = Field(default_factory=list, max_length=32)
+
+
+class FormQuestionItem(BaseModel):
+    """Question row as returned to builders and applicants."""
+
+    question_id: UUID
+    label: str
+    field_type: str
+    required: bool
+
+
+class SlotBody(BaseModel):
+    """One capacity-bounded shift inside a schedule."""
+
+    title: str = Field(min_length=1, max_length=120)
+    capacity: int | None = Field(default=None, ge=1, le=100000)
+    start_at: datetime | None = None
+    end_at: datetime | None = None
+
+
+class SlotItem(BaseModel):
+    """Slot row as returned to managers and applicants."""
+
+    slot_id: UUID
+    schedule_id: UUID
+    title: str
+    capacity: int | None
+    registered: int
+    start_at: datetime | None
+    end_at: datetime | None
+
+
+class ActivityMediaItemResponse(BaseModel):
+    """One gallery entry joined with its asset metadata."""
+
+    asset_id: UUID
+    position: int
+    role: str
+    caption: str | None
+    file_url: str
+    mime: str
+    kind: str
+    size_bytes: int
+    original_name: str | None
+
+
+class ActivityMediaPatchBody(BaseModel):
+    """Editable fields of one gallery entry."""
+
+    caption: str | None = Field(default=None, max_length=500)
+    role: str | None = Field(default=None, pattern="^(cover|gallery|document)$")

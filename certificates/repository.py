@@ -11,10 +11,11 @@ from uuid import UUID
 
 from cassandra.cqlengine.connection import get_session
 
-from certificates.interfaces import CertificateStore
+from certificates.interfaces import CertificateStore, TemplateStore
 from certificates.model import (
     Certificate,
     CertificateRevocation,
+    CertificateTemplate,
     CertificatesBySerial,
     CertificatesByStudent,
 )
@@ -36,6 +37,7 @@ class CqlCertificateStore(CertificateStore):
         serial_no: str,
         issued_by: UUID,
         now: datetime,
+        template_id: UUID | None = None,
     ) -> Certificate:
         """Claim serial via LWT, then fan out to both read paths."""
         claim = get_session().execute(
@@ -56,6 +58,7 @@ class CqlCertificateStore(CertificateStore):
             serial_no=serial_no,
             issued_at=now,
             issued_by=issued_by,
+            template_id=template_id,
             status="issued",
         )
         CertificatesByStudent.create(
@@ -140,3 +143,62 @@ class CqlCertificateStore(CertificateStore):
         return list(
             Certificate.objects(activity_id=activity_id).limit(limit)
         )
+
+
+class CqlTemplateStore(TemplateStore):
+    """Template CRUD over the singleton-PK table via the org index."""
+
+    def create(
+        self,
+        template_id: UUID,
+        org_id: UUID,
+        name: str,
+        background_media_id: UUID | None,
+        layout_json: str | None,
+        now: datetime,
+    ) -> CertificateTemplate:
+        return CertificateTemplate.create(
+            template_id=template_id,
+            org_id=org_id,
+            name=name,
+            background_media_id=background_media_id,
+            layout_json=layout_json,
+            is_active=True,
+            created_at=now,
+        )
+
+    def get(self, template_id: UUID) -> CertificateTemplate | None:
+        try:
+            return CertificateTemplate.get(template_id=template_id)
+        except CertificateTemplate.DoesNotExist:
+            return None
+
+    def list_by_org(self, org_id: UUID) -> list[CertificateTemplate]:
+        return list(
+            CertificateTemplate.objects(org_id=org_id).all()
+        )
+
+    def update(
+        self,
+        template_id: UUID,
+        name: str | None = None,
+        background_media_id: UUID | None = None,
+        layout_json: str | None = None,
+        is_active: bool | None = None,
+    ) -> CertificateTemplate | None:
+        if self.get(template_id) is None:
+            return None
+        fields: dict = {}
+        if name is not None:
+            fields["name"] = name
+        if background_media_id is not None:
+            fields["background_media_id"] = background_media_id
+        if layout_json is not None:
+            fields["layout_json"] = layout_json
+        if is_active is not None:
+            fields["is_active"] = is_active
+        if fields:
+            CertificateTemplate.objects(
+                template_id=template_id
+            ).update(**fields)
+        return self.get(template_id)

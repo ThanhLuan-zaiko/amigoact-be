@@ -8,6 +8,8 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Query, Response
 
 from admin.schemas import (
+    ModerationItemResponse,
+    ModerationReviewRequest,
     AdminOrgItem,
     AdminOrgPage,
     AdminStatusResponse,
@@ -132,4 +134,30 @@ def revoke_admin(
 ) -> Response:
     """Demote a platform administrator."""
     service.revoke_admin(current.id, current.email, user_id)
+    return Response(status_code=204)
+
+
+@router.get("/moderation", response_model=list[ModerationItemResponse])
+def list_moderation(
+    status: str = "pending",
+    current: CurrentUser = Depends(get_current_user),
+    service: AdminService = Depends(get_admin_service),
+) -> list[ModerationItemResponse]:
+    """List media moderation rows of one status bucket."""
+    items = service.list_moderation(current.id, current.email, status)
+    return [ModerationItemResponse(**vars(item)) for item in items]
+
+
+@router.post("/moderation/{moderation_id}/review", status_code=204)
+def review_moderation(
+    moderation_id: UUID,
+    body: ModerationReviewRequest,
+    current: CurrentUser = Depends(get_current_user),
+    service: AdminService = Depends(get_admin_service),
+) -> Response:
+    """Approve or reject one queued media asset."""
+    service.review_moderation(
+        current.id, current.email, body.from_status, body.created_at,
+        moderation_id, body.approve, body.note,
+    )
     return Response(status_code=204)

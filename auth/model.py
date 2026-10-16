@@ -119,3 +119,20 @@ class RefreshTokenByFamily(models.Model):
     user_id = columns.UUID(required=True)
     expires_at = columns.DateTime(required=True)
     revoked_at = columns.DateTime(required=False)
+
+
+class AuthSession(models.Model):
+    """Per-device login session; session_id mirrors the token family."""
+
+    __table_name__ = "auth_sessions"
+    __keyspace__ = "amigoact"
+
+    user_id = columns.UUID(primary_key=True, partition_key=True)
+    session_id = columns.UUID(primary_key=True)
+    device_label = columns.Text(required=False)
+    user_agent = columns.Text(required=False)
+    ip = columns.Text(required=False)
+    created_at = columns.DateTime(required=True)
+    last_seen_at = columns.DateTime(required=False)
+    expires_at = columns.DateTime(required=False)
+    revoked_at = columns.DateTime(required=False)

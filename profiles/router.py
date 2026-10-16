@@ -53,6 +53,8 @@ def _profile_response(bundle: ProfileBundle) -> ProfileResponse:
     profile = bundle.profile
     return ProfileResponse(
         student_code=getattr(profile, "student_code", None),
+        campus_id=getattr(profile, "campus_id", None),
+        department_id=getattr(profile, "department_id", None),
         class_name=getattr(profile, "class_name", None),
         enrollment_year=getattr(profile, "enrollment_year", None),
         school_name=getattr(profile, "school_name", None),
@@ -113,6 +115,8 @@ def update_my_profile(
         service.update_mine(
             current.id,
             student_code=body.student_code,
+            campus_id=body.campus_id,
+            department_id=body.department_id,
             class_name=body.class_name,
             enrollment_year=body.enrollment_year,
             school_name=body.school_name,

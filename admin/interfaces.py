@@ -6,6 +6,8 @@ from abc import ABC, abstractmethod
 from datetime import datetime
 from uuid import UUID
 
+from admin.model import MediaModeration
+
 
 class PlatformRoleStore(ABC):
     """Persistence port for the dual platform-role tables."""
@@ -31,3 +33,35 @@ class PlatformRoleStore(ABC):
     @abstractmethod
     def list_holders(self, role_id: UUID) -> list[UUID]:
         """Every user id currently holding one platform role."""
+
+
+class ModerationStore(ABC):
+    """Persistence port for media_moderation buckets."""
+
+    @abstractmethod
+    def enqueue(
+        self,
+        moderation_id: UUID,
+        asset_id: UUID,
+        now: datetime,
+    ) -> MediaModeration:
+        """Insert a pending row."""
+
+    @abstractmethod
+    def list_by_status(
+        self, status: str, limit: int = 50
+    ) -> list[MediaModeration]:
+        """Newest rows of one status bucket."""
+
+    @abstractmethod
+    def mark(
+        self,
+        from_status: str,
+        created_at: datetime,
+        moderation_id: UUID,
+        to_status: str,
+        reviewed_by: UUID,
+        note: str | None,
+        now: datetime,
+    ) -> MediaModeration | None:
+        """Move one row into another status bucket."""

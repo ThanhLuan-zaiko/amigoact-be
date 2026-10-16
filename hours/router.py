@@ -8,9 +8,17 @@ from uuid import UUID
 from fastapi import APIRouter, Depends
 
 from core.dependencies import CurrentUser, get_current_user
-from core.dependencies_features import get_hour_service
+from core.dependencies_features import (
+    get_hour_service,
+    get_rule_service,
+)
 from hours.schemas import (
+    AdjustHoursBody,
+    AdjustmentResponse,
     HourEntryResponse,
+    HourRuleBody,
+    HourRulePatchBody,
+    HourRuleResponse,
     LeaderboardEntryResponse,
     LeaderboardResponse,
     ManualHoursBody,
@@ -23,10 +31,13 @@ from hours.schemas import (
 
 if TYPE_CHECKING:
     from hours.model import (
+        HourAdjustment,
         HourEntriesByStudent,
+        HourRule,
         PendingHoursByOrg,
         VolunteerHourEntry,
     )
+    from hours.rule_service import RuleService
     from hours.service import HourService
 
 router = APIRouter(tags=["hours"])
@@ -187,3 +198,96 @@ def leaderboard_terms(
 ) -> list[str]:
     """Public list of boards that have at least one ranked student."""
     return service.leaderboard_terms()
+
+
+def _rule(row: HourRule) -> HourRuleResponse:
+    return HourRuleResponse(
+        rule_id=row.rule_id,
+        org_id=row.org_id,
+        category_id=row.category_id,
+        multiplier=row.multiplier,
+        cap_hours=row.cap_hours,
+        term=row.term,
+        is_active=row.is_active,
+    )
+
+
+@router.get(
+    "/orgs/{org_id}/hour-rules",
+    response_model=list[HourRuleResponse],
+)
+def list_rules(
+    org_id: UUID,
+    current: CurrentUser = Depends(get_current_user),
+    service: RuleService = Depends(get_rule_service),
+) -> list[HourRuleResponse]:
+    """Manager lists the org's multiplier/cap rules."""
+    return [
+        _rule(r) for r in service.list_rules(org_id, current.id)
+    ]
+
+
+@router.post(
+    "/orgs/{org_id}/hour-rules",
+    response_model=HourRuleResponse,
+    status_code=201,
+)
+def create_rule(
+    org_id: UUID,
+    body: HourRuleBody,
+    current: CurrentUser = Depends(get_current_user),
+    service: RuleService = Depends(get_rule_service),
+) -> HourRuleResponse:
+    """Attach a multiplier to a category/term scope."""
+    return _rule(
+        service.create_rule(
+            org_id, current.id, body.multiplier,
+            body.category_id, body.cap_hours, body.term,
+        )
+    )
+
+
+@router.patch(
+    "/orgs/{org_id}/hour-rules/{rule_id}",
+    response_model=HourRuleResponse,
+)
+def toggle_rule(
+    org_id: UUID,
+    rule_id: UUID,
+    body: HourRulePatchBody,
+    current: CurrentUser = Depends(get_current_user),
+    service: RuleService = Depends(get_rule_service),
+) -> HourRuleResponse:
+    """Toggle a rule on/off; values stay immutable."""
+    return _rule(
+        service.set_rule_active(
+            org_id, rule_id, current.id, body.is_active
+        )
+    )
+
+
+@router.post(
+    "/orgs/{org_id}/hours/adjust",
+    response_model=AdjustmentResponse,
+    status_code=201,
+)
+def adjust_hours(
+    org_id: UUID,
+    body: AdjustHoursBody,
+    current: CurrentUser = Depends(get_current_user),
+    service: RuleService = Depends(get_rule_service),
+) -> AdjustmentResponse:
+    """Audit + queue an 'adjustment' ledger entry for approval."""
+    row: HourAdjustment = service.adjust(
+        org_id, current.id, body.student_id, body.activity_id,
+        body.delta_hours, body.reason,
+    )
+    return AdjustmentResponse(
+        adjustment_id=row.adjustment_id,
+        student_id=row.student_id,
+        activity_id=row.activity_id,
+        delta_hours=row.delta_hours,
+        reason=row.reason,
+        created_by=row.created_by,
+        created_at=row.created_at,
+    )

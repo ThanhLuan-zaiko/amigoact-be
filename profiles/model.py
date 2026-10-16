@@ -84,3 +84,14 @@ class UserBySkill(models.Model):
     skill_id = columns.UUID(primary_key=True, partition_key=True)
     user_id = columns.UUID(primary_key=True, clustering_order="ASC")
     level = columns.Integer(required=True, default=1)
+
+
+class StudentProfileByCode(models.Model):
+    """Student-code lookup keyed by campus for org-scoped searches."""
+
+    __table_name__ = "student_profiles_by_code"
+    __keyspace__ = "amigoact"
+
+    campus_id = columns.UUID(primary_key=True, partition_key=True)
+    student_code = columns.Text(primary_key=True)
+    user_id = columns.UUID(required=True)

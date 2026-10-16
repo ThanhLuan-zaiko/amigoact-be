@@ -10,6 +10,7 @@ from profiles.model import (
     EmergencyContact,
     Skill,
     StudentProfile,
+    StudentProfileByCode,
     UserBySkill,
     UserSkill,
 )
@@ -27,6 +28,8 @@ class ProfileStore(ABC):
         self,
         user_id: UUID,
         student_code: str | None,
+        campus_id: UUID | None,
+        department_id: UUID | None,
         class_name: str | None,
         enrollment_year: int | None,
         school_name: str | None,
@@ -84,3 +87,9 @@ class ProfileStore(ABC):
         self, user_id: UUID, edges: list[tuple[UUID, int]]
     ) -> None:
         """Rewrite both directions: delete removed rows, upsert kept ones."""
+
+    @abstractmethod
+    def lookup_code(
+        self, campus_id: UUID, student_code: str
+    ) -> StudentProfileByCode | None:
+        """Resolve a student code inside one campus partition."""

@@ -5,8 +5,13 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from activities.interfaces import ActivityLinkStore, ActivityStaffStore
+from activities.interfaces import (
+    ActivityLinkStore,
+    ActivityStaffStore,
+    RegistrationFormStore,
+)
 from activities.model import (
+    RegistrationForm,
     Activity,
     ActivityPartner,
     ActivitySkill,
@@ -113,3 +118,33 @@ class CqlActivityStaffStore(ActivityStaffStore):
 
     def list_staff(self, activity_id: UUID) -> list[ActivityStaff]:
         return list(ActivityStaff.objects(activity_id=activity_id).all())
+
+
+class CqlRegistrationFormStore(RegistrationFormStore):
+    """Form questions replace as a set; position comes from list order."""
+
+    def list_form(self, activity_id: UUID) -> list[RegistrationForm]:
+        return list(RegistrationForm.objects(activity_id=activity_id).all())
+
+    def replace_form(
+        self,
+        activity_id: UUID,
+        questions: list[tuple[UUID, str, str, bool]],
+    ) -> None:
+        for row in self.list_form(activity_id):
+            RegistrationForm.objects(
+                activity_id=activity_id,
+                position=row.position,
+                question_id=row.question_id,
+            ).delete()
+        for position, (question_id, label, field_type, required) in enumerate(
+            questions
+        ):
+            RegistrationForm(
+                activity_id=activity_id,
+                position=position,
+                question_id=question_id,
+                label=label,
+                field_type=field_type,
+                required=required,
+            ).save()

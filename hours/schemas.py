@@ -75,3 +75,51 @@ class LeaderboardEntryResponse(BaseModel):
 class LeaderboardResponse(BaseModel):
     term: str
     entries: list[LeaderboardEntryResponse]
+
+
+class HourRuleBody(BaseModel):
+    """Create a per-org multiplier rule (optional cap/scope)."""
+
+    multiplier: float = Field(gt=0)
+    category_id: UUID | None = None
+    cap_hours: float | None = Field(default=None, gt=0)
+    term: str | None = Field(default=None, max_length=20)
+
+
+class HourRulePatchBody(BaseModel):
+    """Toggle a rule without mutating its values."""
+
+    is_active: bool
+
+
+class HourRuleResponse(BaseModel):
+    """One rule row as the manager list shows it."""
+
+    rule_id: UUID
+    org_id: UUID
+    category_id: UUID | None
+    multiplier: float | None
+    cap_hours: float | None
+    term: str | None
+    is_active: bool | None
+
+
+class AdjustHoursBody(BaseModel):
+    """Staff correction: audit row plus a queued ledger entry."""
+
+    student_id: UUID
+    activity_id: UUID
+    delta_hours: float
+    reason: str = Field(min_length=3, max_length=500)
+
+
+class AdjustmentResponse(BaseModel):
+    """Audit row returned after queueing the correction."""
+
+    adjustment_id: UUID
+    student_id: UUID
+    activity_id: UUID
+    delta_hours: float
+    reason: str | None
+    created_by: UUID | None
+    created_at: datetime | None

@@ -342,3 +342,10 @@ Realtime features use WebSocket from day one. No polling-first, no SSE-first, no
 5. No RAM state (§12, schemas.cql §14): the connection registry is ephemeral transport only, never authoritative. Reconnect/resume always replays from ScyllaDB (scan logs, notifications, outbox rows). Fan-out coordination uses `job_leases`-style DB leases, never in-process locks. A restarted worker loses zero business facts.
 6. Placement: WS route handlers live in the feature `router.py`, stay thin, and delegate to services/repositories like REST. Shared handshake/ticket code and the socket registry live in `core/realtime.py`; the heartbeat coroutine lives in `core/realtime_heartbeat.py` (split for the §4 line limit). No other module owns shared WS plumbing.
 7. Tests (§10 applies fully): handshake with valid/invalid/expired ticket, subscribe allowed vs denied, heartbeat timeout, reconnect resume from DB. Every channel ships unit + integration + regression tests.
+
+## 17. Search Tooling: ripgrep First, grep Fallback
+
+1. Probe once per environment: if `rg --version` succeeds, every code/content search MUST use `rg` (ripgrep). Prefer it over `grep -R`/`find`+`grep`: it is faster, respects `.gitignore`, and skips binary/ignored files by default.
+2. If ripgrep is not installed on the machine, fall back to the platform default `grep` (`grep -RIn`). Do NOT install ripgrep mid-task just to satisfy this rule; the grep fallback keeps every workflow functional on bare machines.
+3. The same detect-then-degrade rule applies to scripts, CI steps, hooks, and agent workflows: detect `rg` first, degrade to `grep` gracefully, and never fail a job solely because `rg` is missing.
+4. Never pipe user-controlled input into a search pattern without quoting; prefer fixed-string mode (`rg -F` / `grep -F`) for literal lookups.

@@ -29,6 +29,8 @@ class RegistrationStore(ABC):
         checkin_token: UUID,
         now: datetime,
         status: str = "pending",
+        form_data: str | None = None,
+        slot_id: UUID | None = None,
     ) -> Registration:
         """Insert the row plus roster/student/token feeds."""
 
@@ -42,6 +44,8 @@ class RegistrationStore(ABC):
         checkin_token: UUID,
         now: datetime,
         status: str = "pending",
+        form_data: str | None = None,
+        slot_id: UUID | None = None,
     ) -> Registration:
         """Reopen a terminal guard row (cancelled/rejected)."""
 
@@ -85,7 +89,9 @@ class RegistrationStore(ABC):
         """Student's applications, newest first."""
 
     @abstractmethod
-    def count_active(self, activity_id: UUID) -> int:
+    def count_active(
+        self, activity_id: UUID, slot_id: UUID | None = None
+    ) -> int:
         """Approved/attended registrations occupying capacity slots."""
 
     @abstractmethod
@@ -93,6 +99,7 @@ class RegistrationStore(ABC):
         self,
         activity_id: UUID,
         student_id: UUID,
+        slot_id: UUID,
         now: datetime,
     ) -> WaitlistEntry:
         """Append a student to the activity's FIFO waitlist."""
@@ -180,7 +187,6 @@ class AttendanceStore(ABC):
         self, student_id: UUID, limit: int = 100
     ) -> list[AttendanceRecord]:
         """One student's check-ins across activities."""
-
 
 class AttendanceEvents(ABC):
     """Fan-out port: one live event per committed attendance mutation."""

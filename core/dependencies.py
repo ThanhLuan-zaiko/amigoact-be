@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 from uuid import UUID
 
-from fastapi import Depends, Request, WebSocket
+from fastapi import Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from core.config import Settings, get_settings
@@ -15,7 +15,9 @@ from core.exceptions import AccountSuspendedError, UnauthorizedError
 from core.security import AuthTokenError, decode_access_token
 
 if TYPE_CHECKING:
+    from apikeys.service import ApiKeyService
     from auth.service import AuthService
+    from auth.session_service import SessionService
     from core.guard import EdgeGuard
     from core.realtime import ConnectionManager
     from notifications.service import NotificationService
@@ -25,7 +27,6 @@ if TYPE_CHECKING:
     from orgs.service import OrgService
     from rbac.interfaces import AccessControl
     from rbac.roles_service import OrgRoleService
-    from realtime.service import RealtimeService
 
 _bearer = HTTPBearer(auto_error=False)
 
@@ -51,6 +52,7 @@ def get_auth_service(
         CqlUserRepository,
         CqlVerificationCodeStore,
     )
+    from auth.session_repository import CqlSessionStore
     from auth.service import AuthService
     from orgs.media_repository import CqlMediaRepository
 
@@ -71,6 +73,32 @@ def get_auth_service(
         mailer=mailer,
         settings=settings,
         media=CqlMediaRepository(),
+        sessions=CqlSessionStore(),
+    )
+
+
+def get_session_service() -> "SessionService":
+    """Build one SessionService per request."""
+    from auth.repository import CqlRefreshTokenStore
+    from auth.session_repository import CqlSessionStore
+    from auth.session_service import SessionService
+
+    return SessionService(
+        sessions=CqlSessionStore(),
+        refresh_tokens=CqlRefreshTokenStore(),
+    )
+
+
+def get_api_key_service() -> "ApiKeyService":
+    """Build one ApiKeyService per request."""
+    from apikeys.repository import CqlApiKeyStore
+    from apikeys.service import ApiKeyService
+    from orgs.repository import CqlOrgRepository
+
+    return ApiKeyService(
+        store=CqlApiKeyStore(),
+        orgs=CqlOrgRepository(),
+        access=get_access_control(),
     )
 
 
@@ -118,6 +146,7 @@ def get_media_service(
     access: AccessControl = Depends(get_access_control),
 ) -> MediaService:
     """Build one MediaService per request for the org gallery."""
+    from admin.repository import CqlModerationStore
     from orgs.directory_events import WsOrgDirectoryEvents
     from orgs.media_service import MediaService
     from orgs.media_repository import CqlMediaRepository
@@ -133,6 +162,7 @@ def get_media_service(
         events=WsOrgDirectoryEvents(
             getattr(request.app.state, "ws_manager", None)
         ),
+        moderation=CqlModerationStore(),
     )
 
 
@@ -260,59 +290,6 @@ def get_media_store(settings: Settings = Depends(get_settings)) -> LocalMediaSto
     from core.media import LocalMediaStore
 
     return LocalMediaStore(settings.media_root)
-
-
-def get_connection_manager(websocket: WebSocket) -> ConnectionManager:
-    """App-scoped ephemeral socket registry initialized in lifespan."""
-    manager = getattr(websocket.app.state, "ws_manager", None)
-    if manager is None:
-        raise RuntimeError("WebSocket manager is not initialized.")
-    return manager
-
-
-def get_realtime_service(
-    settings: Settings = Depends(get_settings),
-    access: AccessControl = Depends(get_access_control),
-) -> RealtimeService:
-    """Build one RealtimeService per ticket/socket request."""
-    from activities.repository import CqlActivityStore
-    from auth.repository import CqlUserRepository
-    from chat.events import WsChatEvents
-    from chat.repository import CqlChatStore
-    from chat.service import ChatService
-    from orgs.member_repository import CqlMemberRepository
-    from orgs.repository import CqlOrgRepository
-    from realtime.access import (
-        AuthUserLookup,
-        MemberPresenceDirectory,
-        OrgAttendanceAccess,
-        OrgChannelMembership,
-    )
-    from realtime.repository import CqlWsTicketStore
-    from realtime.service import RealtimeService
-
-    orgs = CqlOrgRepository(settings.scylla_keyspace)
-    members = CqlMemberRepository()
-    activities = CqlActivityStore(settings.scylla_keyspace)
-    return RealtimeService(
-        tickets=CqlWsTicketStore(settings.scylla_keyspace),
-        membership=OrgChannelMembership(orgs),
-        attendance=OrgAttendanceAccess(activities, orgs, access),
-        ticket_ttl_seconds=settings.ws_ticket_ttl_seconds,
-        users=AuthUserLookup(CqlUserRepository(settings.scylla_keyspace)),
-        presence=MemberPresenceDirectory(members),
-        # The chat service doubles as the room ACL port so subscribe
-        # checks reuse the exact room-resolution rules.
-        chat_rooms=ChatService(
-            chat=CqlChatStore(settings.scylla_keyspace),
-            orgs=orgs,
-            members=members,
-            users=user_directory(settings),
-            access=access,
-            events=WsChatEvents(None),
-            activities=activities,
-        ),
-    )
 
 
 def get_current_user(

@@ -6,7 +6,11 @@ from abc import ABC, abstractmethod
 from datetime import datetime
 from uuid import UUID
 
-from certificates.model import Certificate, CertificatesBySerial
+from certificates.model import (
+    Certificate,
+    CertificateTemplate,
+    CertificatesBySerial,
+)
 
 
 class CertificateStore(ABC):
@@ -22,6 +26,7 @@ class CertificateStore(ABC):
         serial_no: str,
         issued_by: UUID,
         now: datetime,
+        template_id: UUID | None = None,
     ) -> Certificate:
         """Claim the serial, then write canonical + student/serial feeds."""
 
@@ -58,3 +63,38 @@ class CertificateStore(ABC):
         self, activity_id: UUID, limit: int = 500
     ) -> list[Certificate]:
         """All certificates of one activity (partition-local read)."""
+
+
+class TemplateStore(ABC):
+    """Persistence port for the org's certificate template library."""
+
+    @abstractmethod
+    def create(
+        self,
+        template_id: UUID,
+        org_id: UUID,
+        name: str,
+        background_media_id: UUID | None,
+        layout_json: str | None,
+        now: datetime,
+    ) -> CertificateTemplate:
+        """Insert one active template row."""
+
+    @abstractmethod
+    def get(self, template_id: UUID) -> CertificateTemplate | None:
+        """Load one template by primary key."""
+
+    @abstractmethod
+    def list_by_org(self, org_id: UUID) -> list[CertificateTemplate]:
+        """The org's template library (small set, secondary index)."""
+
+    @abstractmethod
+    def update(
+        self,
+        template_id: UUID,
+        name: str | None = None,
+        background_media_id: UUID | None = None,
+        layout_json: str | None = None,
+        is_active: bool | None = None,
+    ) -> CertificateTemplate | None:
+        """Patch provided columns only; None leaves them untouched."""

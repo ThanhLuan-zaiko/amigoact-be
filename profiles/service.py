@@ -119,11 +119,15 @@ class ProfileService:
         bio: str | None,
         interests: set[str],
         status: str | None,
+        campus_id: UUID | None = None,
+        department_id: UUID | None = None,
     ) -> ProfileBundle:
         """Create-or-replace editable fields; total_hours is ledger-owned."""
         self._profiles.upsert_profile(
             user_id,
             student_code,
+            campus_id,
+            department_id,
             class_name,
             enrollment_year,
             school_name,

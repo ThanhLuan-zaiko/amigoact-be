@@ -20,6 +20,14 @@ def utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def expired(moment: datetime | None) -> bool:
+    """Treat missing timestamps as expired for fail-closed checks."""
+    if moment is None:
+        return True
+    current = moment if moment.tzinfo else moment.replace(tzinfo=timezone.utc)
+    return current <= utcnow()
+
+
 def utc_aware(moment: datetime | None) -> datetime | None:
     """Reattach UTC to a naive DB datetime so clients see real instants."""
     if moment is not None and moment.tzinfo is None:

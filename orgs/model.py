@@ -186,3 +186,79 @@ class MediaByUploader(models.Model):
     file_url = columns.Text(required=True)
     mime = columns.Text(required=True)
     owner_type = columns.Text(required=True, default="organization")
+
+
+class Campus(models.Model):
+    """One physical site belonging to an organization."""
+
+    __table_name__ = "campuses"
+    __keyspace__ = "amigoact"
+
+    id = columns.UUID(primary_key=True, default=uuid7)
+    org_id = columns.UUID(required=True)
+    name = columns.Text(required=True)
+    address = columns.Text(required=False)
+    status = columns.Text(required=True, default="active")
+    created_at = columns.DateTime(required=True)
+
+
+class CampusByOrg(models.Model):
+    """Denormalized per-org campus listing."""
+
+    __table_name__ = "campuses_by_org"
+    __keyspace__ = "amigoact"
+
+    org_id = columns.UUID(primary_key=True, partition_key=True)
+    campus_id = columns.UUID(primary_key=True)
+    name = columns.Text(required=True)
+
+
+class Department(models.Model):
+    """One faculty/office inside an org, optionally bound to a campus."""
+
+    __table_name__ = "departments"
+    __keyspace__ = "amigoact"
+
+    id = columns.UUID(primary_key=True, default=uuid7)
+    org_id = columns.UUID(required=True)
+    campus_id = columns.UUID(required=False)
+    name = columns.Text(required=True)
+    code = columns.Text(required=False)
+    status = columns.Text(required=True, default="active")
+    created_at = columns.DateTime(required=True)
+
+
+class DepartmentByCampus(models.Model):
+    """Departments grouped under one campus for the org tree."""
+
+    __table_name__ = "departments_by_campus"
+    __keyspace__ = "amigoact"
+
+    campus_id = columns.UUID(primary_key=True, partition_key=True)
+    department_id = columns.UUID(primary_key=True)
+    name = columns.Text(required=True)
+    code = columns.Text(required=False)
+
+
+class DepartmentByOrg(models.Model):
+    """Org-level department listing, also covering campus-less rows."""
+
+    __table_name__ = "departments_by_org"
+    __keyspace__ = "amigoact"
+
+    org_id = columns.UUID(primary_key=True, partition_key=True)
+    department_id = columns.UUID(primary_key=True)
+    name = columns.Text(required=True)
+    code = columns.Text(required=False)
+    campus_id = columns.UUID(required=False)
+
+
+class OrgType(models.Model):
+    """Org-kind lookup row; seeds replace the hard-coded enum."""
+
+    __table_name__ = "org_types"
+    __keyspace__ = "amigoact"
+
+    code = columns.Text(primary_key=True)
+    name = columns.Text(required=True)
+    sort_order = columns.Integer(required=False, default=0)

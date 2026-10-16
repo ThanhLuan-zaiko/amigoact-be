@@ -280,6 +280,17 @@ CREATE TABLE IF NOT EXISTS departments_by_campus (
     PRIMARY KEY ((campus_id), department_id)
 );
 
+// Org-wide department listing; mirrors departments_by_campus and also
+// covers departments that are not bound to a campus.
+CREATE TABLE IF NOT EXISTS departments_by_org (
+    org_id uuid,
+    department_id uuid,
+    name text,
+    code text,
+    campus_id uuid,
+    PRIMARY KEY ((org_id), department_id)
+);
+
 // -----------------------------------------------------------------------------
 // 3. RBAC — ENTERPRISE AUTHORIZATION (14 tables)
 // Layered model: system/org roles -> permissions, plus direct per-user grants
@@ -401,7 +412,21 @@ CREATE TABLE IF NOT EXISTS api_keys (
     scopes set<text>,
     expires_at timestamp,
     revoked_at timestamp,
-    last_used_at timestamp
+    last_used_at timestamp,
+    created_at timestamp
+);
+
+CREATE TABLE IF NOT EXISTS api_keys_by_org (
+    org_id uuid,
+    key_id uuid,
+    key_hash text,
+    name text,
+    scopes set<text>,
+    expires_at timestamp,
+    revoked_at timestamp,
+    last_used_at timestamp,
+    created_at timestamp,
+    PRIMARY KEY ((org_id), key_id)
 );
 
 CREATE TABLE IF NOT EXISTS access_audit_logs (
@@ -957,6 +982,9 @@ CREATE TABLE IF NOT EXISTS hour_rules (
     is_active boolean
 );
 
+// Secondary index so managers can list the small per-org rule set.
+CREATE INDEX IF NOT EXISTS hour_rules_by_org ON hour_rules (org_id);
+
 // Term leaderboard, top hours first. A student's row moves when the
 // approved total changes: delete the old-total clustering row, insert
 // the new one. term='all' keeps the all-time board beside term boards.
@@ -988,6 +1016,10 @@ CREATE TABLE IF NOT EXISTS certificate_templates (
     is_active boolean,
     created_at timestamp
 );
+
+// Secondary index for the org's small template library.
+CREATE INDEX IF NOT EXISTS certificate_templates_by_org
+    ON certificate_templates (org_id);
 
 CREATE TABLE IF NOT EXISTS certificates (
     activity_id uuid,

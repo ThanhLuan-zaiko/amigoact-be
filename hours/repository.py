@@ -5,9 +5,16 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from hours.interfaces import HourLedgerStore, LeaderboardStore
+from hours.interfaces import (
+    AdjustmentStore,
+    HourLedgerStore,
+    HourRuleStore,
+    LeaderboardStore,
+)
 from hours.model import (
+    HourAdjustment,
     HourEntriesByStudent,
+    HourRule,
     HoursByActivity,
     HoursByStudent,
     LeaderboardByTerm,
@@ -206,3 +213,73 @@ class CqlLeaderboardStore(LeaderboardStore):
         return sorted(
             row.term for row in LeaderboardTerm.objects().all()
         )
+
+
+class CqlHourRuleStore(HourRuleStore):
+    """Rule CRUD over the singleton-PK table via the org index."""
+
+    def create(
+        self,
+        rule_id: UUID,
+        org_id: UUID,
+        category_id: UUID | None,
+        multiplier: float,
+        cap_hours: float | None,
+        term: str | None,
+    ) -> HourRule:
+        return HourRule.create(
+            rule_id=rule_id,
+            org_id=org_id,
+            category_id=category_id,
+            multiplier=multiplier,
+            cap_hours=cap_hours,
+            term=term,
+            is_active=True,
+        )
+
+    def get(self, rule_id: UUID) -> HourRule | None:
+        try:
+            return HourRule.get(rule_id=rule_id)
+        except HourRule.DoesNotExist:
+            return None
+
+    def list_by_org(self, org_id: UUID) -> list[HourRule]:
+        return list(HourRule.objects(org_id=org_id).all())
+
+    def set_active(
+        self, rule_id: UUID, is_active: bool
+    ) -> HourRule | None:
+        if self.get(rule_id) is None:
+            return None
+        HourRule.objects(rule_id=rule_id).update(is_active=is_active)
+        return self.get(rule_id)
+
+
+class CqlAdjustmentStore(AdjustmentStore):
+    """Append-only audit rows for staff corrections."""
+
+    def create(
+        self,
+        adjustment_id: UUID,
+        student_id: UUID,
+        activity_id: UUID,
+        delta_hours: float,
+        reason: str,
+        created_by: UUID,
+        now: datetime,
+    ) -> HourAdjustment:
+        return HourAdjustment.create(
+            adjustment_id=adjustment_id,
+            student_id=student_id,
+            activity_id=activity_id,
+            delta_hours=delta_hours,
+            reason=reason,
+            created_by=created_by,
+            created_at=now,
+        )
+
+    def get(self, adjustment_id: UUID) -> HourAdjustment | None:
+        try:
+            return HourAdjustment.get(adjustment_id=adjustment_id)
+        except HourAdjustment.DoesNotExist:
+            return None

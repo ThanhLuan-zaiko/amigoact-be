@@ -5,7 +5,11 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from activities.interfaces import AnnouncementStore, ScheduleStore
+from activities.interfaces import (
+    AnnouncementStore,
+    ScheduleStore,
+    SlotStore,
+)
 from activities.model import (
     ActivityAnnouncement,
     ActivitySchedule,
@@ -103,3 +107,47 @@ class CqlAnnouncementStore(AnnouncementStore):
             .limit(limit)
             .all()
         )
+
+
+class CqlSlotStore(SlotStore):
+    """Slots hang off schedules; activity-wide listing joins via the feed."""
+
+    def list(self, schedule_id: UUID) -> list[ActivitySlot]:
+        return list(ActivitySlot.objects(schedule_id=schedule_id).all())
+
+    def list_for_activity(self, activity_id: UUID) -> list[ActivitySlot]:
+        feed = ScheduleByActivity.objects(activity_id=activity_id).all()
+        slots: list[ActivitySlot] = []
+        for f in feed:
+            slots.extend(self.list(f.schedule_id))
+        return slots
+
+    def create(
+        self,
+        slot_id: UUID,
+        schedule_id: UUID,
+        title: str,
+        capacity: int | None,
+        start_at: datetime | None,
+        end_at: datetime | None,
+    ) -> ActivitySlot:
+        return ActivitySlot.create(
+            slot_id=slot_id,
+            schedule_id=schedule_id,
+            title=title,
+            capacity=capacity,
+            registered=0,
+            start_at=start_at,
+            end_at=end_at,
+        )
+
+    def delete(self, schedule_id: UUID, slot_id: UUID) -> bool:
+        row = ActivitySlot.objects(
+            schedule_id=schedule_id, slot_id=slot_id
+        ).first()
+        if row is None:
+            return False
+        ActivitySlot.objects(
+            schedule_id=schedule_id, slot_id=slot_id
+        ).delete()
+        return True

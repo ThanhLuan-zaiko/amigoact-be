@@ -57,3 +57,23 @@ class GrantAdminRequest(BaseModel):
     """Promote an account by email address."""
 
     email: str = Field(min_length=3, max_length=254)
+
+
+class ModerationItemResponse(BaseModel):
+    """One media moderation queue row."""
+
+    moderation_id: UUID
+    asset_id: UUID
+    status: str
+    created_at: datetime
+    note: str | None = None
+    file_url: str | None = None
+
+
+class ModerationReviewRequest(BaseModel):
+    """Review body: which bucket, approve flag, optional note."""
+
+    from_status: str = Field(default="pending")
+    created_at: datetime
+    approve: bool
+    note: str | None = None

@@ -17,6 +17,7 @@ from core.security import utcnow
 from hours.interfaces import (
     HourLedgerStore,
     HourRecorder,
+    HourRuleStore,
     LeaderboardStore,
 )
 from hours.model import (
@@ -56,6 +57,7 @@ class HourService(HourRecorder):
         notifications: NotificationPort | None = None,
         leaderboard: LeaderboardStore | None = None,
         users: UserDirectory | None = None,
+        rules: HourRuleStore | None = None,
     ) -> None:
         self._ledger = ledger
         self._activities = activities
@@ -64,6 +66,7 @@ class HourService(HourRecorder):
         self._notifications = notifications
         self._leaderboard = leaderboard
         self._users = users
+        self._rules = rules
 
     def _require_manager(self, org_id: UUID, actor: UUID, action: str) -> None:
         org = self._orgs.get_by_id(org_id)
@@ -103,11 +106,39 @@ class HourService(HourRecorder):
     ) -> None:
         """Queue the check-out hours for manager approval."""
         now = utcnow()
+        term = term_of(now)
+        hours = self._apply_rule(org_id, activity_id, term, hours)
         self._ledger.record(
             uuid7(), org_id, student_id, activity_id,
-            "attendance", hours, term_of(now), registration_id,
+            "attendance", hours, term, registration_id,
             recorded_by, None, now,
         )
+
+    def _apply_rule(
+        self,
+        org_id: UUID,
+        activity_id: UUID,
+        term: str,
+        hours: float,
+    ) -> float:
+        """Best-effort rule lookup; raw hours on any failure."""
+        if self._rules is None:
+            return hours
+        try:
+            from hours.rule_service import apply_rule
+
+            activity = self._activities.get(activity_id)
+            category_id = (
+                getattr(activity, "category_id", None)
+                if activity is not None
+                else None
+            )
+            return apply_rule(
+                self._rules.list_by_org(org_id),
+                category_id, term, hours,
+            )
+        except Exception:  # noqa: BLE001 - rules are best-effort
+            return hours
 
     # Manager flows -----------------------------------------------------
 

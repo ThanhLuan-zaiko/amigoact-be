@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, Request, Response
 
@@ -16,14 +17,21 @@ from auth.schemas import (
     RegisterRequest,
     ResendVerificationRequest,
     ResetPasswordRequest,
+    SessionItem,
     TokenResponse,
     UpdateProfileRequest,
     UserProfile,
     VerifyEmailRequest,
 )
 from auth.service import SessionProfile, TokenPair
+from auth.session_service import SessionService
 from core.config import Settings, get_settings
-from core.dependencies import CurrentUser, get_auth_service, get_current_user
+from core.dependencies import (
+    CurrentUser,
+    get_auth_service,
+    get_current_user,
+    get_session_service,
+)
 from core.exceptions import NotFoundError, UnauthorizedError
 from core.security import hash_token
 
@@ -136,7 +144,12 @@ def login(
     service: AuthService = Depends(get_auth_service),
 ) -> TokenResponse:
     """Check credentials and start a stateful refresh family."""
-    pair = service.login(body.email, body.password, _client_ip(request))
+    pair = service.login(
+        body.email,
+        body.password,
+        _client_ip(request),
+        user_agent=request.headers.get("user-agent"),
+    )
     _write_refresh_cookie(response, pair.refresh_token, settings)
     return _token_schema(pair)
 
@@ -262,3 +275,32 @@ def dev_challenge_code(
     return DevChallengeResponse(
         email=body.email, kind=body.kind, code=code, expires_in_seconds=ttl
     )
+
+
+def _session_schema(view) -> SessionItem:
+    return SessionItem(**vars(view))
+
+
+@router.get("/auth/sessions", response_model=list[SessionItem])
+def list_sessions(
+    request: Request,
+    current: CurrentUser = Depends(get_current_user),
+    service: SessionService = Depends(get_session_service),
+) -> list[SessionItem]:
+    """List the caller's device sessions, current device flagged."""
+    token = request.cookies.get(REFRESH_COOKIE)
+    views = service.list_mine(
+        current.id, hash_token(token) if token else None
+    )
+    return [_session_schema(view) for view in views]
+
+
+@router.post("/auth/sessions/{session_id}/revoke", status_code=204)
+def revoke_session(
+    session_id: UUID,
+    current: CurrentUser = Depends(get_current_user),
+    service: SessionService = Depends(get_session_service),
+) -> Response:
+    """Revoke one device session and its whole refresh family."""
+    service.revoke(current.id, session_id)
+    return Response(status_code=204)

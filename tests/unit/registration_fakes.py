@@ -28,34 +28,34 @@ class FakeRegistrations(RegistrationStore):
         self.history: list[tuple] = []
         self.waitlist: list[Any] = []
 
-    def create(self, activity_id, student_id, note, checkin_token, now, status="pending"):  # noqa: ANN001, ANN202
+    def create(self, activity_id, student_id, note, checkin_token, now, status="pending", form_data=None, slot_id=None):  # noqa: ANN001, ANN202
         from core.exceptions import AlreadyRegisteredError
 
-        key = (activity_id, student_id, UUID(int=0))
+        key = (activity_id, student_id, slot_id or UUID(int=0))
         if key in self.guards:
             raise AlreadyRegisteredError("dup")
         row = SimpleNamespace(
             registration_id=uuid_utils.uuid7(),
             activity_id=activity_id, student_id=student_id,
-            slot_id=UUID(int=0), status=status, note=note,
+            slot_id=key[2], status=status, note=note,
             review_note=None, reviewed_by=None, reviewed_at=None,
             checkin_token=checkin_token, registered_at=now,
-            cancelled_at=None, form_data=None,
+            cancelled_at=None, form_data=form_data,
         )
         self.rows[row.registration_id] = row
         self.guards[key] = row
         self.tokens[checkin_token] = row
         return row
 
-    def reapply(self, registration_id, activity_id, student_id, note, checkin_token, now, status="pending"):  # noqa: ANN001, ANN202
-        key = (activity_id, student_id, UUID(int=0))
+    def reapply(self, registration_id, activity_id, student_id, note, checkin_token, now, status="pending", form_data=None, slot_id=None):  # noqa: ANN001, ANN202
+        key = (activity_id, student_id, slot_id or UUID(int=0))
         row = SimpleNamespace(
             registration_id=registration_id,
             activity_id=activity_id, student_id=student_id,
-            slot_id=UUID(int=0), status=status, note=note,
+            slot_id=key[2], status=status, note=note,
             review_note=None, reviewed_by=None, reviewed_at=None,
             checkin_token=checkin_token, registered_at=now,
-            cancelled_at=None, form_data=None,
+            cancelled_at=None, form_data=form_data,
         )
         self.rows[registration_id] = row
         self.guards[key] = row
@@ -95,19 +95,20 @@ class FakeRegistrations(RegistrationStore):
             r for r in self.rows.values() if r.student_id == student_id
         ][:limit]
 
-    def count_active(self, activity_id):  # noqa: ANN001, ANN202
+    def count_active(self, activity_id, slot_id=None):  # noqa: ANN001, ANN202
         return sum(
             1
             for r in self.rows.values()
             if r.activity_id == activity_id
             and r.status in ("approved", "attended")
+            and (slot_id is None or r.slot_id == slot_id)
         )
 
-    def enqueue_waitlist(self, activity_id, student_id, now):  # noqa: ANN001, ANN202
+    def enqueue_waitlist(self, activity_id, student_id, slot_id, now):  # noqa: ANN001, ANN202
         entry = SimpleNamespace(
             activity_id=activity_id, joined_at=now,
             waitlist_id=uuid_utils.uuid7(), student_id=student_id,
-            slot_id=UUID(int=0), status="waiting", promoted_at=None,
+            slot_id=slot_id, status="waiting", promoted_at=None,
         )
         self.waitlist.append(entry)
         return entry

@@ -69,3 +69,18 @@ class CertificateRevocation(models.Model):
     reason = columns.Text()
     revoked_by = columns.UUID()
     revoked_at = columns.DateTime()
+
+
+class CertificateTemplate(models.Model):
+    """Per-org visual template (background + layout JSON)."""
+
+    __table_name__ = "certificate_templates"
+    __keyspace__ = "amigoact"
+
+    template_id = columns.UUID(primary_key=True, default=uuid7)
+    org_id = columns.UUID(index=True)
+    name = columns.Text()
+    background_media_id = columns.UUID()
+    layout_json = columns.Text()
+    is_active = columns.Boolean()
+    created_at = columns.DateTime()

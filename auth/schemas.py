@@ -262,3 +262,17 @@ class DevChallengeResponse(BaseModel):
     kind: str
     code: str
     expires_in_seconds: int
+
+
+class SessionItem(BaseModel):
+    """One login session row (device), safe to return to its owner."""
+
+    session_id: UUID
+    device_label: str | None = None
+    user_agent: str | None = None
+    ip: str | None = None
+    created_at: datetime | None = None
+    last_seen_at: datetime | None = None
+    expires_at: datetime | None = None
+    revoked_at: datetime | None = None
+    current: bool = False

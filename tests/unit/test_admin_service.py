@@ -6,9 +6,12 @@ from datetime import datetime, timezone
 from uuid import UUID
 
 import pytest
+from typing import Any
 import uuid_utils
 
-from admin.interfaces import PlatformRoleStore
+from types import SimpleNamespace
+
+from admin.interfaces import ModerationStore, PlatformRoleStore
 from admin.service import AdminService
 from core.exceptions import (
     ForbiddenError,
@@ -20,7 +23,8 @@ from notifications.interfaces import NotificationPort
 from orgs.interfaces import OrgContactDetails
 from rbac.catalog import PLATFORM_ADMIN_ROLE_ID
 from tests.unit.member_fakes import FakeAccess, FakeUsers
-from tests.unit.org_fakes import FakeOrgs
+from tests.unit.org_fakes import FakeMedia, FakeOrgs
+from core.ids import uuid7
 
 NOW = datetime.now(timezone.utc)
 ADMIN_EMAIL = "root@amigoact.test"
@@ -147,3 +151,80 @@ def test_grant_and_revoke_admin() -> None:
         service.grant_admin(_uid(), ADMIN_EMAIL, _uid())
     with pytest.raises(ForbiddenError):
         service.grant_admin(_uid(), "intruder@example.com", target)
+
+
+class FakeModeration(ModerationStore):
+    def __init__(self) -> None:
+        self.rows: dict[UUID, Any] = {}
+
+    def enqueue(self, moderation_id, asset_id, now):  # noqa: ANN001, ANN202
+        row = SimpleNamespace(
+            status="pending", created_at=now, moderation_id=moderation_id,
+            asset_id=asset_id, reviewed_by=None, note=None,
+        )
+        self.rows[moderation_id] = row
+        return row
+
+    def list_by_status(self, status, limit=50):  # noqa: ANN001, ANN202
+        rows = [r for r in self.rows.values() if r.status == status]
+        return sorted(rows, key=lambda r: r.created_at, reverse=True)[:limit]
+
+    def mark(self, from_status, created_at, moderation_id, to_status, reviewed_by, note, now):  # noqa: ANN001, ANN202
+        row = self.rows.get(moderation_id)
+        if row is None or row.status != from_status:
+            return None
+        row.status = to_status
+        row.reviewed_by = reviewed_by
+        row.note = note
+        return row
+
+
+def _moderation_service() -> tuple[AdminService, FakeModeration, FakeMedia]:
+    orgs, roles, users = FakeOrgs(), FakeRoles(), FakeUsers()
+    access, notes = FakeAccess(), FakeNotifications()
+    moderation, media = FakeModeration(), FakeMedia()
+    service = AdminService(
+        orgs=orgs,
+        platform_roles=roles,
+        users=users,
+        notifications=notes,
+        access=access,
+        admin_emails=frozenset({ADMIN_EMAIL}),
+        moderation=moderation,
+        media=media,
+    )
+    return service, moderation, media
+
+
+def test_enqueue_and_review_moderation() -> None:
+    service, moderation, media = _moderation_service()
+    asset_id = uuid7()
+    media.assets[asset_id] = SimpleNamespace(upload_status="active", file_url="/x.jpg")
+    service.enqueue_moderation(asset_id)
+    rows = moderation.list_by_status("pending")
+    assert len(rows) == 1
+    admin = uuid7()
+    service.review_moderation(
+        admin, ADMIN_EMAIL, "pending", rows[0].created_at,
+        rows[0].moderation_id, approve=False, note="spam",
+    )
+    assert media.assets[asset_id].upload_status == "rejected"
+    assert moderation.list_by_status("rejected")[0].note == "spam"
+
+
+def test_review_requires_admin() -> None:
+    service, moderation, media = _moderation_service()
+    asset_id = uuid7()
+    media.assets[asset_id] = SimpleNamespace(upload_status="active", file_url="/x.jpg")
+    service.enqueue_moderation(asset_id)
+    row = moderation.list_by_status("pending")[0]
+    with pytest.raises(ForbiddenError):
+        service.review_moderation(
+            uuid7(), "user@example.com", "pending", row.created_at,
+            row.moderation_id, approve=True, note=None,
+        )
+    with pytest.raises(NotFoundError):
+        service.review_moderation(
+            uuid7(), ADMIN_EMAIL, "pending", row.created_at,
+            uuid7(), approve=True, note=None,
+        )
