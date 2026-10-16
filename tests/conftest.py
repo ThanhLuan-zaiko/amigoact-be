@@ -168,6 +168,7 @@ def test_db() -> str:
         reg_models.RegistrationsByActivityStudent,
         reg_models.RegistrationsByToken,
         reg_models.RegistrationStatusHistory,
+        reg_models.WaitlistEntry,
         reg_models.AttendanceRecord,
         reg_models.AttendanceByRegistration,
         reg_models.AttendanceByActivity,

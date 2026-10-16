@@ -187,6 +187,22 @@ def test_revoke_flips_status_and_verify_shows_it() -> None:
     assert svc.verify(cert.serial_no).status == "revoked"
 
 
+def test_for_activity_lists_and_guards() -> None:
+    svc, _c, regs, activity, _o, owner, _u, _n = _cert_setup()
+    student = uid()
+    reg = regs.create(
+        activity.id, student, None, uuid_utils.uuid7(), datetime.now(UTC)
+    )
+    reg.status = "attended"
+    svc.issue(activity.id, student, owner)
+    rows = svc.for_activity(activity.id, owner)
+    assert [r.student_id for r in rows] == [student]
+    with pytest.raises(ForbiddenError):
+        svc.for_activity(activity.id, uid())
+    with pytest.raises(NotFoundError):
+        svc.for_activity(uid(), owner)
+
+
 def test_issue_requires_manager() -> None:
     svc, _c, regs, activity, _o, owner, _u, _n = _cert_setup()
     student = uid()

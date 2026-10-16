@@ -47,7 +47,7 @@ def test_apply_creates_pending_with_token() -> None:
     row = svc.apply(activity.id, student, "I can help")
     assert row.status == "pending"
     assert row.checkin_token is not None
-    assert regs.history[-1][2] == "pending"
+    assert regs.history[-1].to_status == "pending"
     assert notes.sent == []  # apply does not notify
 
 
@@ -144,6 +144,85 @@ def test_reapply_after_cancel() -> None:
     again = svc.apply(activity.id, student, "retry")
     assert again.status == "pending"
     assert again.registration_id != row.registration_id
+
+
+def test_history_visible_to_applicant_and_manager() -> None:
+    (svc, _a, _r, _at, _acts, _o, _acc, _u, _n,
+     _org, activity, owner, student) = _setup()
+    row = svc.apply(activity.id, student, None)
+    svc.review(activity.id, row.registration_id, owner, "approved", "ok")
+    entries = svc.history(activity.id, row.registration_id, student)
+    assert [h.to_status for h in entries] == ["approved", "pending"]
+    assert svc.history(activity.id, row.registration_id, owner) == entries
+    with pytest.raises(ForbiddenError):
+        svc.history(activity.id, row.registration_id, uuid_utils.uuid7())
+
+
+def test_history_missing_registration_404() -> None:
+    (svc, _a, _r, _at, _acts, _o, _acc, _u, _n,
+     _org, activity, _owner, student) = _setup()
+    with pytest.raises(NotFoundError):
+        svc.history(activity.id, uuid_utils.uuid7(), student)
+
+
+def _full_activity_setup():
+    """One-slot activity: owner approved, second applicant waitlisted."""
+    (
+        reg_svc, att_svc, regs, att, activities, orgs, access, users,
+        notes, org, activity, owner, student,
+    ) = _setup()
+    activity.max_participants = 1
+    first = reg_svc.apply(activity.id, owner, None)
+    reg_svc.review(activity.id, first.registration_id, owner,
+                   "approved", None)
+    second = reg_svc.apply(activity.id, student, None)
+    return (
+        reg_svc, regs, notes, activity, owner, student, first, second,
+    )
+
+
+def test_apply_waitlists_when_full() -> None:
+    (svc, regs, _n, _activity, _owner, _st, _first, second) = (
+        _full_activity_setup()
+    )
+    assert second.status == "waitlisted"
+    waiting = regs.list_waitlist(second.activity_id, "waiting")
+    assert [e.student_id for e in waiting] == [second.student_id]
+
+
+def test_cancel_approved_promotes_next_waitlisted() -> None:
+    (svc, regs, notes, activity, owner, student, first, second) = (
+        _full_activity_setup()
+    )
+    svc.cancel(activity.id, first.registration_id, owner)
+    out = regs.get(second.registration_id)
+    assert out.status == "approved"
+    assert out.review_note == "promoted from waitlist"
+    assert regs.list_waitlist(activity.id, "waiting") == []
+    assert [n[0] for n in notes.sent] == [owner, student]
+    hist = regs.list_history(second.registration_id)
+    assert [h.to_status for h in hist] == [
+        "approved", "waitlisted",
+    ]
+
+
+def test_cancel_waitlisted_expires_entry() -> None:
+    (svc, regs, _n, activity, _owner, student, _first, second) = (
+        _full_activity_setup()
+    )
+    svc.cancel(activity.id, second.registration_id, student)
+    assert regs.get(second.registration_id).status == "cancelled"
+    assert regs.list_waitlist(activity.id, "waiting") == []
+
+
+def test_review_waitlisted_approval_marks_promoted() -> None:
+    (svc, regs, _n, activity, owner, _st, _first, second) = (
+        _full_activity_setup()
+    )
+    svc.review(activity.id, second.registration_id, owner,
+               "approved", None)
+    assert regs.list_waitlist(activity.id, "waiting") == []
+    assert regs.waitlist[0].status == "promoted"
 
 
 def test_ticket_only_for_applicant() -> None:

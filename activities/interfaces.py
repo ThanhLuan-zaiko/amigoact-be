@@ -243,3 +243,18 @@ class AnnouncementStore(ABC):
         self, activity_id: UUID, limit: int = 50
     ) -> list[ActivityAnnouncement]:
         """Newest-first announcements of one activity."""
+
+
+class ActivityEvents(ABC):
+    """Fan-out port: one live event per committed lifecycle mutation."""
+
+    @abstractmethod
+    def activity_changed(
+        self,
+        org_id: UUID,
+        action: str,
+        activity_id: UUID,
+        actor_id: UUID,
+        status: str,
+    ) -> None:
+        """Publish lifecycle changes onto activities:{org_id}."""

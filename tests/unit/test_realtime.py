@@ -22,9 +22,11 @@ from core.realtime import (
     parse_client_frame,
 )
 from core.security import utcnow
+from realtime.interfaces import UserLookup
 from tests.unit.realtime_fakes import (
     FakeMembership,
     FakeSocket,
+    FakeUserLookup,
     MemTickets,
     clear_overrides,
     make_service,
@@ -198,6 +200,38 @@ def test_handshake_denies_bad_ticket() -> None:
             assert closed.value.code == 4401
     finally:
         clear_overrides()
+
+
+def test_handshake_denies_suspended_user() -> None:
+    """A valid ticket still loses the socket when the account is inactive."""
+    user_id = uid()
+    client, _, service = ws_app(users=FakeUserLookup(inactive={user_id}))
+    try:
+        token = service.issue_ticket(user_id).token
+        with client.websocket_connect(f"/ws?ticket={token}") as sock:
+            with pytest.raises(WebSocketDisconnect) as closed:
+                sock.receive_json()
+            assert closed.value.code == 4401
+    finally:
+        clear_overrides()
+
+
+def test_user_is_active_fails_closed() -> None:
+    """Lookup errors deny admission instead of silently allowing it."""
+
+    class _Boom(UserLookup):
+        def is_active(self, user_id):  # noqa: ANN001, ANN202
+            raise RuntimeError("user table unavailable")
+
+    user_id = uid()
+    assert make_service(users=_Boom()).user_is_active(user_id) is False
+    assert (
+        make_service(users=FakeUserLookup(inactive={user_id})).user_is_active(
+            user_id
+        )
+        is False
+    )
+    assert make_service().user_is_active(uid()) is True
 
 
 def test_subscribe_acl() -> None:

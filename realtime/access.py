@@ -6,12 +6,14 @@ from typing import Any
 from uuid import UUID
 
 from activities.interfaces import ActivityStore
+from auth.interfaces import UserRepository
 from orgs.interfaces import MemberRepository, OrgRepository
 from rbac.interfaces import AccessControl
 from realtime.interfaces import (
     AttendanceAccess,
     OrgMembership,
     PresenceDirectory,
+    UserLookup,
 )
 
 
@@ -54,6 +56,21 @@ class MemberPresenceDirectory(PresenceDirectory):
             for member in self._members.list_by_org(org_id)
             if _is_active(member)
         ]
+
+
+class AuthUserLookup(UserLookup):
+    """Socket admission over the auth user repository.
+
+    Mirrors get_current_user: anything other than an existing row with
+    status "active" is not admitted.
+    """
+
+    def __init__(self, users: UserRepository) -> None:
+        self._users = users
+
+    def is_active(self, user_id: UUID) -> bool:
+        user = self._users.get_by_id(user_id)
+        return user is not None and getattr(user, "status", "active") == "active"
 
 
 class OrgAttendanceAccess(AttendanceAccess):

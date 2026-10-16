@@ -75,10 +75,12 @@ def get_public_org_service(
 
 
 def get_activity_service(
+    request: Request,
     settings: Settings = Depends(get_settings),
     access: AccessControl = Depends(get_access_control),
 ) -> ActivityService:
     """Build one ActivityService per request over activity feeds."""
+    from activities.events import WsActivityEvents
     from activities.repository import CqlActivityStore, CqlCategoryStore
     from activities.service import ActivityService
     from orgs.repository import CqlOrgRepository
@@ -88,6 +90,9 @@ def get_activity_service(
         categories=CqlCategoryStore(),
         orgs=CqlOrgRepository(settings.scylla_keyspace),
         access=access,
+        events=WsActivityEvents(
+            getattr(request.app.state, "ws_manager", None)
+        ),
     )
 
 

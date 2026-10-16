@@ -51,6 +51,14 @@ class UpdateMemberRequest(BaseModel):
         return self
 
 
+class SkillMatchResponse(BaseModel):
+    """Coordinator matching row: member name plus self-declared level."""
+
+    user_id: UUID
+    full_name: str
+    level: int
+
+
 class MemberResponse(BaseModel):
     """One roster row; email only reaches roster-managing viewers."""
 

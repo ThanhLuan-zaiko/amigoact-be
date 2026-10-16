@@ -6,7 +6,13 @@ from abc import ABC, abstractmethod
 from datetime import datetime
 from uuid import UUID
 
-from profiles.model import EmergencyContact, Skill, StudentProfile, UserSkill
+from profiles.model import (
+    EmergencyContact,
+    Skill,
+    StudentProfile,
+    UserBySkill,
+    UserSkill,
+)
 
 
 class ProfileStore(ABC):
@@ -66,6 +72,12 @@ class ProfileStore(ABC):
     @abstractmethod
     def list_user_skills(self, user_id: UUID) -> list[UserSkill]:
         """All skill edges of one user."""
+
+    @abstractmethod
+    def list_users_by_skill(
+        self, skill_id: UUID, limit: int = 200
+    ) -> list[UserBySkill]:
+        """Reverse edge: every user holding one skill (matching feed)."""
 
     @abstractmethod
     def replace_user_skills(

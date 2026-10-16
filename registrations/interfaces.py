@@ -10,8 +10,10 @@ from registrations.model import (
     AttendanceByRegistration,
     AttendanceRecord,
     Registration,
+    RegistrationStatusHistory,
     RegistrationsByActivityStudent,
     RegistrationsByToken,
+    WaitlistEntry,
 )
 
 
@@ -26,8 +28,9 @@ class RegistrationStore(ABC):
         note: str | None,
         checkin_token: UUID,
         now: datetime,
+        status: str = "pending",
     ) -> Registration:
-        """Insert pending row plus roster/student/token feeds."""
+        """Insert the row plus roster/student/token feeds."""
 
     @abstractmethod
     def reapply(
@@ -38,8 +41,9 @@ class RegistrationStore(ABC):
         note: str | None,
         checkin_token: UUID,
         now: datetime,
+        status: str = "pending",
     ) -> Registration:
-        """Reopen a terminal guard row (cancelled/rejected) as pending."""
+        """Reopen a terminal guard row (cancelled/rejected)."""
 
     @abstractmethod
     def get(self, registration_id: UUID) -> Registration | None:
@@ -79,6 +83,42 @@ class RegistrationStore(ABC):
         self, student_id: UUID, limit: int = 100
     ) -> list[Registration]:
         """Student's applications, newest first."""
+
+    @abstractmethod
+    def count_active(self, activity_id: UUID) -> int:
+        """Approved/attended registrations occupying capacity slots."""
+
+    @abstractmethod
+    def enqueue_waitlist(
+        self,
+        activity_id: UUID,
+        student_id: UUID,
+        now: datetime,
+    ) -> WaitlistEntry:
+        """Append a student to the activity's FIFO waitlist."""
+
+    @abstractmethod
+    def list_waitlist(
+        self, activity_id: UUID, status: str = "waiting", limit: int = 200
+    ) -> list[WaitlistEntry]:
+        """Waitlist entries oldest-first, filtered by entry status."""
+
+    @abstractmethod
+    def mark_waitlist(
+        self,
+        activity_id: UUID,
+        joined_at: datetime,
+        waitlist_id: UUID,
+        status: str,
+        promoted_at: datetime | None,
+    ) -> None:
+        """Flip one waitlist entry to promoted/expired."""
+
+    @abstractmethod
+    def list_history(
+        self, registration_id: UUID, limit: int = 50
+    ) -> list[RegistrationStatusHistory]:
+        """Audit rows of one registration, newest first."""
 
     @abstractmethod
     def record_history(

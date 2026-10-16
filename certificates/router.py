@@ -71,6 +71,22 @@ def revoke(
 
 
 @router.get(
+    "/activities/{activity_id}/certificates",
+    response_model=list[CertificateResponse],
+)
+def activity_certificates(
+    activity_id: UUID,
+    current: CurrentUser = Depends(get_current_user),
+    service: CertificateService = Depends(get_certificate_service),
+) -> list[CertificateResponse]:
+    """Manager listing so the roster can surface issued/revoked state."""
+    return [
+        _response(row)
+        for row in service.for_activity(activity_id, current.id)
+    ]
+
+
+@router.get(
     "/certificates/mine",
     response_model=list[MyCertificateResponse],
 )

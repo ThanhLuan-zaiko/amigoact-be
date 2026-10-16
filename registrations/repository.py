@@ -21,6 +21,7 @@ from registrations.model import (
     RegistrationsByActivityStudent,
     RegistrationsByStudent,
     RegistrationsByToken,
+    WaitlistEntry,
 )
 
 
@@ -75,6 +76,7 @@ class CqlRegistrationStore(RegistrationStore):
         note: str | None,
         checkin_token: UUID,
         now: datetime,
+        status: str = "pending",
     ) -> Registration:
         """Claim the (activity, student, zero-slot) row, then fan out."""
         from core.ids import uuid7
@@ -90,7 +92,7 @@ class CqlRegistrationStore(RegistrationStore):
                 student_id,
                 UUID(int=0),
                 registration_id,
-                "pending",
+                status,
                 now,
             ],
         )
@@ -103,7 +105,7 @@ class CqlRegistrationStore(RegistrationStore):
             activity_id=activity_id,
             student_id=student_id,
             slot_id=UUID(int=0),
-            status="pending",
+            status=status,
             note=note,
             checkin_token=checkin_token,
             registered_at=now,
@@ -120,15 +122,16 @@ class CqlRegistrationStore(RegistrationStore):
         note: str | None,
         checkin_token: UUID,
         now: datetime,
+        status: str = "pending",
     ) -> Registration:
-        """Flip a terminal guard row back to pending under a new id."""
+        """Flip a terminal guard row back to life under a new id."""
         RegistrationsByActivityStudent.objects(
             activity_id=activity_id,
             student_id=student_id,
             slot_id=UUID(int=0),
         ).update(
             registration_id=registration_id,
-            status="pending",
+            status=status,
             registered_at=now,
         )
         row = Registration.create(
@@ -136,7 +139,7 @@ class CqlRegistrationStore(RegistrationStore):
             activity_id=activity_id,
             student_id=student_id,
             slot_id=UUID(int=0),
-            status="pending",
+            status=status,
             note=note,
             checkin_token=checkin_token,
             registered_at=now,
@@ -224,6 +227,66 @@ class CqlRegistrationStore(RegistrationStore):
             for r in rows
             if (row := self.get(r.registration_id)) is not None
         ]
+
+    def count_active(self, activity_id: UUID) -> int:
+        return sum(
+            1
+            for r in RegistrationsByActivity.objects(
+                activity_id=activity_id
+            ).limit(1000)
+            if r.status in ("approved", "attended")
+        )
+
+    def enqueue_waitlist(
+        self,
+        activity_id: UUID,
+        student_id: UUID,
+        now: datetime,
+    ) -> WaitlistEntry:
+        from core.ids import uuid7
+
+        return WaitlistEntry.create(
+            activity_id=activity_id,
+            joined_at=now,
+            waitlist_id=uuid7(),
+            student_id=student_id,
+            slot_id=UUID(int=0),
+            status="waiting",
+        )
+
+    def list_waitlist(
+        self, activity_id: UUID, status: str = "waiting", limit: int = 200
+    ) -> list[WaitlistEntry]:
+        return [
+            e
+            for e in WaitlistEntry.objects(
+                activity_id=activity_id
+            ).limit(limit)
+            if e.status == status
+        ]
+
+    def mark_waitlist(
+        self,
+        activity_id: UUID,
+        joined_at: datetime,
+        waitlist_id: UUID,
+        status: str,
+        promoted_at: datetime | None,
+    ) -> None:
+        WaitlistEntry.objects(
+            activity_id=activity_id,
+            joined_at=joined_at,
+            waitlist_id=waitlist_id,
+        ).update(status=status, promoted_at=promoted_at)
+
+    def list_history(
+        self, registration_id: UUID, limit: int = 50
+    ) -> list[RegistrationStatusHistory]:
+        return list(
+            RegistrationStatusHistory.objects(
+                registration_id=registration_id
+            ).limit(limit)
+        )
 
     def record_history(
         self,

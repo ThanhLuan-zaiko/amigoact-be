@@ -24,7 +24,7 @@ from registrations.interfaces import (
     AttendanceStore,
     RegistrationStore,
 )
-from registrations.model import Registration
+from registrations.model import Registration, RegistrationStatusHistory
 
 APPLYABLE_STATUSES = {"published", "ongoing"}
 REVIEW_TARGETS = {"approved", "rejected", "waitlisted"}
@@ -136,18 +136,31 @@ class RegistrationService(_RegistrationBase):
             raise AlreadyRegisteredError(
                 "You already registered for this activity."
             )
+        capacity = getattr(activity, "max_participants", None)
+        status = "pending"
+        if (
+            capacity is not None
+            and self._registrations.count_active(activity_id) >= capacity
+        ):
+            status = "waitlisted"
         if guard is not None:
             row = self._registrations.reapply(
-                uuid7(), activity_id, student_id, note, token, now
+                uuid7(), activity_id, student_id, note, token, now,
+                status=status,
             )
             from_status = guard.status
         else:
             row = self._registrations.create(
-                activity_id, student_id, note, token, now
+                activity_id, student_id, note, token, now,
+                status=status,
             )
             from_status = None
+        if status == "waitlisted":
+            self._registrations.enqueue_waitlist(
+                activity_id, student_id, now
+            )
         self._registrations.record_history(
-            row.registration_id, from_status, "pending", student_id,
+            row.registration_id, from_status, status, student_id,
             "application submitted", now,
         )
         return row
@@ -178,13 +191,16 @@ class RegistrationService(_RegistrationBase):
             raise InvalidRegistrationStateError(
                 f"Cannot move {row.status} to {target}."
             )
+        from_status = row.status
         now = utcnow()
         updated = self._registrations.set_status(
             registration_id, target, reviewer_id, review_note, now
         )
         assert updated is not None
+        if target == "approved" and from_status == "waitlisted":
+            self._mark_waitlist(activity_id, row.student_id, "promoted", now)
         self._registrations.record_history(
-            registration_id, row.status, target, reviewer_id,
+            registration_id, from_status, target, reviewer_id,
             review_note, now,
         )
         self._access.record(
@@ -222,16 +238,89 @@ class RegistrationService(_RegistrationBase):
             raise InvalidRegistrationStateError(
                 f"A {row.status} registration cannot be cancelled."
             )
+        from_status = row.status
         now = utcnow()
         updated = self._registrations.set_status(
             registration_id, "cancelled", None, None, now
         )
         assert updated is not None
         self._registrations.record_history(
-            registration_id, row.status, "cancelled", student_id,
+            registration_id, from_status, "cancelled", student_id,
             None, now,
         )
+        if from_status == "waitlisted":
+            self._mark_waitlist(
+                activity_id, student_id, "expired", None
+            )
+        elif from_status == "approved":
+            self._promote_next(activity, student_id)
         return updated
+
+    def _mark_waitlist(
+        self,
+        activity_id: UUID,
+        student_id: UUID,
+        status: str,
+        promoted_at,
+    ) -> None:
+        """Flip the student's waiting entry, if one exists."""
+        for entry in self._registrations.list_waitlist(
+            activity_id, "waiting"
+        ):
+            if entry.student_id == student_id:
+                self._registrations.mark_waitlist(
+                    activity_id, entry.joined_at, entry.waitlist_id,
+                    status, promoted_at,
+                )
+
+    def _promote_next(self, activity: object, actor_id: UUID) -> None:
+        """A freed slot approves the oldest still-waitlisted applicant."""
+        capacity = getattr(activity, "max_participants", None)
+        if capacity is None or (
+            self._registrations.count_active(activity.id) >= capacity
+        ):
+            return
+        now = utcnow()
+        for entry in self._registrations.list_waitlist(
+            activity.id, "waiting"
+        ):
+            guard = self._registrations.get_for_student(
+                activity.id, entry.student_id, UUID(int=0)
+            )
+            row = (
+                self._registrations.get(guard.registration_id)
+                if guard is not None
+                else None
+            )
+            if row is None or row.status != "waitlisted":
+                self._registrations.mark_waitlist(
+                    activity.id, entry.joined_at, entry.waitlist_id,
+                    "expired", None,
+                )
+                continue
+            self._registrations.set_status(
+                row.registration_id, "approved", None,
+                "promoted from waitlist", now,
+            )
+            self._registrations.mark_waitlist(
+                activity.id, entry.joined_at, entry.waitlist_id,
+                "promoted", now,
+            )
+            self._registrations.record_history(
+                row.registration_id, "waitlisted", "approved", actor_id,
+                "promoted from waitlist", now,
+            )
+            self._notify(
+                row.student_id,
+                "\u0110\u0103ng k\u00fd \u0111\u01b0\u1ee3c duy\u1ec7t",
+                f"\u0110\u01a1n tham gia {activity.title} \u0111\u01b0\u1ee3c duy\u1ec7t t\u1eeb danh s\u00e1ch ch\u1edd.",
+                {
+                    "activity_id": str(activity.id),
+                    "org_id": str(activity.org_id),
+                    "activity_slug": activity.slug,
+                },
+            )
+            return
 
     def list_for_activity(
         self, activity_id: UUID, viewer_id: UUID
@@ -263,6 +352,20 @@ class RegistrationService(_RegistrationBase):
     def list_mine(self, student_id: UUID) -> list[Registration]:
         """Applicant's own history, newest first."""
         return self._registrations.list_by_student(student_id)
+
+    def history(
+        self, activity_id: UUID, registration_id: UUID, viewer_id: UUID
+    ) -> list[RegistrationStatusHistory]:
+        """Audit feed visible to the applicant and org managers."""
+        activity = self._activity(activity_id)
+        row = self._registrations.get(registration_id)
+        if row is None or row.activity_id != activity_id:
+            raise NotFoundError("Registration not found.")
+        if row.student_id != viewer_id:
+            self._require_manager(
+                activity.org_id, viewer_id, "registration.history"
+            )
+        return self._registrations.list_history(registration_id)
 
     def my_ticket(
         self, activity_id: UUID, registration_id: UUID, user_id: UUID

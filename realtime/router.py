@@ -75,33 +75,11 @@ async def websocket_endpoint(
     if user_id is None:
         await websocket.close(code=CLOSE_UNAUTHORIZED)
         return
-    if not await _require_active_user(user_id, settings, websocket):
+    if not await asyncio.to_thread(service.user_is_active, user_id):
+        logger.info("ws denied for non-active user %s", user_id)
+        await websocket.close(code=CLOSE_UNAUTHORIZED)
         return
     await _serve(websocket, user_id, service, manager, settings)
-
-
-async def _require_active_user(user_id, settings: Settings, websocket: WebSocket) -> bool:
-    """Reject suspended or deleted users after ticket consume (AGENTS.md 8).
-
-    TODO: inject a UserLookup port into RealtimeService to avoid importing
-    the auth repository here; router-level check keeps service DIP-clean.
-    """
-    try:
-        from auth.repository import CqlUserRepository
-
-        user = await asyncio.to_thread(
-            CqlUserRepository(settings.scylla_keyspace).get_by_id, user_id
-        )
-    except Exception as exc:
-        logger.warning("ws user lookup unavailable, allowing: %s", exc)
-        return True
-    if user is None or getattr(user, "status", "active") != "active":
-        try:
-            await websocket.close(code=CLOSE_UNAUTHORIZED)
-        except Exception:
-            pass
-        return False
-    return True
 
 
 async def _serve(

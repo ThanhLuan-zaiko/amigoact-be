@@ -110,6 +110,25 @@ class RegistrationStatusHistory(models.Model):
     note = columns.Text()
 
 
+class WaitlistEntry(models.Model):
+    """FIFO queue row for one activity that hit its capacity."""
+
+    __table_name__ = "waitlist_entries"
+    __keyspace__ = "amigoact"
+
+    activity_id = columns.UUID(primary_key=True)
+    joined_at = columns.DateTime(
+        primary_key=True, clustering_order="ASC"
+    )
+    waitlist_id = columns.UUID(
+        primary_key=True, clustering_order="ASC", default=uuid7
+    )
+    student_id = columns.UUID()
+    slot_id = columns.UUID()
+    status = columns.Text()
+    promoted_at = columns.DateTime()
+
+
 class AttendanceRecord(models.Model):
     """Authoritative check-in/out row for one student x one activity."""
 

@@ -56,6 +56,15 @@ class MembershipSnapshot:
 
 
 @dataclass(frozen=True)
+class SkillMatch:
+    """One org member holding a searched skill (coordinator matching)."""
+
+    user_id: UUID
+    full_name: str
+    level: int
+
+
+@dataclass(frozen=True)
 class MemberPage:
     """Roster page plus the caller's effective role and permissions."""
 

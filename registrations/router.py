@@ -17,6 +17,7 @@ from registrations.schemas import (
     AttendanceResponse,
     CheckinBody,
     CheckoutBody,
+    HistoryEntryResponse,
     RegistrationResponse,
     ReviewBody,
     RosterResponse,
@@ -150,6 +151,31 @@ def cancel(
     return _response(
         service.cancel(activity_id, registration_id, current.id)
     )
+
+
+@router.get(
+    "/activities/{activity_id}/registrations/{registration_id}/history",
+    response_model=list[HistoryEntryResponse],
+)
+def history(
+    activity_id: UUID,
+    registration_id: UUID,
+    current: CurrentUser = Depends(get_current_user),
+    service: RegistrationService = Depends(get_registration_service),
+) -> list[HistoryEntryResponse]:
+    """Status timeline for the applicant or an org manager."""
+    return [
+        HistoryEntryResponse(
+            from_status=h.from_status,
+            to_status=h.to_status,
+            changed_at=h.changed_at,
+            changed_by=h.changed_by,
+            note=h.note,
+        )
+        for h in service.history(
+            activity_id, registration_id, current.id
+        )
+    ]
 
 
 @router.get(

@@ -26,8 +26,9 @@ class FakeRegistrations(RegistrationStore):
         self.guards: dict[tuple, Any] = {}
         self.tokens: dict[UUID, Any] = {}
         self.history: list[tuple] = []
+        self.waitlist: list[Any] = []
 
-    def create(self, activity_id, student_id, note, checkin_token, now):  # noqa: ANN001, ANN202
+    def create(self, activity_id, student_id, note, checkin_token, now, status="pending"):  # noqa: ANN001, ANN202
         from core.exceptions import AlreadyRegisteredError
 
         key = (activity_id, student_id, UUID(int=0))
@@ -36,7 +37,7 @@ class FakeRegistrations(RegistrationStore):
         row = SimpleNamespace(
             registration_id=uuid_utils.uuid7(),
             activity_id=activity_id, student_id=student_id,
-            slot_id=UUID(int=0), status="pending", note=note,
+            slot_id=UUID(int=0), status=status, note=note,
             review_note=None, reviewed_by=None, reviewed_at=None,
             checkin_token=checkin_token, registered_at=now,
             cancelled_at=None, form_data=None,
@@ -46,12 +47,12 @@ class FakeRegistrations(RegistrationStore):
         self.tokens[checkin_token] = row
         return row
 
-    def reapply(self, registration_id, activity_id, student_id, note, checkin_token, now):  # noqa: ANN001, ANN202
+    def reapply(self, registration_id, activity_id, student_id, note, checkin_token, now, status="pending"):  # noqa: ANN001, ANN202
         key = (activity_id, student_id, UUID(int=0))
         row = SimpleNamespace(
             registration_id=registration_id,
             activity_id=activity_id, student_id=student_id,
-            slot_id=UUID(int=0), status="pending", note=note,
+            slot_id=UUID(int=0), status=status, note=note,
             review_note=None, reviewed_by=None, reviewed_at=None,
             checkin_token=checkin_token, registered_at=now,
             cancelled_at=None, form_data=None,
@@ -94,8 +95,47 @@ class FakeRegistrations(RegistrationStore):
             r for r in self.rows.values() if r.student_id == student_id
         ][:limit]
 
+    def count_active(self, activity_id):  # noqa: ANN001, ANN202
+        return sum(
+            1
+            for r in self.rows.values()
+            if r.activity_id == activity_id
+            and r.status in ("approved", "attended")
+        )
+
+    def enqueue_waitlist(self, activity_id, student_id, now):  # noqa: ANN001, ANN202
+        entry = SimpleNamespace(
+            activity_id=activity_id, joined_at=now,
+            waitlist_id=uuid_utils.uuid7(), student_id=student_id,
+            slot_id=UUID(int=0), status="waiting", promoted_at=None,
+        )
+        self.waitlist.append(entry)
+        return entry
+
+    def list_waitlist(self, activity_id, status="waiting", limit=200):  # noqa: ANN001, ANN202
+        return [
+            e for e in self.waitlist
+            if e.activity_id == activity_id and e.status == status
+        ][:limit]
+
+    def mark_waitlist(self, activity_id, joined_at, waitlist_id, status, promoted_at):  # noqa: ANN001, ANN202
+        for e in self.waitlist:
+            if e.waitlist_id == waitlist_id:
+                e.status = status
+                e.promoted_at = promoted_at
+
     def record_history(self, registration_id, from_status, to_status, changed_by, note, now):  # noqa: ANN001, ANN202
-        self.history.append((registration_id, from_status, to_status))
+        self.history.append(SimpleNamespace(
+            registration_id=registration_id, from_status=from_status,
+            to_status=to_status, changed_by=changed_by, note=note,
+            changed_at=now,
+        ))
+
+    def list_history(self, registration_id, limit=50):  # noqa: ANN001, ANN202
+        return [
+            h for h in reversed(self.history)
+            if h.registration_id == registration_id
+        ][:limit]
 
 
 class FakeAttendance(AttendanceStore):

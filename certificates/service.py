@@ -171,6 +171,18 @@ class CertificateService:
         )
         return updated
 
+    def for_activity(
+        self, activity_id: UUID, staff_id: UUID
+    ) -> list[Certificate]:
+        """Manager list of every certificate issued for one activity."""
+        activity = self._activities.get(activity_id)
+        if activity is None:
+            raise NotFoundError("Activity not found.")
+        self._require_manager(
+            activity.org_id, staff_id, "certificate.list"
+        )
+        return self._certificates.list_by_activity(activity_id)
+
     def verify(self, serial_no: str) -> VerifyResult:
         """Public endpoint: anyone resolves a printed serial."""
         index = self._certificates.get_by_serial(serial_no.strip())

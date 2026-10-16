@@ -112,6 +112,13 @@ class CqlProfileStore(ProfileStore):
     def list_user_skills(self, user_id: UUID) -> list[UserSkill]:
         return list(UserSkill.objects(user_id=user_id).all())
 
+    def list_users_by_skill(
+        self, skill_id: UUID, limit: int = 200
+    ) -> list[UserBySkill]:
+        return list(
+            UserBySkill.objects(skill_id=skill_id).limit(limit)
+        )
+
     def replace_user_skills(
         self, user_id: UUID, edges: list[tuple[UUID, int]]
     ) -> None:

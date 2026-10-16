@@ -60,6 +60,16 @@ class RosterResponse(BaseModel):
     registered_at: datetime | None
 
 
+class HistoryEntryResponse(BaseModel):
+    """One audit row: status transition with actor and note."""
+
+    from_status: str | None
+    to_status: str
+    changed_at: datetime | None
+    changed_by: UUID | None
+    note: str | None
+
+
 class TicketResponse(BaseModel):
     """Personal QR payload rendered by the applicant's device."""
 

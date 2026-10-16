@@ -56,6 +56,19 @@ class ChatRoomAccess(ABC):
         """True when the room resolves for this user and they are a member."""
 
 
+class UserLookup(ABC):
+    """Read port: account status gate for socket admission.
+
+    The router cannot see the auth tables without leaking DIP, so the
+    post-ticket status check goes through this port (AGENTS.md 8:
+    a suspended or deleted account must never hold a socket open).
+    """
+
+    @abstractmethod
+    def is_active(self, user_id: UUID) -> bool:
+        """True only when the user exists and their status is active."""
+
+
 class PresenceDirectory(ABC):
     """Read port: org rosters for presence fan-out and snapshots.
 

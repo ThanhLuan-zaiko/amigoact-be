@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from types import SimpleNamespace
-from typing import Any, cast
+from typing import cast
 from uuid import UUID
 
 import uuid_utils
@@ -18,6 +18,7 @@ from realtime.interfaces import (
     ChatRoomAccess,
     OrgMembership,
     PresenceDirectory,
+    UserLookup,
     WsTicketStore,
 )
 from realtime.service import RealtimeService
@@ -75,6 +76,16 @@ class FakeChatRooms(ChatRoomAccess):
         return (room_id, user_id) in self._pairs
 
 
+class FakeUserLookup(UserLookup):
+    """Account-status gate: ids in `inactive` fail the socket check."""
+
+    def __init__(self, inactive: set[UUID] | None = None) -> None:
+        self._inactive = inactive or set()
+
+    def is_active(self, user_id: UUID) -> bool:
+        return user_id not in self._inactive
+
+
 class FakePresence(PresenceDirectory):
     """Active-membership pairs for presence fan-out and snapshots."""
 
@@ -93,6 +104,7 @@ def make_service(
     members: OrgMembership | None = None,
     attendance: AttendanceAccess | None = None,
     ticket_ttl_seconds: int = 60,
+    users: UserLookup | None = None,
     presence: PresenceDirectory | None = None,
     chat_rooms: ChatRoomAccess | None = None,
 ) -> RealtimeService:
@@ -101,6 +113,7 @@ def make_service(
         membership=members or FakeMembership(),
         attendance=attendance,
         ticket_ttl_seconds=ticket_ttl_seconds,
+        users=users or FakeUserLookup(),
         presence=presence,
         chat_rooms=chat_rooms,
     )
@@ -124,15 +137,13 @@ def ws(sock: FakeSocket) -> WebSocket:
     return cast(WebSocket, sock)
 
 
-_ACTIVE_USER_PATCH: Any = None
-
-
 def ws_app(
     members: FakeMembership | None = None,
     attendance: AttendanceAccess | None = None,
     heartbeat: int = 120,
     pong_timeout: int = 120,
     presence: PresenceDirectory | None = None,
+    users: UserLookup | None = None,
 ) -> tuple[TestClient, MemTickets, RealtimeService]:
     """App with realtime deps swapped for in-memory fakes (no ScyllaDB)."""
     import main
@@ -140,26 +151,14 @@ def ws_app(
     from core.dependencies import get_realtime_service
     from core.realtime import ConnectionManager
 
-    global _ACTIVE_USER_PATCH
-    from unittest import mock
-
-    class _ActiveUsers:
-        """Router-level user check always sees an active account."""
-
-        def __init__(self, *_args, **_kwargs) -> None:  # noqa: ANN002, ANN003
-            pass
-
-        def get_by_id(self, user_id):  # noqa: ANN001, ANN202
-            return SimpleNamespace(id=user_id, status="active")
-
-    _ACTIVE_USER_PATCH = mock.patch(
-        "auth.repository.CqlUserRepository", _ActiveUsers
-    )
-    _ACTIVE_USER_PATCH.start()
-
     store = MemTickets()
     service = RealtimeService(
-        store, members or FakeMembership(), attendance, 60, presence
+        store,
+        members or FakeMembership(),
+        attendance,
+        60,
+        users or FakeUserLookup(),
+        presence,
     )
     settings = Settings(
         jwt_secret="unit-test-secret-32-bytes-padded!",
@@ -182,7 +181,3 @@ def clear_overrides() -> None:
     import main
 
     main.app.dependency_overrides.clear()
-    global _ACTIVE_USER_PATCH
-    if _ACTIVE_USER_PATCH is not None:
-        _ACTIVE_USER_PATCH.stop()
-        _ACTIVE_USER_PATCH = None

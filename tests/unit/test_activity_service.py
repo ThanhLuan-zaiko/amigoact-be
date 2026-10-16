@@ -65,6 +65,66 @@ def test_lifecycle_edges() -> None:
         service.update_activity(org.id, row.id, owner, _fields(None))
 
 
+def test_lifecycle_publishes_activity_events() -> None:
+    """Committed create/update/transition fan out on activities:{org}."""
+    from activities.service import ActivityService
+    from tests.unit.activity_fakes import (
+        FakeActivities,
+        FakeActivityEvents,
+        FakeCategories,
+    )
+    from tests.unit.member_fakes import FakeAccess
+    from tests.unit.org_fakes import FakeOrgs
+
+    events = FakeActivityEvents()
+    activities, orgs = FakeActivities(), FakeOrgs()
+    service = ActivityService(
+        activities=activities, categories=FakeCategories(),
+        orgs=orgs, access=FakeAccess(), events=events,
+    )
+    owner = uuid_utils.uuid7()
+    org = _org_with_owner(orgs, owner)
+    row = service.create_activity(org.id, owner, _fields(None))
+    assert events.sent == [
+        (org.id, "created", row.id, owner, "draft")
+    ]
+    service.update_activity(org.id, row.id, owner, _fields(None))
+    assert events.sent[-1] == (
+        org.id, "updated", row.id, owner, "draft"
+    )
+    service.set_status(org.id, row.id, owner, "published")
+    assert events.sent[-1] == (
+        org.id, "published", row.id, owner, "published"
+    )
+
+
+def test_failed_lifecycle_publishes_nothing() -> None:
+    """Rejected mutations must never emit a live event."""
+    from activities.service import ActivityService
+    from tests.unit.activity_fakes import (
+        FakeActivities,
+        FakeActivityEvents,
+        FakeCategories,
+    )
+    from tests.unit.member_fakes import FakeAccess
+    from tests.unit.org_fakes import FakeOrgs
+
+    events = FakeActivityEvents()
+    activities, orgs = FakeActivities(), FakeOrgs()
+    service = ActivityService(
+        activities=activities, categories=FakeCategories(),
+        orgs=orgs, access=FakeAccess(), events=events,
+    )
+    owner, outsider = uuid_utils.uuid7(), uuid_utils.uuid7()
+    org = _org_with_owner(orgs, owner)
+    with pytest.raises(ForbiddenError):
+        service.create_activity(org.id, outsider, _fields(None))
+    row = service.create_activity(org.id, owner, _fields(None))
+    with pytest.raises(InvalidOrgStateError):
+        service.set_status(org.id, row.id, owner, "completed")
+    assert [e[1] for e in events.sent] == ["created"]
+
+
 def test_draft_visibility_members_only() -> None:
     service, _, _, orgs, *_ = _svc()
     owner, member, anon = (

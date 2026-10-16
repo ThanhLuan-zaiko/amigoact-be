@@ -13,6 +13,7 @@ from realtime.interfaces import (
     ChatRoomAccess,
     OrgMembership,
     PresenceDirectory,
+    UserLookup,
     WsTicketStore,
 )
 
@@ -34,6 +35,7 @@ class RealtimeService:
         membership: OrgMembership,
         attendance: AttendanceAccess | None,
         ticket_ttl_seconds: int,
+        users: UserLookup,
         presence: PresenceDirectory | None = None,
         chat_rooms: ChatRoomAccess | None = None,
     ) -> None:
@@ -41,6 +43,7 @@ class RealtimeService:
         self._membership = membership
         self._attendance = attendance
         self._ticket_ttl = ticket_ttl_seconds
+        self._users = users
         self._presence = presence
         self._chat_rooms = chat_rooms
 
@@ -59,9 +62,8 @@ class RealtimeService:
     def consume_ticket(self, token: str) -> UUID | None:
         """Bind a socket to a user. Expired or spent tickets return None.
 
-        User status (active/suspended) is enforced in the router after
-        consume to avoid a circular import on the user repository.
-        TODO: inject a UserLookup port here once auth exposes one.
+        Account status is enforced separately via user_is_active so a
+        suspended user holding a still-valid ticket is rejected too.
         """
         if not token or not token.strip():
             return None
@@ -74,6 +76,17 @@ class RealtimeService:
         if expires_at <= utcnow():
             return None
         return row.user_id
+
+    def user_is_active(self, user_id: UUID) -> bool:
+        """Socket admission gate checked after ticket consume (8).
+
+        Fail closed: a lookup error denies the socket instead of
+        silently admitting a possibly suspended account.
+        """
+        try:
+            return self._users.is_active(user_id)
+        except Exception:
+            return False
 
     def authorize(self, channel: Channel, user_id: UUID | None) -> bool:
         """Channel ACLs (8: authentication is not authorization).

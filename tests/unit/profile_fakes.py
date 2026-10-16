@@ -81,6 +81,12 @@ class FakeProfiles(ProfileStore):
             for sid, level in self.user_skills.get(user_id, {}).items()
         ]
 
+    def list_users_by_skill(self, skill_id, limit=200):  # noqa: ANN001, ANN202
+        return [
+            SimpleNamespace(skill_id=skill_id, user_id=uid, level=level)
+            for uid, level in self.reverse_skills.get(skill_id, {}).items()
+        ][:limit]
+
     def replace_user_skills(self, user_id, edges):  # noqa: ANN001, ANN202
         keep = {sid for sid, _ in edges}
         for sid in list(self.user_skills.get(user_id, {})):

@@ -33,6 +33,7 @@ from orgs.member_helpers import (
     my_memberships,
     role_of,
 )
+from orgs.member_matching import MemberMatchingMixin
 from orgs.member_moderation import MemberModerationMixin
 from orgs.member_listing import (
     MemberPage,
@@ -41,6 +42,7 @@ from orgs.member_listing import (
     paginate_members,
 )
 from notifications.interfaces import NotificationPort
+from profiles.interfaces import ProfileStore
 from rbac.catalog import PERMISSIONS
 from rbac.interfaces import AccessControl
 
@@ -48,7 +50,7 @@ if TYPE_CHECKING:
     from orgs.model import Organization
 
 
-class MemberService(MemberModerationMixin):
+class MemberService(MemberModerationMixin, MemberMatchingMixin):
     """Invite/accept/decline/join/leave/suspend/remove/role for orgs."""
 
     def __init__(
@@ -59,6 +61,7 @@ class MemberService(MemberModerationMixin):
         access: AccessControl,
         events: MemberEvents,
         notifications: NotificationPort | None = None,
+        profiles: ProfileStore | None = None,
     ) -> None:
         self._orgs = orgs
         self._members = members
@@ -66,6 +69,7 @@ class MemberService(MemberModerationMixin):
         self._access = access
         self._events = events
         self._notifications = notifications
+        self._profiles = profiles
 
     def _emit(
         self,

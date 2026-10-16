@@ -10,6 +10,7 @@ import uuid_utils
 
 from activities.detail_service import ActivityDetailService
 from activities.interfaces import (
+    ActivityEvents,
     ActivityLinkStore,
     ActivityStaffStore,
     ActivityStore,
@@ -192,6 +193,16 @@ class FakeAnnouncements(AnnouncementStore):
 
     def list(self, activity_id, limit=50):  # noqa: ANN001, ANN202
         return self.rows.get(activity_id, [])[:limit]
+
+
+class FakeActivityEvents(ActivityEvents):
+    """Captures live activity events instead of publishing them."""
+
+    def __init__(self) -> None:
+        self.sent: list[tuple] = []
+
+    def activity_changed(self, org_id, action, activity_id, actor_id, status):  # noqa: ANN001, ANN202
+        self.sent.append((org_id, action, activity_id, actor_id, status))
 
 
 def make_services() -> tuple[

@@ -18,6 +18,7 @@ from orgs.member_schemas import (
     MemberResponse,
     MembershipPage,
     MyMembership,
+    SkillMatchResponse,
     UpdateMemberRequest,
 )
 from orgs.member_listing import MemberSnapshot
@@ -111,6 +112,29 @@ def list_members(
         viewer_role=page.viewer_role,
         viewer_permissions=page.viewer_permissions,
     )
+
+
+@router.get(
+    "/orgs/{org_id}/members/by-skill",
+    response_model=list[SkillMatchResponse],
+    status_code=status.HTTP_200_OK,
+)
+def match_members_by_skill(
+    org_id: UUID,
+    skill_id: UUID,
+    current_user: CurrentUser = Depends(get_current_user),
+    service: MemberService = Depends(get_member_service),
+    min_level: int = Query(1, ge=1, le=5),
+) -> list[SkillMatchResponse]:
+    """Coordinator matching: members holding one skill, best first."""
+    return [
+        SkillMatchResponse(
+            user_id=m.user_id, full_name=m.full_name, level=m.level
+        )
+        for m in service.match_by_skill(
+            org_id, skill_id, current_user.id, min_level
+        )
+    ]
 
 
 @router.post(

@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from uuid import UUID
 
 from activities.interfaces import (
+    ActivityEvents,
     ActivityFields,
     ActivityStore,
     CategoryStore,
@@ -68,11 +69,31 @@ class ActivityService:
         categories: CategoryStore,
         orgs: OrgRepository,
         access: AccessControl,
+        events: ActivityEvents | None = None,
     ) -> None:
         self._activities = activities
         self._categories = categories
         self._orgs = orgs
         self._access = access
+        self._events = events
+
+    def _emit(
+        self,
+        org_id: UUID,
+        action: str,
+        activity_id: UUID,
+        actor_id: UUID,
+        status: str,
+    ) -> None:
+        """Best-effort fan-out; a dead bus never blocks a mutation."""
+        if self._events is None:
+            return
+        try:
+            self._events.activity_changed(
+                org_id, action, activity_id, actor_id, status
+            )
+        except Exception:  # noqa: BLE001 - live fan-out is advisory
+            pass
 
     def _org(self, org_id: UUID) -> object:
         org = self._orgs.get_by_id(org_id)
@@ -127,6 +148,7 @@ class ActivityService:
             org_id, actor_id, "activity.create", "activity", row.id,
             "allowed",
         )
+        self._emit(org_id, "created", row.id, actor_id, row.status)
         return row
 
     def update_activity(
@@ -152,6 +174,9 @@ class ActivityService:
         self._access.record(
             org_id, actor_id, "activity.update", "activity", activity_id,
             "allowed",
+        )
+        self._emit(
+            org_id, "updated", activity_id, actor_id, updated.status
         )
         return updated
 
@@ -179,6 +204,7 @@ class ActivityService:
             org_id, actor_id, f"activity.{target}", "activity",
             activity_id, "allowed",
         )
+        self._emit(org_id, target, activity_id, actor_id, updated.status)
         return updated
 
     def get_visible(
