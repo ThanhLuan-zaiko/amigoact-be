@@ -134,6 +134,9 @@ SYNC_MODELS = [
     chat_models.OrgRoomRead,
     chat_models.OrgDmPair,
     chat_models.OrgDmRoom,
+    chat_models.OrgRoomReaction,
+    chat_models.OrgRoomPin,
+    chat_models.OrgRoomMute,
     report_models.ReportSnapshot,
     report_models.ExportJob,
 ]

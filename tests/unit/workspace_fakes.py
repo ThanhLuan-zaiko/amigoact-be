@@ -109,13 +109,24 @@ class FakeChatStore(ChatStore):
         self.dm_rooms: dict[tuple[UUID, UUID], Any] = {}
         self.dm_pairs: dict[tuple[UUID, UUID, UUID], Any] = {}
 
-    def create(self, room_id, bucket, message_id, author_id, body, now):  # noqa: ANN001, ANN202
+    def create(self, room_id, bucket, message_id, author_id, body, now,
+               reply_to_id=None, reply_to_author=None, reply_to_body=None,
+               attachments_json=None, mentions_json=None):  # noqa: ANN001, ANN202
         row = SimpleNamespace(
             room_id=room_id, bucket=bucket, message_id=message_id,
             author_id=author_id, body=body, created_at=now,
+            reply_to_id=reply_to_id, reply_to_author=reply_to_author,
+            reply_to_body=reply_to_body, edited_at=None,
+            attachments_json=attachments_json,
+            mentions_json=mentions_json,
         )
         self.messages.append(row)
         return row
+
+    def update(self, message, body, now, mentions_json=None):  # noqa: ANN001, ANN202
+        message.body = body
+        message.edited_at = now
+        message.mentions_json = mentions_json or None
 
     def get(self, room_id, bucket, message_id):  # noqa: ANN001, ANN202
         return next(
@@ -156,6 +167,61 @@ class FakeChatStore(ChatStore):
             row for row in self.messages if row is not message
         ]
 
+    def set_reaction(self, room_id, message_id, user_id, emoji, now):  # noqa: ANN001, ANN202
+        self.reactions = getattr(self, "reactions", None) or []
+        hit = next(
+            (
+                r for r in self.reactions
+                if r.room_id == room_id and r.message_id == message_id
+                and r.user_id == user_id and r.emoji == emoji
+            ),
+            None,
+        )
+        if hit is not None:
+            self.reactions.remove(hit)
+            return False
+        self.reactions.append(
+            SimpleNamespace(
+                room_id=room_id, message_id=message_id,
+                user_id=user_id, emoji=emoji, created_at=now,
+            )
+        )
+        return True
+
+    def list_reactions(self, room_id, message_id):  # noqa: ANN001, ANN202
+        return [
+            r for r in getattr(self, "reactions", None) or []
+            if r.room_id == room_id and r.message_id == message_id
+        ]
+
+    def set_pin(self, room_id, message_id, pinned_by, now):  # noqa: ANN001, ANN202
+        self.pins = getattr(self, "pins", None) or {}
+        self.pins[room_id] = SimpleNamespace(
+            room_id=room_id, message_id=message_id,
+            pinned_by=pinned_by, pinned_at=now,
+        )
+
+    def clear_pin(self, room_id):  # noqa: ANN001, ANN202
+        getattr(self, "pins", {}).pop(room_id, None)
+
+    def get_pin(self, room_id):  # noqa: ANN001, ANN202
+        return getattr(self, "pins", {}).get(room_id)
+
+    def set_mute(self, user_id, room_id, now):  # noqa: ANN001, ANN202
+        self.mutes = getattr(self, "mutes", None) or {}
+        self.mutes[(user_id, room_id)] = SimpleNamespace(
+            user_id=user_id, room_id=room_id, created_at=now,
+        )
+
+    def clear_mute(self, user_id, room_id):  # noqa: ANN001, ANN202
+        getattr(self, "mutes", {}).pop((user_id, room_id), None)
+
+    def list_mutes(self, user_id):  # noqa: ANN001, ANN202
+        return [
+            row for key, row in getattr(self, "mutes", {}).items()
+            if key[0] == user_id
+        ]
+
     def get_read(self, room_id, user_id):  # noqa: ANN001, ANN202
         return self.reads.get((room_id, user_id))
 
@@ -194,19 +260,46 @@ class FakeChatStore(ChatStore):
         return pair
 
 
+class FakeUploader:
+    """MediaUploader port: records calls, returns a canned snapshot."""
+
+    def __init__(self) -> None:
+        self.calls: list[tuple] = []
+
+    def upload_media(self, org_id, user_id, filename, mime, content,
+                     role="gallery"):  # noqa: ANN001, ANN202
+        media_id = _uid()
+        self.calls.append((org_id, user_id, filename, mime, role))
+        return SimpleNamespace(
+            id=media_id, org_id=org_id,
+            file_url=f"/media/orgs/{org_id}/{media_id}.bin",
+            mime=mime, size_bytes=len(content),
+            original_name=filename,
+        )
+
+
 class FakeActivities:
     """Minimal ActivityLookup stand-in for room resolution."""
 
     def __init__(self) -> None:
         self.activities: dict[UUID, Any] = {}
 
-    def add(self, activity_id: UUID, org_id: UUID) -> None:
+    def add(
+        self, activity_id: UUID, org_id: UUID, title: str = "Activity"
+    ) -> None:
         self.activities[activity_id] = SimpleNamespace(
-            org_id=org_id, created_at=NOW
+            id=activity_id, org_id=org_id, title=title, created_at=NOW
         )
 
     def get(self, activity_id):  # noqa: ANN001, ANN202
         return self.activities.get(activity_id)
+
+    def list_by_org(self, org_id, limit=50):  # noqa: ANN001, ANN202
+        return [
+            row
+            for row in self.activities.values()
+            if row.org_id == org_id
+        ][:limit]
 
 
 class FakeBoardEvents(PostEvents):
@@ -234,9 +327,13 @@ class FakeChatEvents(ChatEvents):
 
     def __init__(self) -> None:
         self.calls: list[tuple] = []
+        self.inbox: list[tuple] = []
 
     def message_changed(self, room_id, action, message_id, actor_id):  # noqa: ANN001, ANN202
         self.calls.append((room_id, action, message_id, actor_id))
+
+    def inbox_changed(self, action, room_id, org_id, peer_ids=()):  # noqa: ANN001, ANN202
+        self.inbox.append((action, room_id, org_id, tuple(peer_ids)))
 
 
 class FakeNotify(NotificationPort):

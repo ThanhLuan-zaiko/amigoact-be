@@ -41,6 +41,9 @@ async def fan_presence(
         "presence": "online" if manager.is_online(user_id) else "offline",
         "user_id": str(user_id),
     }
+    # The transition is also the user's last-seen moment: coming online
+    # or going offline both move the stamp to now.
+    await asyncio.to_thread(service.mark_seen, user_id)
     for org_id in org_ids:
         await manager.publish(f"members:{org_id}", payload)
 

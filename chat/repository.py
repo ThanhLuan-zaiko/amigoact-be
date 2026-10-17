@@ -13,7 +13,15 @@ from uuid import UUID
 from cassandra.cqlengine.connection import get_session
 
 from chat.interfaces import ChatStore
-from chat.model import OrgDmPair, OrgDmRoom, OrgRoomMessage, OrgRoomRead
+from chat.model import (
+    OrgDmPair,
+    OrgDmRoom,
+    OrgRoomMessage,
+    OrgRoomMute,
+    OrgRoomPin,
+    OrgRoomReaction,
+    OrgRoomRead,
+)
 
 
 class CqlChatStore(ChatStore):
@@ -30,6 +38,11 @@ class CqlChatStore(ChatStore):
         author_id: UUID,
         body: str,
         now: datetime,
+        reply_to_id: UUID | None = None,
+        reply_to_author: str | None = None,
+        reply_to_body: str | None = None,
+        attachments_json: str | None = None,
+        mentions_json: str | None = None,
     ) -> OrgRoomMessage:
         return OrgRoomMessage.create(
             room_id=room_id,
@@ -37,8 +50,26 @@ class CqlChatStore(ChatStore):
             message_id=message_id,
             author_id=author_id,
             body=body,
+            reply_to_id=reply_to_id,
+            reply_to_author=reply_to_author,
+            reply_to_body=reply_to_body,
+            attachments_json=attachments_json,
+            mentions_json=mentions_json,
             created_at=now,
         )
+
+    def update(
+        self,
+        message: OrgRoomMessage,
+        body: str,
+        now: datetime,
+        mentions_json: str | None = None,
+    ) -> None:
+        OrgRoomMessage.objects(
+            room_id=message.room_id,
+            bucket=message.bucket,
+            message_id=message.message_id,
+        ).update(body=body, edited_at=now, mentions_json=mentions_json or None)
 
     def get(
         self, room_id: UUID, bucket: str, message_id: UUID
@@ -85,6 +116,64 @@ class CqlChatStore(ChatStore):
         OrgRoomRead.objects(room_id=room_id, user_id=user_id).update(
             last_read_message_id=message_id, last_read_at=now
         )
+
+    def set_reaction(
+        self,
+        room_id: UUID,
+        message_id: UUID,
+        user_id: UUID,
+        emoji: str,
+        now: datetime,
+    ) -> bool:
+        key = dict(
+            room_id=room_id,
+            message_id=message_id,
+            emoji=emoji,
+            user_id=user_id,
+        )
+        existing = OrgRoomReaction.objects(**key).first()
+        if existing is not None:
+            existing.delete()
+            return False
+        OrgRoomReaction.create(**key, created_at=now)
+        return True
+
+    def list_reactions(
+        self, room_id: UUID, message_id: UUID
+    ) -> list[OrgRoomReaction]:
+        return list(
+            OrgRoomReaction.objects(
+                room_id=room_id, message_id=message_id
+            ).all()
+        )
+
+    def set_pin(
+        self,
+        room_id: UUID,
+        message_id: UUID,
+        pinned_by: UUID,
+        now: datetime,
+    ) -> None:
+        OrgRoomPin.objects(room_id=room_id).update(
+            message_id=message_id, pinned_by=pinned_by, pinned_at=now
+        )
+
+    def clear_pin(self, room_id: UUID) -> None:
+        OrgRoomPin.objects(room_id=room_id).delete()
+
+    def get_pin(self, room_id: UUID) -> OrgRoomPin | None:
+        return OrgRoomPin.objects(room_id=room_id).first()
+
+    def set_mute(self, user_id: UUID, room_id: UUID, now: datetime) -> None:
+        OrgRoomMute.objects(user_id=user_id, room_id=room_id).update(
+            created_at=now
+        )
+
+    def clear_mute(self, user_id: UUID, room_id: UUID) -> None:
+        OrgRoomMute.objects(user_id=user_id, room_id=room_id).delete()
+
+    def list_mutes(self, user_id: UUID) -> list[OrgRoomMute]:
+        return list(OrgRoomMute.objects(user_id=user_id).all())
 
     def get_dm_room(self, user_id: UUID, room_id: UUID) -> OrgDmRoom | None:
         return OrgDmRoom.objects(

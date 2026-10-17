@@ -26,7 +26,54 @@ class OrgRoomMessage(models.Model):
         primary_key=True, clustering_order="ASC", default=uuid7
     )
     author_id = columns.UUID(required=True)
-    body = columns.Text(required=True)
+    # required=False: attachment-only messages store an empty body.
+    body = columns.Text(required=False)
+    # Denormalized reply preview: the target lives in another month
+    # bucket, so the row carries its own author/body snippet.
+    reply_to_id = columns.UUID(required=False)
+    reply_to_author = columns.Text(required=False)
+    reply_to_body = columns.Text(required=False)
+    edited_at = columns.DateTime(required=False)
+    # JSON list of {media_id, file_url, mime, name, size_bytes}.
+    attachments_json = columns.Text(required=False)
+    # JSON list of {id, name}: members @-mentioned inside this message.
+    mentions_json = columns.Text(required=False)
+    created_at = columns.DateTime(required=True)
+
+
+class OrgRoomReaction(models.Model):
+    """One user's emoji reaction; toggling removes the (emoji,user) pair."""
+
+    __table_name__ = "org_room_reactions"
+    __keyspace__ = "amigoact"
+
+    room_id = columns.UUID(primary_key=True, partition_key=True)
+    message_id = columns.UUID(primary_key=True, partition_key=True)
+    emoji = columns.Text(primary_key=True, clustering_order="ASC")
+    user_id = columns.UUID(primary_key=True, clustering_order="ASC")
+    created_at = columns.DateTime(required=True)
+
+
+class OrgRoomPin(models.Model):
+    """The room's pinned message slot (one pin per room, latest wins)."""
+
+    __table_name__ = "org_room_pins"
+    __keyspace__ = "amigoact"
+
+    room_id = columns.UUID(primary_key=True)
+    message_id = columns.UUID(required=True)
+    pinned_by = columns.UUID(required=True)
+    pinned_at = columns.DateTime(required=True)
+
+
+class OrgRoomMute(models.Model):
+    """Per-user mute flag of one room; muted rooms still list but dim."""
+
+    __table_name__ = "org_room_mutes"
+    __keyspace__ = "amigoact"
+
+    user_id = columns.UUID(primary_key=True, partition_key=True)
+    room_id = columns.UUID(primary_key=True, clustering_order="ASC")
     created_at = columns.DateTime(required=True)
 
 

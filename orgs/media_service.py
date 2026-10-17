@@ -17,7 +17,7 @@ from core.exceptions import (
     OrgDeletedError,
     UnsupportedMediaError,
 )
-from core.media import MediaStore, media_kind, normalize_image
+from core.media import MediaStore, MediaUploader, media_kind, normalize_image
 from core.security import utcnow
 from orgs.interfaces import (
     MediaRepository,
@@ -54,7 +54,7 @@ class MediaSnapshot:
     updated_at: datetime | None
 
 
-class MediaService:
+class MediaService(MediaUploader):
     """Gallery lifecycle: member uploads, owner/media manager brands."""
 
     def __init__(

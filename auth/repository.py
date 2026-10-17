@@ -122,6 +122,9 @@ class CqlUserRepository(UserRepository):
     def mark_login(self, user_id: UUID, now: datetime) -> None:
         User.objects(id=user_id).update(last_login_at=now)
 
+    def set_last_seen(self, user_id: UUID, now: datetime) -> None:
+        User.objects(id=user_id).update(last_seen_at=now)
+
     def set_avatar_media(
         self, user_id: UUID, asset_id: UUID | None, now: datetime
     ) -> None:

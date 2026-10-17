@@ -214,6 +214,7 @@ def user_directory(settings: Settings) -> UserDirectory:
                 email=user.email,
                 status=user.status,
                 avatar_media_id=getattr(user, "avatar_media_id", None),
+                last_seen_at=getattr(user, "last_seen_at", None),
             )
 
         def get_brief(self, user_id: UUID) -> UserBrief | None:

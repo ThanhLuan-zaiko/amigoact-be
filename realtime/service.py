@@ -131,3 +131,10 @@ class RealtimeService:
         if self._presence is None:
             return []
         return self._presence.member_ids_of(org_id)
+
+    def mark_seen(self, user_id: UUID) -> None:
+        """Stamp users.last_seen_at; presence is best-effort by design."""
+        try:
+            self._users.set_last_seen(user_id, utcnow())
+        except Exception:
+            pass

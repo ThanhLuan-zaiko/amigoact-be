@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime
 from types import SimpleNamespace
 from typing import cast
 from uuid import UUID
@@ -84,6 +85,10 @@ class FakeUserLookup(UserLookup):
 
     def is_active(self, user_id: UUID) -> bool:
         return user_id not in self._inactive
+
+    def set_last_seen(self, user_id: UUID, now: datetime) -> None:
+        self.seen = getattr(self, "seen", None) or []
+        self.seen.append(user_id)
 
 
 class FakePresence(PresenceDirectory):

@@ -23,6 +23,7 @@ class UserBrief:
     email: str
     status: str
     avatar_media_id: UUID | None = None
+    last_seen_at: object | None = None
 
 
 @dataclass(frozen=True)

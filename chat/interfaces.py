@@ -6,7 +6,15 @@ from abc import ABC, abstractmethod
 from datetime import datetime
 from uuid import UUID
 
-from chat.model import OrgDmPair, OrgDmRoom, OrgRoomMessage, OrgRoomRead
+from chat.model import (
+    OrgDmPair,
+    OrgDmRoom,
+    OrgRoomMessage,
+    OrgRoomMute,
+    OrgRoomPin,
+    OrgRoomReaction,
+    OrgRoomRead,
+)
 
 
 class ChatStore(ABC):
@@ -21,8 +29,23 @@ class ChatStore(ABC):
         author_id: UUID,
         body: str,
         now: datetime,
+        reply_to_id: UUID | None = None,
+        reply_to_author: str | None = None,
+        reply_to_body: str | None = None,
+        attachments_json: str | None = None,
+        mentions_json: str | None = None,
     ) -> OrgRoomMessage:
         """Append one message to its room+month partition."""
+
+    @abstractmethod
+    def update(
+        self,
+        message: OrgRoomMessage,
+        body: str,
+        now: datetime,
+        mentions_json: str | None = None,
+    ) -> None:
+        """Rewrite the body and stamp edited_at on one row."""
 
     @abstractmethod
     def get(
@@ -75,6 +98,53 @@ class ChatStore(ABC):
         """Existing canonical pair row, or None when never opened."""
 
     @abstractmethod
+    def set_reaction(
+        self,
+        room_id: UUID,
+        message_id: UUID,
+        user_id: UUID,
+        emoji: str,
+        now: datetime,
+    ) -> bool:
+        """Toggle one (emoji, user) reaction; True when it was added."""
+
+    @abstractmethod
+    def list_reactions(
+        self, room_id: UUID, message_id: UUID
+    ) -> list[OrgRoomReaction]:
+        """Every reaction row of one message partition."""
+
+    @abstractmethod
+    def set_pin(
+        self,
+        room_id: UUID,
+        message_id: UUID,
+        pinned_by: UUID,
+        now: datetime,
+    ) -> None:
+        """Replace the room's pinned slot (one pin per room)."""
+
+    @abstractmethod
+    def clear_pin(self, room_id: UUID) -> None:
+        """Drop the pinned slot."""
+
+    @abstractmethod
+    def get_pin(self, room_id: UUID) -> OrgRoomPin | None:
+        """Current pinned row or None."""
+
+    @abstractmethod
+    def set_mute(self, user_id: UUID, room_id: UUID, now: datetime) -> None:
+        """Mute one room for the user."""
+
+    @abstractmethod
+    def clear_mute(self, user_id: UUID, room_id: UUID) -> None:
+        """Unmute one room."""
+
+    @abstractmethod
+    def list_mutes(self, user_id: UUID) -> list[OrgRoomMute]:
+        """Every muted room of the user (inbox joins on it)."""
+
+    @abstractmethod
     def create_dm_room(
         self,
         room_id: UUID,
@@ -93,13 +163,17 @@ class ChatStore(ABC):
 class ActivityLookup(ABC):
     """Read port: activity rows double as activity-room identities.
 
-    Satisfied by ``ActivityStore.get``; kept as its own port so the chat
-    service only depends on the single lookup it needs (ISP).
+    Satisfied by ``ActivityStore``; kept as its own port so the chat
+    service only depends on the lookups it needs (ISP).
     """
 
     @abstractmethod
     def get(self, activity_id: UUID):  # noqa: ANN001, ANN202
         """Activity row exposing org_id and created_at, or None."""
+
+    @abstractmethod
+    def list_by_org(self, org_id: UUID, limit: int = 50):  # noqa: ANN001, ANN202
+        """Activity rows of one org (inbox room enumeration)."""
 
 
 class ChatEvents(ABC):
@@ -114,3 +188,19 @@ class ChatEvents(ABC):
         actor_id: UUID,
     ) -> None:
         """Broadcast to chat:{room_id} subscribers."""
+
+    @abstractmethod
+    def inbox_changed(
+        self,
+        action: str,
+        room_id: UUID,
+        org_id: UUID,
+        peer_ids: tuple[UUID, ...] = (),
+    ) -> None:
+        """Inbox-scope hint carrying ``scope: "chat-inbox"``.
+
+        Group rooms (general/activity) publish once to members:{org_id}
+        so every subscribed member refreshes their inbox; dm rooms
+        publish to notifications:{user_id} of each participant instead,
+        keeping the room's existence off the shared org channel.
+        """

@@ -66,6 +66,9 @@ CREATE TABLE IF NOT EXISTS users (
     address text,
     avatar_media_id uuid, // -> media_assets
     last_login_at timestamp,
+    // Presence stamp written on socket connect/disconnect (phase 2).
+    // Deployed keyspaces: ALTER TABLE users ADD last_seen_at timestamp.
+    last_seen_at timestamp,
     email_verified_at timestamp,
     status text, // active | suspended | deleted
     created_at timestamp,
@@ -1437,6 +1440,10 @@ CREATE TABLE IF NOT EXISTS org_room_messages (
     message_id uuid,
     author_id uuid,
     body text,
+    // Phase 1/2 columns (ALTER TABLE org_room_messages ADD ...):
+    //   reply_to_id uuid, reply_to_author text, reply_to_body text,
+    //   edited_at timestamp, attachments_json text, mentions_json text.
+    // body stores AES-256-GCM ciphertext ('v1gcm:' prefix) at rest.
     created_at timestamp,
     PRIMARY KEY ((room_id, bucket), message_id)
 ) WITH CLUSTERING ORDER BY (message_id ASC);
@@ -1449,6 +1456,35 @@ CREATE TABLE IF NOT EXISTS org_room_reads (
     last_read_at timestamp,
     PRIMARY KEY ((room_id), user_id)
 );
+
+// Phase 3: one pinned-message slot per room; the bar reads it on every
+// page load and delete_message clears it when its target is removed.
+CREATE TABLE IF NOT EXISTS org_room_pins (
+    room_id uuid,
+    message_id uuid,
+    pinned_by uuid,
+    pinned_at timestamp,
+    PRIMARY KEY ((room_id))
+);
+
+// Per-user mute flag; muted rooms still list (clients dim them and the
+// badge total skips them).
+CREATE TABLE IF NOT EXISTS org_room_mutes (
+    user_id uuid,
+    room_id uuid,
+    created_at timestamp,
+    PRIMARY KEY ((user_id), room_id)
+);
+
+// Per-(message, emoji, user) toggle; the tally is the partition's rows.
+CREATE TABLE IF NOT EXISTS org_room_reactions (
+    room_id uuid,
+    message_id uuid,
+    emoji text,
+    user_id uuid,
+    created_at timestamp,
+    PRIMARY KEY ((room_id, message_id), emoji, user_id)
+) WITH CLUSTERING ORDER BY (emoji ASC, user_id ASC);
 
 // Canonical dm pair -> room. user_lo < user_hi keeps exactly one row per
 // pair; creation races resolve through IF NOT EXISTS on this partition.

@@ -34,3 +34,32 @@ class WsChatEvents(ChatEvents):
                 "actor_id": str(actor_id),
             },
         )
+
+    def inbox_changed(
+        self,
+        action: str,
+        room_id: UUID,
+        org_id: UUID,
+        peer_ids: tuple[UUID, ...] = (),
+    ) -> None:
+        """Inbox hint: members:{org} for group rooms, dm peers' inboxes.
+
+        The payload deliberately avoids an "action" key: roster and
+        presence handlers on those channels key off "action"/"presence",
+        so a scoped frame slips past them untouched.
+        """
+        if self._manager is None:
+            return
+        payload = {
+            "scope": "chat-inbox",
+            "event": action,
+            "room_id": str(room_id),
+            "org_id": str(org_id),
+        }
+        if peer_ids:
+            for user_id in peer_ids:
+                self._manager.schedule_publish(
+                    f"notifications:{user_id}", payload
+                )
+        else:
+            self._manager.schedule_publish(f"members:{org_id}", payload)

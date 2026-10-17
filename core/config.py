@@ -20,6 +20,9 @@ class Settings(BaseSettings):
     scylla_datacenter: str = "datacenter1"
     scylla_keyspace: str = "amigoact"
     jwt_secret: str  # Required: no default so boot fails fast without a secret.
+    # Base64 32-byte AES key for chat bodies at rest; empty derives one
+    # from jwt_secret (documented fallback, rotate via this field).
+    chat_message_key: str = ""
     jwt_access_ttl_seconds: int = 900
     refresh_token_ttl_days: int = 14
     verification_code_ttl_minutes: int = 15

@@ -68,6 +68,10 @@ class UserLookup(ABC):
     def is_active(self, user_id: UUID) -> bool:
         """True only when the user exists and their status is active."""
 
+    @abstractmethod
+    def set_last_seen(self, user_id: UUID, now: datetime) -> None:
+        """User-level last-seen stamp on presence transitions."""
+
 
 class PresenceDirectory(ABC):
     """Read port: org rosters for presence fan-out and snapshots.

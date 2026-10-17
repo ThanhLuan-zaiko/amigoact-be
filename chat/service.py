@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
 from uuid import UUID
+
+if TYPE_CHECKING:
+    from chat.composer import ChatComposer
+    from chat.room_admin import ChatRoomAdmin
 
 from chat.dtos import (
     ChatMessageSnapshot,
@@ -10,9 +15,19 @@ from chat.dtos import (
     DmRoomSnapshot,
     ReadSnapshot,
 )
-from chat.helpers import bucket_of, bucket_of_uuid, next_bucket, prev_bucket
+from chat.helpers import (
+    MAX_SCAN_BUCKETS,
+    bucket_of,
+    bucket_of_uuid,
+    prev_bucket,
+    tally_reactions,
+    unread_count,
+)
+from chat.helpers import message_snapshot
 from chat.interfaces import ActivityLookup, ChatEvents, ChatStore
 from chat.model import OrgRoomMessage
+from chat.room_admin import ChatRoomAdmin
+from chat.rooms import emit, emit_inbox, open_room
 from core.exceptions import (
     ForbiddenError,
     InvalidMemberStateError,
@@ -25,11 +40,6 @@ from core.security import utc_aware, utcnow
 from orgs.interfaces import MemberRepository, OrgRepository, UserDirectory
 from orgs.member_helpers import is_active_member, live_org
 from rbac.interfaces import AccessControl
-
-# A page scans back at most this many month buckets; deeper history keeps
-# a resume cursor instead of one slow request. Unread counts cap here too.
-MAX_SCAN_BUCKETS = 6
-UNREAD_CAP = 99
 
 
 class ChatService:
@@ -49,6 +59,9 @@ class ChatService:
         access: AccessControl,
         events: ChatEvents,
         activities: ActivityLookup | None = None,
+        composer: "ChatComposer | None" = None,
+        admin: "ChatRoomAdmin | None" = None,
+        cipher=None,  # noqa: ANN001
     ) -> None:
         self._chat = chat
         self._orgs = orgs
@@ -57,56 +70,45 @@ class ChatService:
         self._access = access
         self._events = events
         self._activities = activities
+        self._composer = composer
+        # Room state ops default to a sibling service over the same ports;
+        # tests may inject a custom one through the admin parameter.
+        self._admin = admin or ChatRoomAdmin(
+            chat, orgs, members, users, access, events, activities, cipher
+        )
+        self._cipher = cipher
 
     def _open_room(self, room_id: UUID, user_id: UUID, action: str):
-        """Resolve a room id to its org after proving access.
-
-        Returns (org, floor_bucket): the floor stops history scans at the
-        room's own creation month. A dm room resolves only for its two
-        participants, so non-participants get the generic org 404.
-        """
-        dm = self._chat.get_dm_room(user_id, room_id)
-        if dm is not None:
-            org = live_org(self._orgs, dm.org_id)
-            floor = bucket_of(dm.created_at)
-        else:
-            activity = (
-                self._activities.get(room_id)
-                if self._activities is not None
-                else None
-            )
-            if activity is not None:
-                org = live_org(self._orgs, activity.org_id)
-                floor = bucket_of(activity.created_at)
-            else:
-                org = live_org(self._orgs, room_id)
-                floor = bucket_of(org.created_at)
-        if org.owner_id != user_id and not is_active_member(
-            self._members, org.id, user_id
-        ):
-            self._access.record(
-                org.id, user_id, action, "chat", None, "denied"
-            )
-            raise ForbiddenError("Only org members can do this.")
-        return org, floor
+        """(org, floor_bucket, dm_row) after proving access — see rooms.py."""
+        ctx = open_room(
+            self._chat, self._orgs, self._members, self._access,
+            self._activities, room_id, user_id, action,
+        )
+        return ctx.org, ctx.floor, ctx.dm
 
     def _emit(
         self, room_id: UUID, action: str, message_id: UUID, actor_id: UUID
     ) -> None:
-        try:
-            self._events.message_changed(room_id, action, message_id, actor_id)
-        except Exception:  # noqa: BLE001 - realtime is best-effort
-            pass
+        emit(self._events, room_id, action, message_id, actor_id)
 
-    def _snapshot(self, row: OrgRoomMessage) -> ChatMessageSnapshot:
-        brief = self._users.get_brief(row.author_id)
-        return ChatMessageSnapshot(
-            message_id=row.message_id,
-            room_id=row.room_id,
-            author_id=row.author_id,
-            author_name=brief.full_name if brief else "Unknown user",
-            body=row.body or "",
-            created_at=utc_aware(row.created_at),
+    def _emit_inbox(
+        self,
+        action: str,
+        room_id: UUID,
+        org_id: UUID,
+        peer_ids: tuple[UUID, ...] = (),
+    ) -> None:
+        emit_inbox(self._events, action, room_id, org_id, peer_ids)
+
+    def _snapshot(
+        self, row: OrgRoomMessage, viewer_id: UUID | None = None
+    ) -> ChatMessageSnapshot:
+        reactions = tally_reactions(
+            self._chat.list_reactions(row.room_id, row.message_id),
+            viewer_id,
+        )
+        return message_snapshot(
+            self._users, row, cipher=self._cipher, reactions=reactions
         )
 
     def can_access(self, room_id: UUID, user_id: UUID) -> bool:
@@ -131,7 +133,7 @@ class ChatService:
         finds empty buckets the resume marker 'bb:{YYYYMM}' continues the
         walk one month earlier, so gaps never stall pagination.
         """
-        _org, floor = self._open_room(room_id, viewer_id, "chat.list")
+        _org, floor, dm = self._open_room(room_id, viewer_id, "chat.list")
         upper: UUID | None = None
         if cursor and cursor.startswith("bb:"):
             bucket = cursor[3:9]
@@ -172,95 +174,100 @@ class ChatService:
         last_read = (
             read_row.last_read_message_id if read_row is not None else None
         )
+        peer_last_read: UUID | None = None
+        if dm is not None:
+            peer_row = self._chat.get_read(room_id, dm.peer_id)
+            if peer_row is not None:
+                peer_last_read = peer_row.last_read_message_id
+        pin = self._chat.get_pin(room_id)
+        pinned = None
+        if pin is not None:
+            pinned_row = self._chat.get(
+                room_id, bucket_of_uuid(pin.message_id), pin.message_id
+            )
+            if pinned_row is not None:
+                pinned = self._snapshot(pinned_row, viewer_id)
+        muted = any(
+            row.room_id == room_id
+            for row in self._chat.list_mutes(viewer_id)
+        )
         return ChatPage(
             items=[
-                self._snapshot(row) for row in reversed(collected)
+                self._snapshot(row, viewer_id) for row in reversed(collected)
             ],
             next_cursor=next_cursor,
-            unread=self._unread(room_id, floor, last_read),
+            unread=unread_count(self._chat, room_id, floor, last_read),
             last_read_message_id=last_read,
+            peer_last_read_message_id=peer_last_read,
+            pinned=pinned,
+            muted=muted,
         )
-
-    def _unread(
-        self, room_id: UUID, floor: str, last_read: UUID | None
-    ) -> int:
-        """Messages newer than the read pointer, capped at UNREAD_CAP."""
-        start = bucket_of_uuid(last_read) if last_read is not None else floor
-        current = bucket_of(utcnow())
-        bucket, total = start, 0
-        while bucket <= current and total < UNREAD_CAP:
-            total += self._chat.count_after(room_id, bucket, last_read)
-            last_read = None  # only the first bucket counts from the pointer
-            bucket = next_bucket(bucket)
-        return min(total, UNREAD_CAP)
 
     def send_message(
-        self, room_id: UUID, actor_id: UUID, body: str
+        self,
+        room_id: UUID,
+        actor_id: UUID,
+        body: str,
+        *,
+        reply_to_id: UUID | None = None,
+        attachment_ids: tuple[UUID, ...] | list[UUID] = (),
     ) -> ChatMessageSnapshot:
-        org, _floor = self._open_room(room_id, actor_id, "chat.send")
-        now = utcnow()
-        message_id = uuid7()
-        row = self._chat.create(
-            room_id, bucket_of(now), message_id, actor_id, body, now
+        """Write path lives on ChatComposer; kept here for DI parity."""
+        if self._composer is None:
+            raise RuntimeError("ChatComposer is not wired.")
+        return self._composer.send_message(
+            room_id, actor_id, body,
+            reply_to_id=reply_to_id, attachment_ids=attachment_ids,
         )
-        self._access.record(
-            org.id, actor_id, "chat.send", "chat", message_id, "allowed"
+
+    def edit_message(
+        self, room_id: UUID, actor_id: UUID, message_id: UUID, body: str
+    ) -> ChatMessageSnapshot:
+        if self._composer is None:
+            raise RuntimeError("ChatComposer is not wired.")
+        return self._composer.edit_message(room_id, actor_id, message_id, body)
+
+    def create_attachment(
+        self,
+        room_id: UUID,
+        actor_id: UUID,
+        filename: str,
+        mime: str,
+        content: bytes,
+    ):
+        if self._composer is None:
+            raise RuntimeError("ChatComposer is not wired.")
+        return self._composer.create_attachment(
+            room_id, actor_id, filename, mime, content
         )
-        # Own messages never inflate the sender's unread badge.
-        self._chat.mark_read(room_id, actor_id, message_id, now)
-        self._emit(room_id, "message.created", message_id, actor_id)
-        return self._snapshot(row)
 
     def delete_message(
         self, room_id: UUID, actor_id: UUID, message_id: UUID
     ) -> None:
-        org, _floor = self._open_room(room_id, actor_id, "chat.delete")
-        row = self._chat.get(room_id, bucket_of_uuid(message_id), message_id)
-        if row is None:
-            raise NotFoundError("Message not found.")
-        if row.author_id != actor_id:
-            if org.owner_id != actor_id and not (
-                is_active_member(self._members, org.id, actor_id)
-                and self._access.has_permission(
-                    org.id, actor_id, "chat:manage"
-                )
-            ):
-                self._access.record(
-                    org.id, actor_id, "chat.delete", "chat",
-                    message_id, "denied",
-                )
-                raise ForbiddenError("Only org managers can do this.")
-        self._chat.delete(row)
-        self._access.record(
-            org.id, actor_id, "chat.delete", "chat", message_id, "allowed"
-        )
-        self._emit(room_id, "message.deleted", message_id, actor_id)
+        self._admin.delete_message(room_id, actor_id, message_id)
 
     def mark_read(
         self, room_id: UUID, user_id: UUID, message_id: UUID
     ) -> ReadSnapshot:
-        """Move the read pointer forward; a stale mark never regresses."""
-        self._open_room(room_id, user_id, "chat.read")
-        row = self._chat.get(
-            room_id, bucket_of_uuid(message_id), message_id
+        return self._admin.mark_read(room_id, user_id, message_id)
+
+    def toggle_reaction(
+        self, room_id: UUID, user_id: UUID, message_id: UUID, emoji: str
+    ) -> ChatMessageSnapshot:
+        return self._admin.toggle_reaction(
+            room_id, user_id, message_id, emoji
         )
-        if row is None:
-            raise NotFoundError("Message not found.")
-        existing = self._chat.get_read(room_id, user_id)
-        if (
-            existing is not None
-            and existing.last_read_message_id is not None
-            and existing.last_read_message_id >= message_id
-        ):
-            return ReadSnapshot(
-                last_read_message_id=existing.last_read_message_id,
-                last_read_at=utc_aware(existing.last_read_at),
-            )
-        now = utcnow()
-        self._chat.mark_read(room_id, user_id, message_id, now)
-        return ReadSnapshot(
-            last_read_message_id=message_id, last_read_at=now
-        )
+
+    def pin_message(
+        self, room_id: UUID, actor_id: UUID, message_id: UUID
+    ) -> None:
+        self._admin.pin_message(room_id, actor_id, message_id)
+
+    def unpin_message(self, room_id: UUID, actor_id: UUID) -> None:
+        self._admin.unpin_message(room_id, actor_id)
+
+    def set_mute(self, room_id: UUID, user_id: UUID, muted: bool) -> None:
+        self._admin.set_mute(room_id, user_id, muted)
 
     def open_dm(
         self, org_id: UUID, actor_id: UUID, peer_id: UUID
@@ -283,6 +290,10 @@ class ChatService:
         user_lo, user_hi = sorted((actor_id, peer_id))
         pair = self._chat.create_dm_room(
             uuid7(), org_id, user_lo, user_hi, utcnow()
+        )
+        # Both inboxes gain the row at once, so both participants hear it.
+        self._emit_inbox(
+            "dm.opened", pair.room_id, org_id, (actor_id, peer_id)
         )
         brief = self._users.get_brief(peer_id)
         return DmRoomSnapshot(

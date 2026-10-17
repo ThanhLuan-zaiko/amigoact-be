@@ -60,6 +60,10 @@ class UserRepository(ABC):
         """Stamp last_login_at after a successful credential check."""
 
     @abstractmethod
+    def set_last_seen(self, user_id: UUID, now: datetime) -> None:
+        """Best-effort presence stamp on socket connect/disconnect."""
+
+    @abstractmethod
     def set_avatar_media(
         self, user_id: UUID, asset_id: UUID | None, now: datetime
     ) -> None:

@@ -223,6 +223,9 @@ def test_user_is_active_fails_closed() -> None:
         def is_active(self, user_id):  # noqa: ANN001, ANN202
             raise RuntimeError("user table unavailable")
 
+        def set_last_seen(self, user_id, now):  # noqa: ANN001, ANN202
+            pass
+
     user_id = uid()
     assert make_service(users=_Boom()).user_is_active(user_id) is False
     assert (

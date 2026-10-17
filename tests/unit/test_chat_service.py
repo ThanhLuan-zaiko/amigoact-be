@@ -7,6 +7,7 @@ from uuid import UUID
 
 import pytest
 
+from chat.composer import ChatComposer
 from chat.helpers import bucket_of, bucket_of_uuid, prev_bucket
 from chat.service import ChatService
 from core.exceptions import (
@@ -22,11 +23,13 @@ from tests.unit.member_fakes import (
     FakeOrgs,
     FakeUsers,
 )
+from tests.unit.org_fakes import FakeMedia
 from tests.unit.workspace_fakes import (
     NOW,
     FakeActivities,
     FakeChatEvents,
     FakeChatStore,
+    FakeUploader,
     _uid,
     add_org,
 )
@@ -39,8 +42,14 @@ def _service():
     activities = FakeActivities()
     owner = _uid()
     org_id = add_org(orgs, members, users, owner)
+    media = FakeMedia()
+    uploader = FakeUploader()
     service = ChatService(
-        chat, orgs, members, users, access, events, activities
+        chat, orgs, members, users, access, events, activities,
+        composer=ChatComposer(
+            chat, orgs, members, users, access, events,
+            media, uploader, activities,
+        ),
     )
     return (
         service, chat, orgs, members, users, access, events,

@@ -68,6 +68,11 @@ class FakeUsers(UserRepository):
         if user is not None:
             user.last_login_at = now
 
+    def set_last_seen(self, user_id, now):  # noqa: ANN001, ANN202
+        user = self.by_id.get(user_id)
+        if user is not None:
+            user.last_seen_at = now
+
     def set_avatar_media(self, user_id, asset_id, now):  # noqa: ANN001, ANN202
         user = self.by_id.get(user_id)
         if user is not None:

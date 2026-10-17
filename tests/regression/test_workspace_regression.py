@@ -28,11 +28,31 @@ PAGE_FIELDS = {
 }
 CHAT_PAGE_FIELDS = {
     "items", "next_cursor", "unread", "last_read_message_id",
+    # Phase 2: dm-only peer read pointer for the double-check receipt.
+    "peer_last_read_message_id",
+    # Phase 3: pinned bar payload + the caller's mute flag.
+    "pinned", "muted",
 }
 MESSAGE_FIELDS = {
     "message_id", "room_id", "author_id", "author_name", "body",
     "created_at",
+    # Phase 1: reply metadata, edit marker, embedded files.
+    "reply_to_id", "reply_to_author", "reply_to_body", "edited_at",
+    "attachments",
+    # Phase 2: reaction tallies and @-mention entries.
+    "reactions", "mentions",
 }
+INBOX_FIELDS = {"items"}
+INBOX_ROOM_FIELDS = {
+    "room_id", "kind", "org_id", "org_name", "title", "peer_id",
+    "avatar_url", "last_message_id", "last_body", "last_author_name",
+    "last_at", "unread", "sort_at",
+    # Phase 2: dm peer presence stamp for the "last seen" subtitle.
+    "peer_last_seen_at",
+    # Phase 3: muted rows keep the counter but stay dimmed/badgeless.
+    "muted",
+}
+INBOX_KINDS = {"general", "activity", "dm"}
 
 
 async def test_post_page_contract(client: AsyncClient) -> None:
@@ -94,6 +114,38 @@ async def test_chat_page_contract_and_sender_read(
     assert set(body) == CHAT_PAGE_FIELDS
     assert body["unread"] == 0
     assert body["last_read_message_id"] == sent.json()["message_id"]
+
+
+async def test_chat_inbox_contract(client: AsyncClient) -> None:
+    """Inbox rows keep their field names, kind enum and stable sort."""
+    org_id, owner_h, member_h, member_id = await _org_with_member(
+        client, "rg-inbox"
+    )
+    await client.post(
+        f"/orgs/{org_id}/chat/dm",
+        json={"peer_id": member_id},
+        headers=owner_h,
+    )
+    await client.post(
+        f"/orgs/{org_id}/chat/messages",
+        json={"body": "hi"},
+        headers=member_h,
+    )
+    inbox = await client.get("/chat/inbox", headers=owner_h)
+    assert inbox.status_code == 200
+    body = inbox.json()
+    assert set(body) == INBOX_FIELDS
+    assert body["items"], "owner inbox must not be empty"
+    for row in body["items"]:
+        assert set(row) == INBOX_ROOM_FIELDS
+        assert row["kind"] in INBOX_KINDS
+        assert row["org_id"] == org_id
+    sorted_rows = sorted(
+        body["items"], key=lambda r: (r["sort_at"] or ""), reverse=True
+    )
+    assert [r["room_id"] for r in body["items"]] == [
+        r["room_id"] for r in sorted_rows
+    ]
 
 
 async def test_member_gate_error_envelope(client: AsyncClient) -> None:

@@ -29,6 +29,8 @@ class User(models.Model):
     address = columns.Text(required=False)
     avatar_media_id = columns.UUID(required=False)
     last_login_at = columns.DateTime(required=False)
+    # User-level presence stamp written on socket connect/disconnect.
+    last_seen_at = columns.DateTime(required=False)
     email_verified_at = columns.DateTime(required=False)
     status = columns.Text(required=True, default="active")
     created_at = columns.DateTime(required=True)

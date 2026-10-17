@@ -72,6 +72,9 @@ class AuthUserLookup(UserLookup):
         user = self._users.get_by_id(user_id)
         return user is not None and getattr(user, "status", "active") == "active"
 
+    def set_last_seen(self, user_id: UUID, now: datetime) -> None:
+        self._users.set_last_seen(user_id, now)
+
 
 class OrgAttendanceAccess(AttendanceAccess):
     """Live check-in feed mirrors list_attendance: org managers only.

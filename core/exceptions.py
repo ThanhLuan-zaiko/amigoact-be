@@ -239,6 +239,11 @@ class InvalidPostStateError(DomainError):
     status = 400
 
 
+class ChatContentRequiredError(DomainError):
+    code = "CHAT_CONTENT_REQUIRED"
+    status = 400
+
+
 class PostContentRequiredError(DomainError):
     code = "POST_CONTENT_REQUIRED"
     status = 400

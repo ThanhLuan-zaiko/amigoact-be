@@ -12,13 +12,19 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, Response, status
 
+from chat.inbox_service import ChatInboxService
 from chat.schemas import (
+    AttachmentResponse,
+    ChatInboxResponse,
     ChatMessageResponse,
     ChatPageResponse,
     DmRoomListResponse,
     DmRoomResponse,
+    InboxRoomResponse,
     MarkReadRequest,
+    MentionResponse,
     OpenDmRequest,
+    ReactionResponse,
     ReadStateResponse,
     SendMessageRequest,
     UnreadResponse,
@@ -26,7 +32,10 @@ from chat.schemas import (
 from chat.service import ChatService
 from core.config import Settings, get_settings
 from core.dependencies import CurrentUser, get_current_user
-from core.dependencies_workspace import get_chat_service
+from core.dependencies_workspace import (
+    get_chat_inbox_service,
+    get_chat_service,
+)
 from core.exceptions import TooManyRequestsError
 
 logger = logging.getLogger("amigoact.chat")
@@ -42,6 +51,30 @@ def _to_message(snapshot) -> ChatMessageResponse:  # noqa: ANN001, ANN202
         author_name=snapshot.author_name,
         body=snapshot.body,
         created_at=snapshot.created_at,
+        reply_to_id=snapshot.reply_to_id,
+        reply_to_author=snapshot.reply_to_author,
+        reply_to_body=snapshot.reply_to_body,
+        edited_at=snapshot.edited_at,
+        attachments=[
+            AttachmentResponse(
+                media_id=item.media_id,
+                url=item.url,
+                mime=item.mime,
+                name=item.name,
+                size_bytes=item.size_bytes,
+            )
+            for item in snapshot.attachments
+        ],
+        reactions=[
+            ReactionResponse(
+                emoji=item.emoji, count=item.count, mine=item.mine
+            )
+            for item in snapshot.reactions
+        ],
+        mentions=[
+            MentionResponse(user_id=item.user_id, name=item.name)
+            for item in snapshot.mentions
+        ],
     )
 
 
@@ -55,13 +88,16 @@ def _page(room_id: UUID, viewer_id: UUID, service: ChatService,
         next_cursor=page.next_cursor,
         unread=page.unread,
         last_read_message_id=page.last_read_message_id,
+        peer_last_read_message_id=page.peer_last_read_message_id,
+        pinned=_to_message(page.pinned) if page.pinned else None,
+        muted=page.muted,
     )
 
 
 def _send(
     room_id: UUID,
     user_id: UUID,
-    text: str,
+    body: SendMessageRequest,
     service: ChatService,
     settings: Settings,
 ) -> ChatMessageResponse:
@@ -77,7 +113,15 @@ def _send(
         raise
     except Exception as exc:
         logger.warning("chat rate-limit unavailable: %s", exc)
-    return _to_message(service.send_message(room_id, user_id, text))
+    return _to_message(
+        service.send_message(
+            room_id,
+            user_id,
+            body.body,
+            reply_to_id=body.reply_to_id,
+            attachment_ids=body.attachment_ids,
+        )
+    )
 
 
 def _to_room(snapshot) -> DmRoomResponse:  # noqa: ANN001, ANN202
@@ -91,6 +135,36 @@ def _to_room(snapshot) -> DmRoomResponse:  # noqa: ANN001, ANN202
 
 
 # --- Room-scoped endpoints -------------------------------------------------
+
+
+@router.get("/chat/inbox", response_model=ChatInboxResponse)
+def list_inbox(
+    current_user: CurrentUser = Depends(get_current_user),
+    service: ChatInboxService = Depends(get_chat_inbox_service),
+) -> ChatInboxResponse:
+    """Every room the caller can open across orgs, freshest first."""
+    return ChatInboxResponse(
+        items=[
+            InboxRoomResponse(
+                room_id=item.room_id,
+                kind=item.kind,
+                org_id=item.org_id,
+                org_name=item.org_name,
+                title=item.title,
+                peer_id=item.peer_id,
+                avatar_url=item.avatar_url,
+                last_message_id=item.last_message_id,
+                last_body=item.last_body,
+                last_author_name=item.last_author_name,
+                last_at=item.last_at,
+                unread=item.unread,
+                sort_at=item.sort_at,
+                peer_last_seen_at=item.peer_last_seen_at,
+                muted=item.muted,
+            )
+            for item in service.list_inbox(current_user.id)
+        ]
+    )
 
 
 @router.get("/chat/rooms/{room_id}/messages", response_model=ChatPageResponse)
@@ -130,7 +204,7 @@ def send_room_message(
     settings: Settings = Depends(get_settings),
 ) -> ChatMessageResponse:
     """Append one message and fan it out on chat:{room_id}."""
-    return _send(room_id, current_user.id, body.body, service, settings)
+    return _send(room_id, current_user.id, body, service, settings)
 
 
 @router.delete(
@@ -238,7 +312,7 @@ def send_message(
     settings: Settings = Depends(get_settings),
 ) -> ChatMessageResponse:
     """Append one message to the general room."""
-    return _send(org_id, current_user.id, body.body, service, settings)
+    return _send(org_id, current_user.id, body, service, settings)
 
 
 @router.delete(
