@@ -142,6 +142,7 @@ def get_chat_service(
 ) -> ChatService:
     """Build one ChatService per request over the org chat tables."""
     from activities.repository import CqlActivityStore
+    from chat.channel_repository import CqlChannelStore
     from chat.composer import ChatComposer
     from chat.crypto import chat_cipher
     from chat.events import WsChatEvents
@@ -152,6 +153,7 @@ def get_chat_service(
     from orgs.repository import CqlOrgRepository
 
     store = CqlChatStore(settings.scylla_keyspace)
+    channels = CqlChannelStore(settings.scylla_keyspace)
     orgs = CqlOrgRepository(settings.scylla_keyspace)
     members = CqlMemberRepository()
     users = user_directory(settings)
@@ -167,6 +169,8 @@ def get_chat_service(
         events=events,
         activities=activities,
         cipher=cipher,
+        media=CqlMediaRepository(),
+        channels=channels,
         composer=ChatComposer(
             chat=store,
             orgs=orgs,
@@ -179,15 +183,44 @@ def get_chat_service(
             activities=activities,
             cipher=cipher,
             notifications=notifications,
+            channels=channels,
         ),
+    )
+
+
+def get_channel_service(
+    request: Request,
+    settings: Settings = Depends(get_settings),
+    access: AccessControl = Depends(get_access_control),
+) -> "ChannelService":
+    """Build one ChannelService per request over the channel tables."""
+    from chat.channel_repository import CqlChannelStore
+    from chat.channel_service import ChannelService
+    from chat.events import WsChatEvents
+    from orgs.media_repository import CqlMediaRepository
+    from orgs.member_repository import CqlMemberRepository
+    from orgs.repository import CqlOrgRepository
+
+    return ChannelService(
+        channels=CqlChannelStore(settings.scylla_keyspace),
+        orgs=CqlOrgRepository(settings.scylla_keyspace),
+        members=CqlMemberRepository(),
+        users=user_directory(settings),
+        access=access,
+        events=WsChatEvents(
+            getattr(request.app.state, "ws_manager", None)
+        ),
+        media=CqlMediaRepository(),
     )
 
 
 def get_chat_inbox_service(
     settings: Settings = Depends(get_settings),
+    access: AccessControl = Depends(get_access_control),
 ) -> "ChatInboxService":
-    """Read-only inbox summaries; membership-derived, no ACL port."""
+    """Read-only inbox summaries; membership-derived room refs."""
     from activities.repository import CqlActivityStore
+    from chat.channel_repository import CqlChannelStore
     from chat.crypto import chat_cipher
     from chat.inbox_service import ChatInboxService
     from chat.repository import CqlChatStore
@@ -203,6 +236,8 @@ def get_chat_inbox_service(
         activities=CqlActivityStore(settings.scylla_keyspace),
         media=CqlMediaRepository(),
         cipher=chat_cipher(settings),
+        channels=CqlChannelStore(settings.scylla_keyspace),
+        access=access,
     )
 
 

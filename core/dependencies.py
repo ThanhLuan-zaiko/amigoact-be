@@ -233,6 +233,7 @@ def get_member_service(
     notifications: NotificationService = Depends(get_notification_service),
 ) -> MemberService:
     """Build one MemberService; user lookup adapts the auth repository."""
+    from orgs.media_repository import CqlMediaRepository
     from orgs.member_events import WsMemberEvents
     from orgs.member_repository import CqlMemberRepository
     from orgs.member_service import MemberService
@@ -249,6 +250,7 @@ def get_member_service(
         ),
         notifications=notifications,
         profiles=CqlProfileStore(),
+        media=CqlMediaRepository(),
     )
 
 

@@ -136,13 +136,17 @@ def schema_statements(
     """
     statements, _ = load_statements(cql_path, keyspace)
     prefix = ("CREATE KEYSPACE", "USE")
-    target = f"CREATE TABLE IF NOT EXISTS {table.upper()}"
+    # Word boundary after the name so `foo` never matches `foo_by_id`.
+    target = re.compile(
+        rf"^CREATE TABLE IF NOT EXISTS\s+{re.escape(table)}\b",
+        re.IGNORECASE,
+    )
     wanted = []
     for stmt in statements:
         upper = stmt.upper()
         if upper.startswith(prefix):
             wanted.append(stmt)
-        elif upper.startswith(target):
+        elif target.match(stmt):
             wanted.append(
                 re.sub(
                     rf"(?i)^(CREATE TABLE IF NOT EXISTS\s+){re.escape(table)}\b",

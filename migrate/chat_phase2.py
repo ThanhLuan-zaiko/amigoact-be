@@ -25,7 +25,7 @@ logger = logging.getLogger("migrate.chat_phase2")
 
 REACTION_TABLE = "org_room_reactions"
 
-# (table, [(column, cql_type)]) — every entry is one ALTER ... ADD.
+# (table, [(column, cql_type)]) - every entry is one ALTER ... ADD.
 NEW_COLUMNS: list[tuple[str, list[tuple[str, str]]]] = [
     (
         "org_room_messages",

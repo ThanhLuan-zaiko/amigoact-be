@@ -24,7 +24,7 @@ async def test_reply_and_edit_roundtrip(client: AsyncClient) -> None:
 
     sent = await client.post(
         f"/chat/rooms/{org_id}/messages",
-        json={"body": "tin gốc"},
+        json={"body": "tin g\u1ED1c"},
         headers=owner_h,
     )
     assert sent.status_code == 201, sent.text
@@ -32,27 +32,27 @@ async def test_reply_and_edit_roundtrip(client: AsyncClient) -> None:
 
     replied = await client.post(
         f"/chat/rooms/{org_id}/messages",
-        json={"body": "đồng ý", "reply_to_id": message_id},
+        json={"body": "\u0111\u1ED3ng \u00FD", "reply_to_id": message_id},
         headers=member_h,
     )
     assert replied.status_code == 201, replied.text
     assert replied.json()["reply_to_id"] == message_id
-    assert replied.json()["reply_to_body"] == "tin gốc"
+    assert replied.json()["reply_to_body"] == "tin g\u1ED1c"
     assert replied.json()["reply_to_author"]
 
     edited = await client.patch(
         f"/chat/rooms/{org_id}/messages/{message_id}",
-        json={"body": "tin đã sửa"},
+        json={"body": "tin \u0111\u00E3 s\u1EEDa"},
         headers=owner_h,
     )
     assert edited.status_code == 200, edited.text
-    assert edited.json()["body"] == "tin đã sửa"
+    assert edited.json()["body"] == "tin \u0111\u00E3 s\u1EEDa"
     assert edited.json()["edited_at"] is not None
 
     # Another member cannot rewrite the owner's message.
     denied = await client.patch(
         f"/chat/rooms/{org_id}/messages/{message_id}",
-        json={"body": "chiếm đoạt"},
+        json={"body": "chi\u1EBFm \u0111o\u1EA1t"},
         headers=member_h,
     )
     assert denied.status_code == 403
@@ -61,7 +61,7 @@ async def test_reply_and_edit_roundtrip(client: AsyncClient) -> None:
         f"/chat/rooms/{org_id}/messages", headers=owner_h
     )
     items = {m["message_id"]: m for m in page.json()["items"]}
-    assert items[message_id]["body"] == "tin đã sửa"
+    assert items[message_id]["body"] == "tin \u0111\u00E3 s\u1EEDa"
     assert items[replied.json()["message_id"]]["reply_to_id"] == message_id
 
 
@@ -116,23 +116,23 @@ async def test_reactions_mentions_and_encrypted_body(
 
     reacted = await client.put(
         f"/chat/rooms/{org_id}/messages/{message_id}/reactions",
-        json={"emoji": "👍"},
+        json={"emoji": "\U0001F44D"},
         headers=member_h,
     )
     assert reacted.status_code == 200, reacted.text
     assert reacted.json()["reactions"] == [
-        {"emoji": "👍", "count": 1, "mine": True}
+        {"emoji": "\U0001F44D", "count": 1, "mine": True}
     ]
     again = await client.put(
         f"/chat/rooms/{org_id}/messages/{message_id}/reactions",
-        json={"emoji": "👍"},
+        json={"emoji": "\U0001F44D"},
         headers=member_h,
     )
     assert again.json()["reactions"] == []
 
     bad = await client.put(
         f"/chat/rooms/{org_id}/messages/{message_id}/reactions",
-        json={"emoji": "🦄"},
+        json={"emoji": "\U0001F984"},
         headers=member_h,
     )
     assert bad.status_code in (400, 409)
@@ -146,7 +146,7 @@ async def test_reactions_mentions_and_encrypted_body(
     if owner_name:
         ping = await client.post(
             f"/chat/rooms/{org_id}/messages",
-            json={"body": f"chào @{owner_name}"},
+            json={"body": f"ch\u00E0o @{owner_name}"},
             headers=member_h,
         )
         assert ping.status_code == 201, ping.text
@@ -219,3 +219,32 @@ async def test_pin_and_mute_roundtrip(
         f"/chat/rooms/{org_id}/mute", headers=member_h
     )
     assert unmuted.status_code == 204
+
+
+async def test_message_carries_author_avatar_url(client: AsyncClient) -> None:
+    """Send response and history rows expose the author's avatar URL."""
+    org_id, owner_h, member_h, _mid = await _org_with_member(
+        client, "ws-ava"
+    )
+    uploaded = await client.post(
+        "/profiles/me/avatar",
+        files={"file": ("me.png", _PNG, "image/png")},
+        headers=member_h,
+    )
+    assert uploaded.status_code == 200, uploaded.text
+    sent = await client.post(
+        f"/chat/rooms/{org_id}/messages",
+        json={"body": "c\u00F3 avatar"},
+        headers=member_h,
+    )
+    assert sent.status_code == 201, sent.text
+    assert sent.json()["author_avatar_url"] == uploaded.json()["avatar_url"]
+    page = await client.get(
+        f"/chat/rooms/{org_id}/messages", headers=owner_h
+    )
+    mine = next(
+        m
+        for m in page.json()["items"]
+        if m["message_id"] == sent.json()["message_id"]
+    )
+    assert mine["author_avatar_url"] == uploaded.json()["avatar_url"]

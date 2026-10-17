@@ -13,7 +13,7 @@ from uuid import UUID
 
 from chat.dtos import InboxRoomSnapshot
 from chat.helpers import bucket_of, peek_last_message, unread_count
-from chat.interfaces import ActivityLookup, ChatStore
+from chat.interfaces import ActivityLookup, ChannelStore, ChatStore
 from core.security import utc_aware, utcnow
 from orgs.interfaces import (
     MediaRepository,
@@ -21,6 +21,7 @@ from orgs.interfaces import (
     OrgRepository,
     UserDirectory,
 )
+from rbac.interfaces import AccessControl
 
 # Inbox preview bodies stay short: the rail renders one line per room.
 PREVIEW_LEN = 160
@@ -41,10 +42,13 @@ class _RoomRef:
     avatar_url: str | None
     created_at: datetime | None
     peer_last_seen_at: datetime | None = None
+    # Channel rows only: post gate + display label for the rail.
+    post_policy: str | None = None
+    channel_kind: str | None = None
 
 
 class ChatInboxService:
-    """Telegram-style inbox: general + activity + dm rows across orgs."""
+    """Telegram-style inbox: general + activity + dm + channel rows."""
 
     def __init__(
         self,
@@ -55,6 +59,8 @@ class ChatInboxService:
         activities: ActivityLookup | None = None,
         media: MediaRepository | None = None,
         cipher=None,  # noqa: ANN001
+        channels: ChannelStore | None = None,
+        access: AccessControl | None = None,
     ) -> None:
         self._chat = chat
         self._orgs = orgs
@@ -63,6 +69,8 @@ class ChatInboxService:
         self._activities = activities
         self._media = media
         self._cipher = cipher
+        self._channels = channels
+        self._access = access
 
     def _decrypt(self, text: str) -> str:
         return self._cipher.decrypt(text) if self._cipher else text
@@ -123,6 +131,8 @@ class ChatInboxService:
                         created_at=getattr(act, "created_at", None),
                     )
                 )
+        for ref in self._channel_refs(user_id, orgs):
+            refs.append(ref)
         for row in self._chat.list_dm_rooms(user_id):
             org = orgs.get(row.org_id)
             if org is None:
@@ -147,6 +157,54 @@ class ChatInboxService:
                     ) if brief else None,
                 )
             )
+        return refs
+
+    def _channel_refs(
+        self, user_id: UUID, orgs: dict[UUID, object]
+    ) -> list[_RoomRef]:
+        """Live channels visible to the caller.
+
+        Org-wide channels appear for every active member; restricted
+        ones need a roster seat or a manager role (owner/chat:manage).
+        """
+        if self._channels is None:
+            return []
+        seats = {
+            row.channel_id
+            for row in self._channels.list_channel_memberships(user_id)
+        }
+        refs: list[_RoomRef] = []
+        for org in orgs.values():
+            manager = org.owner_id == user_id or (
+                self._access is not None
+                and self._access.has_permission(
+                    org.id, user_id, "chat:manage"
+                )
+            )
+            org_logo = self._media_url(getattr(org, "logo_media_id", None))
+            for row in self._channels.list_channels(org.id):
+                if row.archived_at is not None:
+                    continue
+                if (
+                    row.visibility == "restricted"
+                    and not manager
+                    and row.channel_id not in seats
+                ):
+                    continue
+                refs.append(
+                    _RoomRef(
+                        room_id=row.channel_id,
+                        kind="channel",
+                        org_id=org.id,
+                        org_name=org.name,
+                        title=row.name,
+                        peer_id=None,
+                        avatar_url=org_logo,
+                        created_at=getattr(row, "created_at", None),
+                        post_policy=row.post_policy,
+                        channel_kind=row.kind,
+                    )
+                )
         return refs
 
     def list_inbox(self, user_id: UUID) -> list[InboxRoomSnapshot]:
@@ -192,6 +250,8 @@ class ChatInboxService:
                     avatar_url=ref.avatar_url,
                     peer_last_seen_at=ref.peer_last_seen_at,
                     muted=ref.room_id in mutes,
+                    post_policy=ref.post_policy,
+                    channel_kind=ref.channel_kind,
                 )
             )
         out.sort(key=lambda item: item.sort_at, reverse=True)

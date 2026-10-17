@@ -80,11 +80,11 @@ def test_edit_reencrypts_body():
 def test_reaction_toggle_tallies():
     svc, _c, _o, _m, _u, events, _n, org_id, owner = _world()
     sent = svc.send_message(org_id, owner, "hi")
-    out = svc.toggle_reaction(org_id, owner, sent.message_id, "👍")
+    out = svc.toggle_reaction(org_id, owner, sent.message_id, "\U0001F44D")
     assert out.reactions == (
-        out.reactions[0].__class__(emoji="👍", count=1, mine=True),
+        out.reactions[0].__class__(emoji="\U0001F44D", count=1, mine=True),
     )
-    again = svc.toggle_reaction(org_id, owner, sent.message_id, "👍")
+    again = svc.toggle_reaction(org_id, owner, sent.message_id, "\U0001F44D")
     assert again.reactions == ()
     assert any(c[1] == "message.reacted" for c in events.calls)
 
@@ -93,7 +93,7 @@ def test_reaction_rejects_unknown_emoji():
     svc, _c, _o, _m, _u, _e, _n, org_id, owner = _world()
     sent = svc.send_message(org_id, owner, "hi")
     with pytest.raises(InvalidMemberStateError):
-        svc.toggle_reaction(org_id, owner, sent.message_id, "🦄")
+        svc.toggle_reaction(org_id, owner, sent.message_id, "\U0001F984")
 
 
 def test_dm_read_receipt_visible_to_sender():

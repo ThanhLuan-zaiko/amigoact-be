@@ -312,3 +312,23 @@ async def test_activity_room_flow(client: AsyncClient) -> None:
         f"/orgs/{org_id}/chat/messages", headers=owner_h
     )
     assert general.json()["items"] == []
+
+
+async def test_member_roster_carries_avatar_url(client: AsyncClient) -> None:
+    """Uploaded profile avatars surface on the org member roster."""
+    org_id, owner_h, member_h, member_id = await _org_with_member(
+        client, "ws-rava"
+    )
+    uploaded = await client.post(
+        "/profiles/me/avatar",
+        files={"file": ("me.png", b"\x89PNG" + b"0" * 100, "image/png")},
+        headers=member_h,
+    )
+    assert uploaded.status_code == 200, uploaded.text
+    roster = await client.get(f"/orgs/{org_id}/members", headers=owner_h)
+    assert roster.status_code == 200, roster.text
+    row = next(
+        item for item in roster.json()["items"]
+        if item["user_id"] == member_id
+    )
+    assert row["avatar_url"] == uploaded.json()["avatar_url"]

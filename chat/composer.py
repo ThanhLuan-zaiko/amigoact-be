@@ -21,9 +21,15 @@ from chat.helpers import (
     encode_mentions,
     message_snapshot,
 )
-from chat.interfaces import ActivityLookup, ChatEvents, ChatStore
+from chat.interfaces import (
+    ActivityLookup,
+    ChannelStore,
+    ChatEvents,
+    ChatStore,
+)
 from chat.rooms import emit, emit_inbox, open_room
 from core.exceptions import (
+    ChannelArchivedError,
     ChatContentRequiredError,
     ForbiddenError,
     NotFoundError,
@@ -56,6 +62,7 @@ class ChatComposer:
         activities: ActivityLookup | None = None,
         cipher=None,  # noqa: ANN001
         notifications=None,  # noqa: ANN001
+        channels: ChannelStore | None = None,
     ) -> None:
         self._chat = chat
         self._orgs = orgs
@@ -68,12 +75,15 @@ class ChatComposer:
         self._activities = activities
         self._cipher = cipher
         self._notifications = notifications
+        self._channels = channels
 
     def _encrypt(self, text: str) -> str:
         return self._cipher.encrypt(text) if self._cipher else text
 
     def _snapshot(self, row) -> ChatMessageSnapshot:  # noqa: ANN001
-        return message_snapshot(self._users, row, cipher=self._cipher)
+        return message_snapshot(
+            self._users, row, cipher=self._cipher, media=self._media
+        )
 
     def _mentions(self, ctx, actor_id: UUID, text: str) -> list[MentionBrief]:  # noqa: ANN001
         """@name matches against org members; dm rooms never mention."""
@@ -111,7 +121,7 @@ class ChatComposer:
                 self._notifications.notify(
                     mention.user_id,
                     "chat.mention",
-                    f"{actor_name} nhắc đến bạn",
+                    f"{actor_name} nh\u1eafc \u0111\u1ebfn b\u1ea1n",
                     f"Trong {ctx.org.name}: {text[:80]}",
                     data,
                 )
@@ -122,7 +132,25 @@ class ChatComposer:
         return open_room(
             self._chat, self._orgs, self._members, self._access,
             self._activities, room_id, actor_id, action,
+            channels=self._channels,
         )
+
+    def _check_post(self, ctx, actor_id: UUID) -> None:  # noqa: ANN001
+        """Channel gates: archived rooms freeze; managers-only rooms
+        reject posts from regular members."""
+        channel = ctx.channel
+        if channel is None:
+            return
+        if channel.archived_at is not None:
+            raise ChannelArchivedError("This channel is archived.")
+        if (
+            channel.post_policy == "managers"
+            and ctx.org.owner_id != actor_id
+            and not self._access.has_permission(
+                ctx.org.id, actor_id, "chat:manage"
+            )
+        ):
+            raise ForbiddenError("Only managers can post in this channel.")
 
     def send_message(
         self,
@@ -134,6 +162,7 @@ class ChatComposer:
         attachment_ids: tuple[UUID, ...] | list[UUID] = (),
     ) -> ChatMessageSnapshot:
         ctx = self._room(room_id, actor_id, "chat.send")
+        self._check_post(ctx, actor_id)
         text = (body or "").strip()
         attachment_ids = list(attachment_ids or ())[: MAX_ATTACHMENTS + 1]
         if len(attachment_ids) > MAX_ATTACHMENTS:
@@ -190,6 +219,9 @@ class ChatComposer:
     ) -> ChatMessageSnapshot:
         """Only the author rewrites their own text."""
         ctx = self._room(room_id, actor_id, "chat.edit")
+        channel = ctx.channel
+        if channel is not None and channel.archived_at is not None:
+            raise ChannelArchivedError("This channel is archived.")
         text = (body or "").strip()
         if not text:
             raise ChatContentRequiredError("A message cannot be empty.")
@@ -237,6 +269,7 @@ class ChatComposer:
     ) -> AttachmentBrief:
         """Validate room access then delegate to the org media pipeline."""
         ctx = self._room(room_id, actor_id, "chat.attach")
+        self._check_post(ctx, actor_id)
         snap = self._uploader.upload_media(
             ctx.org.id, actor_id, filename, mime, content, "attachment"
         )

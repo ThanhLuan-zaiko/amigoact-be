@@ -66,6 +66,7 @@ class ChatMessageResponse(BaseModel):
     room_id: UUID
     author_id: UUID
     author_name: str
+    author_avatar_url: str | None = None
     body: str
     created_at: datetime | None = None
     reply_to_id: UUID | None = None
@@ -123,7 +124,7 @@ class InboxRoomResponse(BaseModel):
     """One inbox row: room identity plus last-message preview."""
 
     room_id: UUID
-    kind: str  # "general" | "activity" | "dm"
+    kind: str  # "general" | "activity" | "dm" | "channel"
     org_id: UUID
     org_name: str
     title: str
@@ -137,7 +138,74 @@ class InboxRoomResponse(BaseModel):
     sort_at: datetime | None = None
     peer_last_seen_at: datetime | None = None
     muted: bool = False
+    # Channel rows only: composer gate + display label.
+    post_policy: str | None = None
+    channel_kind: str | None = None
 
 
 class ChatInboxResponse(BaseModel):
     items: list[InboxRoomResponse]
+
+
+class ChannelResponse(BaseModel):
+    """One named channel of an org."""
+
+    channel_id: UUID
+    org_id: UUID
+    name: str
+    topic: str = ""
+    kind: str  # "text" | "report" | "task"
+    post_policy: str  # "everyone" | "managers"
+    visibility: str  # "org" | "restricted"
+    created_by: UUID
+    created_at: datetime | None = None
+    archived_at: datetime | None = None
+
+
+class ChannelListResponse(BaseModel):
+    items: list[ChannelResponse]
+
+
+class ChannelCreateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+    topic: str = Field(default="", max_length=200)
+    kind: str = Field(default="text", pattern="^(text|report|task)$")
+    post_policy: str = Field(
+        default="everyone", pattern="^(everyone|managers)$"
+    )
+    visibility: str = Field(default="org", pattern="^(org|restricted)$")
+    member_ids: list[UUID] = Field(default_factory=list, max_length=200)
+
+    _name = field_validator("name", mode="before")(_trim)  # noqa: SLF001
+
+
+class ChannelUpdateRequest(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=80)
+    topic: str | None = Field(default=None, max_length=200)
+    kind: str | None = Field(default=None, pattern="^(text|report|task)$")
+    post_policy: str | None = Field(
+        default=None, pattern="^(everyone|managers)$"
+    )
+    visibility: str | None = Field(
+        default=None, pattern="^(org|restricted)$"
+    )
+    archived: bool | None = None
+
+    _name = field_validator("name", mode="before")(_trim)  # noqa: SLF001
+
+
+class ChannelMemberResponse(BaseModel):
+    """One restricted-channel seat joined with the member brief."""
+
+    user_id: UUID
+    full_name: str
+    avatar_url: str | None = None
+    added_at: datetime | None = None
+
+
+class ChannelMemberListResponse(BaseModel):
+    items: list[ChannelMemberResponse]
+
+
+class ChannelMemberAddRequest(BaseModel):
+    user_id: UUID

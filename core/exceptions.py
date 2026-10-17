@@ -254,6 +254,26 @@ class PostTitleRequiredError(DomainError):
     status = 400
 
 
+class ChannelNotFoundError(DomainError):
+    code = "CHANNEL_NOT_FOUND"
+    status = 404
+
+
+class ChannelNameTakenError(DomainError):
+    code = "CHANNEL_NAME_TAKEN"
+    status = 409
+
+
+class ChannelArchivedError(DomainError):
+    code = "CHANNEL_ARCHIVED"
+    status = 409
+
+
+class InvalidChannelStateError(DomainError):
+    code = "INVALID_CHANNEL_STATE"
+    status = 400
+
+
 async def domain_error_handler(_: Request, exc: DomainError) -> JSONResponse:
     """Render every domain failure as {"code": ..., "message": ...}."""
     return JSONResponse(

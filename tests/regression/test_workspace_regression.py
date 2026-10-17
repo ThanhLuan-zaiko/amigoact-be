@@ -35,6 +35,7 @@ CHAT_PAGE_FIELDS = {
 }
 MESSAGE_FIELDS = {
     "message_id", "room_id", "author_id", "author_name", "body",
+    "author_avatar_url",
     "created_at",
     # Phase 1: reply metadata, edit marker, embedded files.
     "reply_to_id", "reply_to_author", "reply_to_body", "edited_at",
@@ -51,8 +52,15 @@ INBOX_ROOM_FIELDS = {
     "peer_last_seen_at",
     # Phase 3: muted rows keep the counter but stay dimmed/badgeless.
     "muted",
+    # Channels: post gate + display label on channel rows only.
+    "post_policy", "channel_kind",
 }
-INBOX_KINDS = {"general", "activity", "dm"}
+INBOX_KINDS = {"general", "activity", "dm", "channel"}
+CHANNEL_FIELDS = {
+    "channel_id", "org_id", "name", "topic", "kind", "post_policy",
+    "visibility", "created_by", "created_at", "archived_at",
+}
+CHANNEL_MEMBER_FIELDS = {"user_id", "full_name", "avatar_url", "added_at"}
 
 
 async def test_post_page_contract(client: AsyncClient) -> None:
@@ -146,6 +154,58 @@ async def test_chat_inbox_contract(client: AsyncClient) -> None:
     assert [r["room_id"] for r in body["items"]] == [
         r["room_id"] for r in sorted_rows
     ]
+
+
+async def test_channel_contract_and_error_codes(
+    client: AsyncClient,
+) -> None:
+    """Channel rows freeze field names + the new error code envelope."""
+    org_id, owner_h, member_h, member_id = await _org_with_member(
+        client, "rg-chan"
+    )
+    created = await client.post(
+        f"/orgs/{org_id}/chat/channels",
+        json={"name": "regression", "visibility": "restricted"},
+        headers=owner_h,
+    )
+    assert created.status_code == 201, created.text
+    assert set(created.json()) == CHANNEL_FIELDS
+    cid = created.json()["channel_id"]
+
+    listed = await client.get(
+        f"/orgs/{org_id}/chat/channels", headers=owner_h
+    )
+    assert set(listed.json()) == {"items"}
+    assert set(listed.json()["items"][0]) == CHANNEL_FIELDS
+
+    dup = await client.post(
+        f"/orgs/{org_id}/chat/channels",
+        json={"name": "REGRESSION"},
+        headers=owner_h,
+    )
+    assert (dup.status_code, dup.json()["code"]) == (
+        409,
+        "CHANNEL_NAME_TAKEN",
+    )
+    missing = await client.patch(
+        f"/orgs/{org_id}/chat/channels/{org_id}",
+        json={"topic": "x"},
+        headers=owner_h,
+    )
+    assert (missing.status_code, missing.json()["code"]) == (
+        404,
+        "CHANNEL_NOT_FOUND",
+    )
+
+    await client.post(
+        f"/orgs/{org_id}/chat/channels/{cid}/members",
+        json={"user_id": member_id},
+        headers=owner_h,
+    )
+    roster = await client.get(
+        f"/orgs/{org_id}/chat/channels/{cid}/members", headers=member_h
+    )
+    assert set(roster.json()["items"][0]) == CHANNEL_MEMBER_FIELDS
 
 
 async def test_member_gate_error_envelope(client: AsyncClient) -> None:

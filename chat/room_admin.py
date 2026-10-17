@@ -11,16 +11,27 @@ from chat.helpers import (
     message_snapshot,
     tally_reactions,
 )
-from chat.interfaces import ActivityLookup, ChatEvents, ChatStore
+from chat.interfaces import (
+    ActivityLookup,
+    ChannelStore,
+    ChatEvents,
+    ChatStore,
+)
 from chat.model import OrgRoomMessage
 from chat.rooms import emit, emit_inbox, open_room
 from core.exceptions import (
+    ChannelArchivedError,
     ForbiddenError,
     InvalidMemberStateError,
     NotFoundError,
 )
 from core.security import utc_aware, utcnow
-from orgs.interfaces import MemberRepository, OrgRepository, UserDirectory
+from orgs.interfaces import (
+    MediaRepository,
+    MemberRepository,
+    OrgRepository,
+    UserDirectory,
+)
 from orgs.member_helpers import is_active_member
 from rbac.interfaces import AccessControl
 
@@ -42,6 +53,8 @@ class ChatRoomAdmin:
         events: ChatEvents,
         activities: ActivityLookup | None = None,
         cipher=None,  # noqa: ANN001
+        media: MediaRepository | None = None,
+        channels: ChannelStore | None = None,
     ) -> None:
         self._chat = chat
         self._orgs = orgs
@@ -51,12 +64,18 @@ class ChatRoomAdmin:
         self._events = events
         self._activities = activities
         self._cipher = cipher
+        self._media = media
+        self._channels = channels
 
-    def _open_room(self, room_id: UUID, user_id: UUID, action: str):
-        ctx = open_room(
+    def _ctx(self, room_id: UUID, user_id: UUID, action: str):
+        return open_room(
             self._chat, self._orgs, self._members, self._access,
             self._activities, room_id, user_id, action,
+            channels=self._channels,
         )
+
+    def _open_room(self, room_id: UUID, user_id: UUID, action: str):
+        ctx = self._ctx(room_id, user_id, action)
         return ctx.org, ctx.floor, ctx.dm
 
     def _snapshot(
@@ -70,6 +89,7 @@ class ChatRoomAdmin:
                 self._chat.list_reactions(row.room_id, row.message_id),
                 viewer_id,
             ),
+            media=self._media,
         )
 
     def _require_manager(
@@ -155,7 +175,10 @@ class ChatRoomAdmin:
         self, room_id: UUID, user_id: UUID, message_id: UUID, emoji: str
     ) -> ChatMessageSnapshot:
         """Toggle one palette emoji and return the message with tallies."""
-        self._open_room(room_id, user_id, "chat.react")
+        ctx = self._ctx(room_id, user_id, "chat.react")
+        channel = ctx.channel
+        if channel is not None and channel.archived_at is not None:
+            raise ChannelArchivedError("This channel is archived.")
         if emoji not in REACTION_EMOJIS:
             raise InvalidMemberStateError("Unsupported reaction.")
         row = self._chat.get(

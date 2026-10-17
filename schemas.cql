@@ -1507,3 +1507,70 @@ CREATE TABLE IF NOT EXISTS org_dm_rooms (
     created_at timestamp,
     PRIMARY KEY ((user_id), room_id)
 );
+
+// Chat phase 4: named org channels. channel_id doubles as the room_id in
+// org_room_messages, so messages/reads/pins/mutes/reactions need no new
+// tables. kind is a display label (text/report/task); post_policy may
+// restrict posting to managers; visibility="restricted" rooms open only
+// for org_chat_channel_members rows.
+CREATE TABLE IF NOT EXISTS org_chat_channels (
+    org_id uuid,
+    channel_id uuid,
+    name text,
+    name_folded text,
+    topic text,
+    kind text,
+    post_policy text,
+    visibility text,
+    created_by uuid,
+    created_at timestamp,
+    archived_at timestamp,
+    archived_by uuid,
+    PRIMARY KEY ((org_id), channel_id)
+) WITH CLUSTERING ORDER BY (channel_id ASC);
+
+// channel_id -> row mirror: open_room resolves a room id without
+// scanning the org partition (same role as members_by_user).
+CREATE TABLE IF NOT EXISTS org_chat_channels_by_id (
+    channel_id uuid PRIMARY KEY,
+    org_id uuid,
+    name text,
+    name_folded text,
+    topic text,
+    kind text,
+    post_policy text,
+    visibility text,
+    created_by uuid,
+    created_at timestamp,
+    archived_at timestamp,
+    archived_by uuid
+);
+
+// LWT claim for one live channel name per org (as org_dm_pairs);
+// renaming or archiving releases the name by deleting this row.
+CREATE TABLE IF NOT EXISTS org_chat_channel_names (
+    org_id uuid,
+    name_folded text,
+    channel_id uuid,
+    created_at timestamp,
+    PRIMARY KEY ((org_id), name_folded)
+);
+
+// Restricted-channel roster: who may open the room.
+CREATE TABLE IF NOT EXISTS org_chat_channel_members (
+    channel_id uuid,
+    user_id uuid,
+    added_by uuid,
+    added_at timestamp,
+    PRIMARY KEY ((channel_id), user_id)
+);
+
+// Per-user restricted-channel index for inbox enumeration (mirrors
+// org_chat_channel_members like members_by_user mirrors members).
+CREATE TABLE IF NOT EXISTS org_chat_channel_memberships (
+    user_id uuid,
+    channel_id uuid,
+    org_id uuid,
+    added_at timestamp,
+    PRIMARY KEY ((user_id), channel_id)
+);

@@ -17,6 +17,7 @@ from tests.unit.member_fakes import (
     _service,
     _uid,
 )
+from tests.unit.org_fakes import FakeMedia
 
 
 def test_suspend_reactivate_matrix() -> None:
@@ -197,3 +198,26 @@ def test_update_rejects_unknown_status() -> None:
         service.update_member(org_id, owner, target, status="suspended").status
         == "suspended"
     )
+
+
+def test_roster_carries_member_avatar_url() -> None:
+    """Roster rows resolve the member's avatar asset to a /media/ URL."""
+    media = FakeMedia()
+    service, _, _, users, _, org_id, owner = _service(media=media)
+    face = media.create_asset(
+        _uid(), owner, "users/u/a.png", "image/png", 10, NOW, role="avatar"
+    )
+    users.add(
+        owner, "owner@example.com", "Owner",
+        avatar_media_id=face.asset_id,
+    )
+    row = service.list_members(org_id, owner).items[0]
+    assert row.avatar_url == "/media/users/u/a.png"
+
+
+def test_roster_ignores_dead_avatar_asset() -> None:
+    """A dangling avatar_media_id yields null, never a broken URL."""
+    service, _, _, users, _, org_id, owner = _service(media=FakeMedia())
+    users.add(owner, "owner@example.com", "Owner", avatar_media_id=_uid())
+    row = service.list_members(org_id, owner).items[0]
+    assert row.avatar_url is None

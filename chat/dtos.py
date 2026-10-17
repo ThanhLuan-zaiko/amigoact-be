@@ -45,6 +45,7 @@ class ChatMessageSnapshot:
     author_name: str
     body: str
     created_at: datetime | None
+    author_avatar_url: str | None = None
     reply_to_id: UUID | None = None
     reply_to_author: str | None = None
     reply_to_body: str | None = None
@@ -116,3 +117,32 @@ class InboxRoomSnapshot:
     avatar_url: str | None = None
     peer_last_seen_at: datetime | None = None
     muted: bool = False
+    # Channel rows only (None elsewhere): post gate + display label.
+    post_policy: str | None = None
+    channel_kind: str | None = None
+
+
+@dataclass(frozen=True)
+class ChannelSnapshot:
+    """One named channel projected for API output."""
+
+    channel_id: UUID
+    org_id: UUID
+    name: str
+    topic: str
+    kind: str
+    post_policy: str
+    visibility: str
+    created_by: UUID
+    created_at: datetime | None
+    archived_at: datetime | None = None
+
+
+@dataclass(frozen=True)
+class ChannelMemberSnapshot:
+    """One restricted-channel seat joined with the member brief."""
+
+    user_id: UUID
+    full_name: str
+    added_at: datetime | None
+    avatar_url: str | None = None

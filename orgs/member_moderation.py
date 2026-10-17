@@ -173,5 +173,10 @@ class MemberModerationMixin:
         fresh = self._members.get(org_id, user_id)
         assert fresh is not None
         return member_snapshot(
-            self._users, org, fresh, self._access.role_map(org_id), show_email=True
+            self._users,
+            org,
+            fresh,
+            self._access.role_map(org_id),
+            show_email=True,
+            media=self._media,
         )

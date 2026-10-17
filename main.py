@@ -138,6 +138,7 @@ from apikeys.router import router as apikeys_router  # noqa: E402
 from audit.router import router as audit_router  # noqa: E402
 from auth.router import router as auth_router  # noqa: E402
 from certificates.router import router as certificates_router  # noqa: E402
+from chat.channels_router import router as channels_router  # noqa: E402
 from chat.router import router as chat_router  # noqa: E402
 from chat.write_router import router as chat_write_router  # noqa: E402
 from hours.router import router as hours_router  # noqa: E402
@@ -189,6 +190,7 @@ app.include_router(posts_public_router)  # guest announcements read
 app.include_router(post_comments_router)
 app.include_router(chat_router)
 app.include_router(chat_write_router)
+app.include_router(channels_router)
 
 
 @app.get("/")

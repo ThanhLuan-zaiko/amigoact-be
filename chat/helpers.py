@@ -133,7 +133,10 @@ def decode_attachments(raw: str | None) -> tuple[AttachmentBrief, ...]:
 
 
 # Reactions are limited to a fixed palette so tallies stay readable.
-REACTION_EMOJIS = frozenset({"👍", "❤️", "😂", "😮", "😢", "😡"})
+REACTION_EMOJIS = frozenset(
+    {"\U0001F44D", "\u2764\ufe0f", "\U0001F602",
+     "\U0001F62E", "\U0001F622", "\U0001F621"}
+)
 # Mentions cap protects the members scan from degenerate bodies.
 MAX_MENTIONS = 10
 
@@ -186,11 +189,23 @@ def tally_reactions(rows, viewer_id: UUID | None):  # noqa: ANN001, ANN202
     )
 
 
+def _avatar_url(media, brief) -> str | None:  # noqa: ANN001, ANN202
+    """Resolve a user avatar asset to its /media/ URL (as inbox_service)."""
+    if media is None or brief is None:
+        return None
+    asset_id = getattr(brief, "avatar_media_id", None)
+    if asset_id is None:
+        return None
+    asset = media.get_asset(asset_id)
+    return f"/media/{asset.file_url}" if asset is not None else None
+
+
 def message_snapshot(
     users,  # noqa: ANN001
     row,  # noqa: ANN001
     cipher=None,  # noqa: ANN001
     reactions=(),  # noqa: ANN001
+    media=None,  # noqa: ANN001
 ):  # noqa: ANN202
     """Shared row -> DTO join used by the read and write services.
 
@@ -204,6 +219,7 @@ def message_snapshot(
         room_id=row.room_id,
         author_id=row.author_id,
         author_name=brief.full_name if brief else "Unknown user",
+        author_avatar_url=_avatar_url(media, brief),
         body=decrypt(row.body),
         created_at=utc_aware(row.created_at),
         reply_to_id=getattr(row, "reply_to_id", None),

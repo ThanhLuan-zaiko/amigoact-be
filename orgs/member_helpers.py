@@ -5,7 +5,12 @@ from __future__ import annotations
 from uuid import UUID
 
 from core.exceptions import NotFoundError, OrgDeletedError
-from orgs.interfaces import MemberRepository, OrgRepository, UserDirectory
+from orgs.interfaces import (
+    MediaRepository,
+    MemberRepository,
+    OrgRepository,
+    UserDirectory,
+)
 from orgs.member_listing import MemberSnapshot, MembershipSnapshot
 from orgs.model import Organization, OrganizationMember
 from rbac.interfaces import AccessControl
@@ -57,6 +62,17 @@ def is_active_member(
     return row is not None and row.status == "active"
 
 
+def _avatar_url(media: MediaRepository | None, brief) -> str | None:  # noqa: ANN001
+    """Resolve a user avatar asset to its /media/ URL (as public_service)."""
+    if media is None or brief is None:
+        return None
+    asset_id = getattr(brief, "avatar_media_id", None)
+    if asset_id is None:
+        return None
+    asset = media.get_asset(asset_id)
+    return f"/media/{asset.file_url}" if asset is not None else None
+
+
 def member_snapshot(
     users: UserDirectory,
     org: Organization,
@@ -64,6 +80,7 @@ def member_snapshot(
     role_map: dict[UUID, list[str]],
     *,
     show_email: bool,
+    media: MediaRepository | None = None,
 ) -> MemberSnapshot:
     """Project one membership row to a display snapshot with privacy."""
     brief = users.get_brief(row.user_id)
@@ -73,6 +90,7 @@ def member_snapshot(
         org_id=org.id,
         user_id=row.user_id,
         full_name=brief.full_name if brief else "Unknown user",
+        avatar_url=_avatar_url(media, brief),
         email=brief.email if (show_email and brief) else None,
         roles=roles_of(org, row.user_id, role_map),
         status=getattr(row, "status", "active") or "active",

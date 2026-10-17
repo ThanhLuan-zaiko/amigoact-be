@@ -24,7 +24,7 @@ from chat.helpers import (
     unread_count,
 )
 from chat.helpers import message_snapshot
-from chat.interfaces import ActivityLookup, ChatEvents, ChatStore
+from chat.interfaces import ActivityLookup, ChannelStore, ChatEvents, ChatStore
 from chat.model import OrgRoomMessage
 from chat.room_admin import ChatRoomAdmin
 from chat.rooms import emit, emit_inbox, open_room
@@ -37,7 +37,7 @@ from core.exceptions import (
 )
 from core.ids import uuid7
 from core.security import utc_aware, utcnow
-from orgs.interfaces import MemberRepository, OrgRepository, UserDirectory
+from orgs.interfaces import MediaRepository, MemberRepository, OrgRepository, UserDirectory
 from orgs.member_helpers import is_active_member, live_org
 from rbac.interfaces import AccessControl
 
@@ -62,6 +62,8 @@ class ChatService:
         composer: "ChatComposer | None" = None,
         admin: "ChatRoomAdmin | None" = None,
         cipher=None,  # noqa: ANN001
+        media: MediaRepository | None = None,
+        channels: ChannelStore | None = None,
     ) -> None:
         self._chat = chat
         self._orgs = orgs
@@ -74,15 +76,17 @@ class ChatService:
         # Room state ops default to a sibling service over the same ports;
         # tests may inject a custom one through the admin parameter.
         self._admin = admin or ChatRoomAdmin(
-            chat, orgs, members, users, access, events, activities, cipher
+            chat, orgs, members, users, access, events, activities,
+            cipher, media, channels,
         )
         self._cipher = cipher
+        self._media, self._channels = media, channels
 
     def _open_room(self, room_id: UUID, user_id: UUID, action: str):
-        """(org, floor_bucket, dm_row) after proving access — see rooms.py."""
+        """(org, floor_bucket, dm_row) after proving access - see rooms.py."""
         ctx = open_room(
-            self._chat, self._orgs, self._members, self._access,
-            self._activities, room_id, user_id, action,
+            self._chat, self._orgs, self._members, self._access, self._activities,
+            room_id, user_id, action, channels=self._channels,
         )
         return ctx.org, ctx.floor, ctx.dm
 
@@ -108,7 +112,8 @@ class ChatService:
             viewer_id,
         )
         return message_snapshot(
-            self._users, row, cipher=self._cipher, reactions=reactions
+            self._users, row, cipher=self._cipher,
+            reactions=reactions, media=self._media,
         )
 
     def can_access(self, room_id: UUID, user_id: UUID) -> bool:

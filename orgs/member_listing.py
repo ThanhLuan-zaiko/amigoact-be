@@ -40,6 +40,7 @@ class MemberSnapshot:
     invited_by: UUID | None
     invited_by_name: str | None
     joined_at: datetime
+    avatar_url: str | None = None
 
 
 @dataclass(frozen=True)

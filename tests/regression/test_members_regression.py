@@ -54,7 +54,7 @@ async def test_member_page_envelope_and_viewer_role(client: AsyncClient) -> None
     item = body["items"][0]
     assert {
         "user_id", "org_id", "full_name", "email", "roles", "status",
-        "joined_at",
+        "joined_at", "avatar_url",
     } <= set(item.keys())
     assert item["roles"] == ["owner"]
     assert item["status"] == "active"

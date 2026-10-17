@@ -30,6 +30,7 @@ def get_realtime_service(
     """Build one RealtimeService per ticket/socket request."""
     from activities.repository import CqlActivityStore
     from auth.repository import CqlUserRepository
+    from chat.channel_repository import CqlChannelStore
     from chat.events import WsChatEvents
     from chat.repository import CqlChatStore
     from chat.service import ChatService
@@ -64,5 +65,6 @@ def get_realtime_service(
             access=access,
             events=WsChatEvents(None),
             activities=activities,
+            channels=CqlChannelStore(settings.scylla_keyspace),
         ),
     )

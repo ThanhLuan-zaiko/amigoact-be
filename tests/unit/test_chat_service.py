@@ -35,17 +35,18 @@ from tests.unit.workspace_fakes import (
 )
 
 
-def _service():
+def _service(media: FakeMedia | None = None):
     chat = FakeChatStore()
     orgs, members, users = FakeOrgs(), FakeMembers(), FakeUsers()
     access, events = FakeAccess(), FakeChatEvents()
     activities = FakeActivities()
     owner = _uid()
     org_id = add_org(orgs, members, users, owner)
-    media = FakeMedia()
+    media = media if media is not None else FakeMedia()
     uploader = FakeUploader()
     service = ChatService(
         chat, orgs, members, users, access, events, activities,
+        media=media,
         composer=ChatComposer(
             chat, orgs, members, users, access, events,
             media, uploader, activities,
@@ -253,3 +254,28 @@ def test_can_access_mirrors_room_resolution() -> None:
     assert not svc.can_access(org_id, stranger)
     assert not svc.can_access(room.room_id, stranger)
     assert not svc.can_access(_uid(), member)
+
+
+def test_message_carries_author_avatar_url() -> None:
+    """Send and history both resolve the author's avatar asset URL."""
+    media = FakeMedia()
+    svc, _, _, _, users, _, _, _, org_id, owner = _service(media=media)
+    face = media.create_asset(
+        _uid(), owner, "users/u/a.png", "image/png", 10, utcnow(),
+        role="avatar",
+    )
+    users.add(owner, "o@x.com", "Owner", avatar_media_id=face.asset_id)
+    snap = svc.send_message(org_id, owner, "hi")
+    assert snap.author_avatar_url == "/media/users/u/a.png"
+    page = svc.list_messages(org_id, owner)
+    assert page.items[0].author_avatar_url == "/media/users/u/a.png"
+
+
+def test_message_ignores_dead_author_avatar_asset() -> None:
+    """A dangling avatar_media_id yields null, never a broken URL."""
+    svc, _, _, _, users, _, _, _, org_id, owner = _service(
+        media=FakeMedia()
+    )
+    users.add(owner, "o@x.com", "Owner", avatar_media_id=_uid())
+    snap = svc.send_message(org_id, owner, "hi")
+    assert snap.author_avatar_url is None

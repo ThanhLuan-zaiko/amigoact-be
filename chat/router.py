@@ -49,6 +49,7 @@ def _to_message(snapshot) -> ChatMessageResponse:  # noqa: ANN001, ANN202
         room_id=snapshot.room_id,
         author_id=snapshot.author_id,
         author_name=snapshot.author_name,
+        author_avatar_url=snapshot.author_avatar_url,
         body=snapshot.body,
         created_at=snapshot.created_at,
         reply_to_id=snapshot.reply_to_id,
@@ -161,6 +162,8 @@ def list_inbox(
                 sort_at=item.sort_at,
                 peer_last_seen_at=item.peer_last_seen_at,
                 muted=item.muted,
+                post_policy=item.post_policy,
+                channel_kind=item.channel_kind,
             )
             for item in service.list_inbox(current_user.id)
         ]

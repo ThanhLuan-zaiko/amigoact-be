@@ -14,6 +14,7 @@ from core.exceptions import (
 )
 from core.security import utcnow
 from orgs.interfaces import (
+    MediaRepository,
     MemberEvents,
     MemberRepository,
     OrgRepository,
@@ -59,6 +60,7 @@ class MemberService(
         events: MemberEvents,
         notifications: NotificationPort | None = None,
         profiles: ProfileStore | None = None,
+        media: MediaRepository | None = None,
     ) -> None:
         self._orgs = orgs
         self._members = members
@@ -67,6 +69,7 @@ class MemberService(
         self._events = events
         self._notifications = notifications
         self._profiles = profiles
+        self._media = media
 
     def _emit(
         self,
@@ -147,7 +150,14 @@ class MemberService(
         if not manager:
             rows = [row for row in rows if row.status == "active"]
         snapshots = [
-            member_snapshot(self._users, org, row, role_map, show_email=manager)
+            member_snapshot(
+                self._users,
+                org,
+                row,
+                role_map,
+                show_email=manager,
+                media=self._media,
+            )
             for row in rows
         ]
         result = paginate_members(
@@ -202,7 +212,12 @@ class MemberService(
         fresh = self._members.get(org_id, user_id)
         assert fresh is not None
         return member_snapshot(
-            self._users, org, fresh, self._access.role_map(org_id), show_email=True
+            self._users,
+            org,
+            fresh,
+            self._access.role_map(org_id),
+            show_email=True,
+            media=self._media,
         )
 
     def remove_member(self, org_id: UUID, actor_id: UUID, user_id: UUID) -> None:

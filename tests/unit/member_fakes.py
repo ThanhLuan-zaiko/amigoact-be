@@ -227,13 +227,16 @@ class FakeEvents(MemberEvents):
 
 def _service(
     join_policy: str = "invite",
+    media=None,  # noqa: ANN001
 ) -> tuple[MemberService, FakeOrgs, FakeMembers, FakeUsers, FakeAccess, UUID, UUID]:
     orgs, members, users, access = FakeOrgs(), FakeMembers(), FakeUsers(), FakeAccess()
     org_id, owner = _uid(), _uid()
     orgs.add(org_id, owner, join_policy=join_policy)
     users.add(owner, "owner@example.com", "Owner")
     members.put(org_id, owner, "active", NOW)
-    service = MemberService(orgs, members, users, access, FakeEvents())
+    service = MemberService(
+        orgs, members, users, access, FakeEvents(), media=media
+    )
     return service, orgs, members, users, access, org_id, owner
 
 

@@ -65,6 +65,7 @@ class MemberResponse(BaseModel):
     user_id: UUID
     org_id: UUID
     full_name: str
+    avatar_url: str | None = None
     email: str | None = None
     roles: list[str] = []
     status: MemberStatus

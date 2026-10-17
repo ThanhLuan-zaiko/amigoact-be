@@ -113,3 +113,85 @@ class OrgDmRoom(models.Model):
     org_id = columns.UUID(required=True)
     peer_id = columns.UUID(required=True)
     created_at = columns.DateTime(required=True)
+
+
+class OrgChatChannel(models.Model):
+    """One named org channel; channel_id doubles as the room id."""
+
+    __table_name__ = "org_chat_channels"
+    __keyspace__ = "amigoact"
+
+    org_id = columns.UUID(primary_key=True, partition_key=True)
+    channel_id = columns.UUID(
+        primary_key=True, clustering_order="ASC", default=uuid7
+    )
+    name = columns.Text(required=True)
+    # Casefolded name for the uniqueness claim and search.
+    name_folded = columns.Text(required=True)
+    topic = columns.Text(required=False)
+    # "text" | "report" | "task" - display semantics only.
+    kind = columns.Text(required=True)
+    # "everyone" | "managers" - who may post.
+    post_policy = columns.Text(required=True)
+    # "org" (every member) | "restricted" (roster below).
+    visibility = columns.Text(required=True)
+    created_by = columns.UUID(required=True)
+    created_at = columns.DateTime(required=True)
+    archived_at = columns.DateTime(required=False)
+    archived_by = columns.UUID(required=False)
+
+
+class OrgChatChannelById(models.Model):
+    """channel_id -> full row mirror for room resolution lookups."""
+
+    __table_name__ = "org_chat_channels_by_id"
+    __keyspace__ = "amigoact"
+
+    channel_id = columns.UUID(primary_key=True)
+    org_id = columns.UUID(required=True)
+    name = columns.Text(required=True)
+    name_folded = columns.Text(required=True)
+    topic = columns.Text(required=False)
+    kind = columns.Text(required=True)
+    post_policy = columns.Text(required=True)
+    visibility = columns.Text(required=True)
+    created_by = columns.UUID(required=True)
+    created_at = columns.DateTime(required=True)
+    archived_at = columns.DateTime(required=False)
+    archived_by = columns.UUID(required=False)
+
+
+class OrgChatChannelName(models.Model):
+    """LWT claim making one live channel name unique per org."""
+
+    __table_name__ = "org_chat_channel_names"
+    __keyspace__ = "amigoact"
+
+    org_id = columns.UUID(primary_key=True, partition_key=True)
+    name_folded = columns.Text(primary_key=True, clustering_order="ASC")
+    channel_id = columns.UUID(required=True)
+    created_at = columns.DateTime(required=True)
+
+
+class OrgChatChannelMember(models.Model):
+    """Restricted-channel roster row: who may open the room."""
+
+    __table_name__ = "org_chat_channel_members"
+    __keyspace__ = "amigoact"
+
+    channel_id = columns.UUID(primary_key=True, partition_key=True)
+    user_id = columns.UUID(primary_key=True, clustering_order="ASC")
+    added_by = columns.UUID(required=True)
+    added_at = columns.DateTime(required=True)
+
+
+class OrgChatChannelMembership(models.Model):
+    """Per-user restricted-channel index for inbox enumeration."""
+
+    __table_name__ = "org_chat_channel_memberships"
+    __keyspace__ = "amigoact"
+
+    user_id = columns.UUID(primary_key=True, partition_key=True)
+    channel_id = columns.UUID(primary_key=True, clustering_order="ASC")
+    org_id = columns.UUID(required=True)
+    added_at = columns.DateTime(required=True)

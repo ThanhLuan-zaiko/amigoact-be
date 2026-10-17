@@ -33,6 +33,7 @@ def _to_member(row: MemberSnapshot) -> MemberResponse:
         user_id=row.user_id,
         org_id=row.org_id,
         full_name=row.full_name,
+        avatar_url=row.avatar_url,
         email=row.email,
         roles=row.roles,
         status=row.status,  # type: ignore[arg-type]

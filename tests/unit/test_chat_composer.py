@@ -70,7 +70,7 @@ def test_reply_denormalizes_author_and_snippet() -> None:
     target = svc.send_message(org_id, owner, "x" * 200)
     member = _member(members, users, org_id)
     reply = svc.send_message(
-        org_id, member, "đồng ý", reply_to_id=target.message_id
+        org_id, member, "\u0111\u1ED3ng \u00FD", reply_to_id=target.message_id
     )
     assert reply.reply_to_id == target.message_id
     assert reply.reply_to_author == users.get_brief(owner).full_name
@@ -88,9 +88,9 @@ def test_reply_to_missing_message_404() -> None:
 
 def test_edit_by_author_sets_edited_at() -> None:
     svc, _, _, _, _, _, events, _, _, org_id, owner = _world()
-    snap = svc.send_message(org_id, owner, "gốc")
-    edited = svc.edit_message(org_id, owner, snap.message_id, "đã sửa")
-    assert edited.body == "đã sửa"
+    snap = svc.send_message(org_id, owner, "g\u1ED1c")
+    edited = svc.edit_message(org_id, owner, snap.message_id, "\u0111\u00E3 s\u1EEDa")
+    assert edited.body == "\u0111\u00E3 s\u1EEDa"
     assert edited.edited_at is not None
     assert (org_id, "message.edited") in [
         (r, a) for r, a, *_ in events.calls
@@ -100,10 +100,10 @@ def test_edit_by_author_sets_edited_at() -> None:
 def test_edit_by_non_author_denied() -> None:
     (svc, _, _, members, users, access,
      _, _, _, org_id, owner) = _world()
-    snap = svc.send_message(org_id, owner, "gốc")
+    snap = svc.send_message(org_id, owner, "g\u1ED1c")
     member = _member(members, users, org_id)
     with pytest.raises(ForbiddenError):
-        svc.edit_message(org_id, member, snap.message_id, "chiếm")
+        svc.edit_message(org_id, member, snap.message_id, "chi\u1EBFm")
     assert ("chat.edit", snap.message_id, "denied") in access.audit
 
 
