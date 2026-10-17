@@ -21,7 +21,7 @@ from chat.schemas import (
 from chat.service import ChatService
 from core.config import Settings, get_settings
 from core.dependencies import CurrentUser, get_current_user
-from core.dependencies_workspace import get_chat_service
+from core.dependencies_chat import get_chat_service
 from core.exceptions import MediaTooLargeError
 from core.media import media_kind
 

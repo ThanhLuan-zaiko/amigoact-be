@@ -76,6 +76,55 @@ class ChatPage:
 
 
 @dataclass(frozen=True)
+class SharedItemDraft:
+    """One attachment/link to index under a room's media tab partition."""
+
+    kind: str  # 'image' | 'video' | 'file' | 'link'
+    item_index: int
+    url: str  # /media/ path; links carry ciphertext ('v1gcm:' prefix)
+    media_id: UUID | None = None
+    mime: str = ""
+    name: str = ""
+    size_bytes: int = 0
+
+
+@dataclass(frozen=True)
+class SharedItemSnapshot:
+    """One indexed item joined with its author for the media tabs."""
+
+    message_id: UUID
+    kind: str
+    media_id: UUID | None
+    url: str  # plaintext: link rows are decrypted at read time
+    mime: str
+    name: str
+    size_bytes: int
+    author_id: UUID
+    author_name: str
+    author_avatar_url: str | None = None
+    created_at: datetime | None = None
+
+
+@dataclass(frozen=True)
+class SharedMediaPage:
+    """Newest-first page of one media tab plus its resume cursor."""
+
+    items: list[SharedItemSnapshot]
+    next_cursor: str | None
+
+
+@dataclass(frozen=True)
+class SharedAuthorSnapshot:
+    """One sender offered by the media filter, with the kinds shared."""
+
+    author_id: UUID
+    author_name: str
+    author_avatar_url: str | None
+    kinds: tuple[str, ...]
+    last_at: datetime | None
+
+
+@dataclass(frozen=True)
 class ReadSnapshot:
     last_read_message_id: UUID
     last_read_at: datetime | None
@@ -120,6 +169,8 @@ class InboxRoomSnapshot:
     # Channel rows only (None elsewhere): post gate + display label.
     post_policy: str | None = None
     channel_kind: str | None = None
+    # Public /orgs/{slug} path for the room panel's share-link card.
+    org_slug: str = ""
 
 
 @dataclass(frozen=True)

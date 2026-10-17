@@ -13,7 +13,8 @@ from uuid import UUID
 
 from chat.dtos import InboxRoomSnapshot
 from chat.helpers import bucket_of, peek_last_message, unread_count
-from chat.interfaces import ActivityLookup, ChannelStore, ChatStore
+from chat.channel_interfaces import ChannelStore
+from chat.interfaces import ActivityLookup, ChatStore
 from core.security import utc_aware, utcnow
 from orgs.interfaces import (
     MediaRepository,
@@ -37,6 +38,7 @@ class _RoomRef:
     kind: str
     org_id: UUID
     org_name: str
+    org_slug: str
     title: str
     peer_id: UUID | None
     avatar_url: str | None
@@ -108,6 +110,7 @@ class ChatInboxService:
                     kind="general",
                     org_id=org.id,
                     org_name=org.name,
+                    org_slug=getattr(org, "slug", "") or "",
                     title=org.name,
                     peer_id=None,
                     avatar_url=org_logo,
@@ -125,6 +128,7 @@ class ChatInboxService:
                         kind="activity",
                         org_id=org.id,
                         org_name=org.name,
+                        org_slug=getattr(org, "slug", "") or "",
                         title=act.title,
                         peer_id=None,
                         avatar_url=org_logo,
@@ -146,6 +150,7 @@ class ChatInboxService:
                     kind="dm",
                     org_id=org.id,
                     org_name=org.name,
+                    org_slug=getattr(org, "slug", "") or "",
                     title=brief.full_name if brief else "Unknown user",
                     peer_id=row.peer_id,
                     avatar_url=self._media_url(
@@ -197,6 +202,7 @@ class ChatInboxService:
                         kind="channel",
                         org_id=org.id,
                         org_name=org.name,
+                        org_slug=getattr(org, "slug", "") or "",
                         title=row.name,
                         peer_id=None,
                         avatar_url=org_logo,
@@ -237,6 +243,7 @@ class ChatInboxService:
                     kind=ref.kind,
                     org_id=ref.org_id,
                     org_name=ref.org_name,
+                    org_slug=ref.org_slug,
                     title=ref.title,
                     peer_id=ref.peer_id,
                     last_message_id=last_id,

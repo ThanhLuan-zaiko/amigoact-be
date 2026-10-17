@@ -48,6 +48,8 @@ INBOX_ROOM_FIELDS = {
     "room_id", "kind", "org_id", "org_name", "title", "peer_id",
     "avatar_url", "last_message_id", "last_body", "last_author_name",
     "last_at", "unread", "sort_at",
+    # Media-index phase: org slug for the community share link.
+    "org_slug",
     # Phase 2: dm peer presence stamp for the "last seen" subtitle.
     "peer_last_seen_at",
     # Phase 3: muted rows keep the counter but stay dimmed/badgeless.
@@ -61,6 +63,15 @@ CHANNEL_FIELDS = {
     "visibility", "created_by", "created_at", "archived_at",
 }
 CHANNEL_MEMBER_FIELDS = {"user_id", "full_name", "avatar_url", "added_at"}
+MEDIA_PAGE_FIELDS = {"items", "next_cursor"}
+MEDIA_ITEM_FIELDS = {
+    "message_id", "kind", "media_id", "url", "mime", "name",
+    "size_bytes", "author_id", "author_name", "author_avatar_url",
+    "created_at",
+}
+MEDIA_AUTHOR_FIELDS = {
+    "author_id", "author_name", "author_avatar_url", "kinds", "last_at",
+}
 
 
 async def test_post_page_contract(client: AsyncClient) -> None:
@@ -206,6 +217,45 @@ async def test_channel_contract_and_error_codes(
         f"/orgs/{org_id}/chat/channels/{cid}/members", headers=member_h
     )
     assert set(roster.json()["items"][0]) == CHANNEL_MEMBER_FIELDS
+
+
+async def test_shared_media_contract(client: AsyncClient) -> None:
+    """Media-index page + item field names stay frozen for the panel."""
+    org_id, owner_h, member_h, _ = await _org_with_member(
+        client, "rg-media"
+    )
+    await client.post(
+        f"/orgs/{org_id}/chat/messages",
+        json={"body": "xem https://rg.example/doc"},
+        headers=member_h,
+    )
+    page = await client.get(
+        f"/chat/rooms/{org_id}/media?kind=link", headers=owner_h
+    )
+    assert page.status_code == 200, page.text
+    body = page.json()
+    assert set(body) == MEDIA_PAGE_FIELDS
+    assert len(body["items"]) == 1
+    assert set(body["items"][0]) == MEDIA_ITEM_FIELDS
+    assert body["items"][0]["kind"] == "link"
+    assert body["items"][0]["url"] == "https://rg.example/doc"
+
+    # Sender filter: authors list feeds the dropdown, author_id narrows
+    # the tab listing — both contracts frozen.
+    authors = await client.get(
+        f"/chat/rooms/{org_id}/media/authors", headers=owner_h
+    )
+    assert authors.status_code == 200, authors.text
+    arows = authors.json()["items"]
+    assert len(arows) == 1
+    assert set(arows[0]) == MEDIA_AUTHOR_FIELDS
+    filtered = await client.get(
+        f"/chat/rooms/{org_id}/media?kind=link"
+        f"&author_id={arows[0]['author_id']}",
+        headers=owner_h,
+    )
+    assert filtered.status_code == 200, filtered.text
+    assert len(filtered.json()["items"]) == 1
 
 
 async def test_member_gate_error_envelope(client: AsyncClient) -> None:

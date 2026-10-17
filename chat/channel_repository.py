@@ -13,7 +13,7 @@ from uuid import UUID
 
 from cassandra.cqlengine.connection import get_session
 
-from chat.interfaces import ChannelStore
+from chat.channel_interfaces import ChannelStore
 from core.ids import uuid7
 from chat.model import (
     OrgChatChannel,

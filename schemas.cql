@@ -1486,6 +1486,59 @@ CREATE TABLE IF NOT EXISTS org_room_reactions (
     PRIMARY KEY ((room_id, message_id), emoji, user_id)
 ) WITH CLUSTERING ORDER BY (emoji ASC, user_id ASC);
 
+// Shared-item index behind the room info panel tabs. One partition per
+// (room, month-bucket, kind) so each tab scans a single partition.
+// kind in ('image','video','file','link'); item_index disambiguates
+// multiple items in one message (attachments first, then links).
+// For kind='link', url stores the body's AES-256-GCM ciphertext like
+// org_room_messages.body; attachment rows keep their /media/ path.
+CREATE TABLE IF NOT EXISTS org_room_media (
+    room_id uuid,
+    bucket text, // 'YYYYMM' of the message's created_at
+    kind text,
+    message_id uuid,
+    item_index int,
+    author_id uuid,
+    media_id uuid,
+    url text,
+    mime text,
+    name text,
+    size_bytes bigint,
+    created_at timestamp,
+    PRIMARY KEY ((room_id, bucket, kind), message_id, item_index)
+) WITH CLUSTERING ORDER BY (message_id ASC, item_index ASC);
+
+// Author-scoped mirror of org_room_media backing the sender filter:
+// one partition per (room, kind, author) with bucket in the clustering
+// prefix so the same month walk applies. A partition LIMIT 1 probe is
+// also how org_room_media_authors rows get pruned after deletes.
+CREATE TABLE IF NOT EXISTS org_room_media_by_author (
+    room_id uuid,
+    kind text,
+    author_id uuid,
+    bucket text, // 'YYYYMM' of the message's created_at
+    message_id uuid,
+    item_index int,
+    media_id uuid,
+    url text,
+    mime text,
+    name text,
+    size_bytes bigint,
+    created_at timestamp,
+    PRIMARY KEY ((room_id, kind, author_id), bucket, message_id, item_index)
+) WITH CLUSTERING ORDER BY (bucket ASC, message_id ASC, item_index ASC);
+
+// Who ever shared what kind inside a room: the sender filter's option
+// list. One row per (kind, author); last_at refreshes on each write and
+// the row is deleted once the by-author partition reads empty.
+CREATE TABLE IF NOT EXISTS org_room_media_authors (
+    room_id uuid,
+    kind text,
+    author_id uuid,
+    last_at timestamp,
+    PRIMARY KEY ((room_id), kind, author_id)
+) WITH CLUSTERING ORDER BY (kind ASC, author_id ASC);
+
 // Canonical dm pair -> room. user_lo < user_hi keeps exactly one row per
 // pair; creation races resolve through IF NOT EXISTS on this partition.
 CREATE TABLE IF NOT EXISTS org_dm_pairs (

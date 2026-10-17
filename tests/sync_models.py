@@ -142,6 +142,9 @@ SYNC_MODELS = [
     chat_models.OrgChatChannelName,
     chat_models.OrgChatChannelMember,
     chat_models.OrgChatChannelMembership,
+    chat_models.OrgRoomMedia,
+    chat_models.OrgRoomMediaByAuthor,
+    chat_models.OrgRoomMediaAuthor,
     report_models.ReportSnapshot,
     report_models.ExportJob,
 ]

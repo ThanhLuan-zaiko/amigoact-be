@@ -26,12 +26,14 @@ from tests.unit.member_fakes import (
     FakeUsers,
 )
 from tests.unit.org_fakes import FakeMedia
-from tests.unit.workspace_fakes import (
-    NOW,
+from tests.unit.chat_fakes import (
     FakeActivities,
     FakeChatEvents,
     FakeChatStore,
     FakeUploader,
+)
+from tests.unit.workspace_fakes import (
+    NOW,
     _uid,
     add_org,
 )

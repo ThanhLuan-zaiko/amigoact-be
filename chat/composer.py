@@ -17,13 +17,14 @@ from chat.helpers import (
     REPLY_PREVIEW_LEN,
     bucket_of,
     bucket_of_uuid,
+    build_index_items,
     encode_attachments,
     encode_mentions,
     message_snapshot,
 )
+from chat.channel_interfaces import ChannelStore
 from chat.interfaces import (
     ActivityLookup,
-    ChannelStore,
     ChatEvents,
     ChatStore,
 )
@@ -198,6 +199,14 @@ class ChatComposer:
                 encode_mentions(mentions) if mentions else None
             ),
         )
+        # Media-tab index: attachments + links land in org_room_media
+        # (links stay ciphertext, matching the body's at-rest rule).
+        index_items = build_index_items(attachments, text, self._cipher)
+        if index_items:
+            self._chat.index_media(
+                room_id, bucket_of(now), message_id, actor_id, now,
+                index_items,
+            )
         self._access.record(
             ctx.org.id, actor_id, "chat.send", "chat", message_id, "allowed"
         )
@@ -246,6 +255,16 @@ class ChatComposer:
             ctx.org.id, actor_id, "chat.edit", "chat",
             message_id, "allowed",
         )
+        # Edits never touch attachments, but the link set may change.
+        self._chat.delete_media_index(
+            room_id, row.bucket, message_id, kinds=("link",)
+        )
+        link_items = build_index_items([], text, self._cipher)
+        if link_items:
+            self._chat.index_media(
+                room_id, row.bucket, message_id, row.author_id,
+                row.created_at, link_items,
+            )
         row.body = self._encrypt(text)
         row.edited_at = now
         row.mentions_json = encode_mentions(mentions) if mentions else ""

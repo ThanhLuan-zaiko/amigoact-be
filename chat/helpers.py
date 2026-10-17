@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime, timezone
+from collections.abc import Iterable
 from uuid import UUID
 
 from chat.dtos import (
@@ -11,6 +13,7 @@ from chat.dtos import (
     ChatMessageSnapshot,
     MentionBrief,
     ReactionTally,
+    SharedItemDraft,
 )
 from core.security import utc_aware
 
@@ -89,6 +92,76 @@ def peek_last_message(store, room_id: UUID, floor: str):  # noqa: ANN001, ANN202
 REPLY_PREVIEW_LEN = 140
 # One message carries at most this many attachment blocks.
 MAX_ATTACHMENTS = 4
+
+# Shared-media index: one row per attachment or extracted link under the
+# message's own (room, month) bucket, sub-partitioned by tab kind.
+MEDIA_KINDS = ("image", "video", "file", "link")
+# Links cap guards the index write against degenerate bodies.
+MAX_LINKS_PER_MESSAGE = 8
+# Fetch margin so a cursor sitting mid-message never starves a page.
+MAX_ITEMS_PER_MESSAGE = MAX_ATTACHMENTS + MAX_LINKS_PER_MESSAGE
+
+_LINK_RE = re.compile(r"https?://[^\s<>\"'`\)]+")
+
+
+def media_kind_of(mime: str) -> str:
+    """Tab an attachment belongs to: image | video | file."""
+    if mime.startswith("image/"):
+        return "image"
+    if mime.startswith("video/"):
+        return "video"
+    return "file"
+
+
+def extract_links(text: str) -> list[str]:
+    """Http(s) targets found in a body, deduped, order kept, capped."""
+    seen: set[str] = set()
+    out: list[str] = []
+    for match in _LINK_RE.finditer(text or ""):
+        url = match.group(0).rstrip(".,;!)?]")
+        if url in seen:
+            continue
+        seen.add(url)
+        out.append(url)
+        if len(out) >= MAX_LINKS_PER_MESSAGE:
+            break
+    return out
+
+
+def build_index_items(
+    attachments: Iterable[AttachmentBrief],
+    body: str,
+    cipher=None,  # noqa: ANN001
+) -> list[SharedItemDraft]:
+    """Rows the org_room_media index stores for one message.
+
+    Links stay ciphertext at rest (same key as the body) so indexing
+    never downgrades a room's confidentiality; attachment URLs are the
+    public /media/ paths the attachments_json column already exposes.
+    """
+    out: list[SharedItemDraft] = []
+    counters: dict[str, int] = {}
+
+    def push(kind: str, url: str, **kwargs) -> None:  # noqa: ANN001, ANN003
+        index = counters.get(kind, 0)
+        counters[kind] = index + 1
+        out.append(
+            SharedItemDraft(kind=kind, item_index=index, url=url, **kwargs)
+        )
+
+    for item in attachments:
+        push(
+            media_kind_of(item.mime),
+            item.url,
+            media_id=item.media_id,
+            mime=item.mime,
+            name=item.name,
+            size_bytes=item.size_bytes,
+        )
+    encrypt = cipher.encrypt if cipher is not None else (lambda v: v)
+    for url in extract_links(body):
+        push("link", encrypt(url))
+    return out
 
 
 def encode_attachments(items: list[AttachmentBrief]) -> str:
@@ -189,7 +262,7 @@ def tally_reactions(rows, viewer_id: UUID | None):  # noqa: ANN001, ANN202
     )
 
 
-def _avatar_url(media, brief) -> str | None:  # noqa: ANN001, ANN202
+def avatar_url(media, brief) -> str | None:  # noqa: ANN001, ANN202
     """Resolve a user avatar asset to its /media/ URL (as inbox_service)."""
     if media is None or brief is None:
         return None
@@ -219,7 +292,7 @@ def message_snapshot(
         room_id=row.room_id,
         author_id=row.author_id,
         author_name=brief.full_name if brief else "Unknown user",
-        author_avatar_url=_avatar_url(media, brief),
+        author_avatar_url=avatar_url(media, brief),
         body=decrypt(row.body),
         created_at=utc_aware(row.created_at),
         reply_to_id=getattr(row, "reply_to_id", None),

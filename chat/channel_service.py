@@ -10,7 +10,8 @@ from datetime import datetime
 from uuid import UUID
 
 from chat.dtos import ChannelMemberSnapshot, ChannelSnapshot
-from chat.interfaces import ChannelStore, ChatEvents
+from chat.channel_interfaces import ChannelStore
+from chat.interfaces import ChatEvents
 from chat.rooms import emit_inbox
 from core.exceptions import (
     ChannelArchivedError,

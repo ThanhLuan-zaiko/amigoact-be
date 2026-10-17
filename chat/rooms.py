@@ -12,7 +12,8 @@ from typing import TYPE_CHECKING
 from uuid import UUID
 
 from chat.helpers import bucket_of
-from chat.interfaces import ActivityLookup, ChannelStore, ChatStore
+from chat.channel_interfaces import ChannelStore
+from chat.interfaces import ActivityLookup, ChatStore
 from core.exceptions import ForbiddenError
 from orgs.interfaces import MemberRepository, OrgRepository
 from orgs.member_helpers import is_active_member, live_org

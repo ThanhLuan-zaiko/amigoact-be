@@ -11,9 +11,9 @@ from chat.helpers import (
     message_snapshot,
     tally_reactions,
 )
+from chat.channel_interfaces import ChannelStore
 from chat.interfaces import (
     ActivityLookup,
-    ChannelStore,
     ChatEvents,
     ChatStore,
 )
@@ -127,6 +127,7 @@ class ChatRoomAdmin:
                 )
                 raise ForbiddenError("Only org managers can do this.")
         self._chat.delete(row)
+        self._chat.delete_media_index(room_id, row.bucket, message_id)
         pin = self._chat.get_pin(room_id)
         if pin is not None and pin.message_id == message_id:
             self._chat.clear_pin(room_id)

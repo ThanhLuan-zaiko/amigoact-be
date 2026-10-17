@@ -3,16 +3,15 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Iterable
 from datetime import datetime
 from uuid import UUID
 
+from chat.dtos import SharedItemDraft
 from chat.model import (
-    OrgChatChannelById,
-    OrgChatChannelMember,
-    OrgChatChannelMembership,
-    OrgChatChannelName,
     OrgDmPair,
     OrgDmRoom,
+    OrgRoomMedia,
     OrgRoomMessage,
     OrgRoomMute,
     OrgRoomPin,
@@ -102,6 +101,55 @@ class ChatStore(ABC):
         """Existing canonical pair row, or None when never opened."""
 
     @abstractmethod
+    def index_media(
+        self,
+        room_id: UUID,
+        bucket: str,
+        message_id: UUID,
+        author_id: UUID,
+        now: datetime,
+        items: Iterable[SharedItemDraft],
+    ) -> None:
+        """Write index rows per item: base tab row + by-author mirror +
+        the (kind, author) presence row backing the sender filter."""
+
+    @abstractmethod
+    def list_media_page(
+        self,
+        room_id: UUID,
+        bucket: str,
+        kind: str,
+        upper: UUID | None,
+        limit: int,
+        author_id: UUID | None = None,
+    ) -> list[OrgRoomMedia]:
+        """Newest-first index rows of one kind within one month bucket.
+
+        `upper` is inclusive (message_id <= upper): the service filters
+        already-served item_index values of that boundary message itself.
+        With `author_id` the read hits org_room_media_by_author instead,
+        keeping the same bucket ordering semantics.
+        """
+
+    @abstractmethod
+    def list_media_authors(
+        self, room_id: UUID
+    ) -> list:  # noqa: ANN001
+        """Every (kind, author) presence row of a room for the sender
+        filter's option list."""
+
+    @abstractmethod
+    def delete_media_index(
+        self,
+        room_id: UUID,
+        bucket: str,
+        message_id: UUID,
+        kinds: Iterable[str] | None = None,
+    ) -> None:
+        """Drop a message's index rows (all kinds unless narrowed), plus
+        their by-author mirrors and any now-empty author presence rows."""
+
+    @abstractmethod
     def set_reaction(
         self,
         room_id: UUID,
@@ -162,103 +210,6 @@ class ChatStore(ABC):
         On a creation race the winner's pair row is returned so both
         callers converge on one room id.
         """
-
-
-class ChannelStore(ABC):
-    """Persistence port for named org channels and restricted rosters.
-
-    channel_id doubles as the room id in org_room_messages, so this
-    port only owns channel metadata; message storage stays ChatStore.
-    """
-
-    @abstractmethod
-    def create_channel(
-        self,
-        org_id: UUID,
-        name: str,
-        topic: str,
-        kind: str,
-        post_policy: str,
-        visibility: str,
-        created_by: UUID,
-        now: datetime,
-    ) -> OrgChatChannelById | None:
-        """Claim the casefolded name (LWT) then write both channel rows.
-
-        Returns None when the name is already held by another live
-        channel; callers map that to CHANNEL_NAME_TAKEN.
-        """
-
-    @abstractmethod
-    def get_channel(self, channel_id: UUID) -> OrgChatChannelById | None:
-        """Row mirror by channel id (room-resolution lookup)."""
-
-    @abstractmethod
-    def get_channel_in_org(
-        self, org_id: UUID, channel_id: UUID
-    ) -> OrgChatChannelById | None:
-        """Row mirror scoped to one org (channel-management lookups)."""
-
-    @abstractmethod
-    def list_channels(self, org_id: UUID) -> list[OrgChatChannelById]:
-        """Every channel row of one org, creation order (uuid7)."""
-
-    @abstractmethod
-    def update_channel(self, channel: OrgChatChannelById) -> None:
-        """Overwrite both channel rows with the (mutated) snapshot."""
-
-    @abstractmethod
-    def claim_name(
-        self,
-        org_id: UUID,
-        name_folded: str,
-        channel_id: UUID,
-        now: datetime,
-    ) -> bool:
-        """LWT-claim one channel name; False while a live channel holds it.
-
-        A claim owned by a deleted or archived channel is stale: it is
-        released and claimed again inside this call.
-        """
-
-    @abstractmethod
-    def release_name(self, org_id: UUID, name_folded: str) -> None:
-        """Drop a name claim (rename/archive frees it for reuse)."""
-
-    @abstractmethod
-    def add_channel_member(
-        self,
-        channel_id: UUID,
-        org_id: UUID,
-        user_id: UUID,
-        added_by: UUID,
-        now: datetime,
-    ) -> None:
-        """Grant a restricted-channel seat (both roster tables)."""
-
-    @abstractmethod
-    def remove_channel_member(
-        self, channel_id: UUID, user_id: UUID
-    ) -> None:
-        """Revoke a restricted-channel seat (both roster tables)."""
-
-    @abstractmethod
-    def get_channel_member(
-        self, channel_id: UUID, user_id: UUID
-    ) -> OrgChatChannelMember | None:
-        """One roster seat, or None (restricted-room ACL check)."""
-
-    @abstractmethod
-    def list_channel_members(
-        self, channel_id: UUID
-    ) -> list[OrgChatChannelMember]:
-        """Full roster of one restricted channel."""
-
-    @abstractmethod
-    def list_channel_memberships(
-        self, user_id: UUID
-    ) -> list[OrgChatChannelMembership]:
-        """Every restricted-channel seat of the user (inbox filter)."""
 
 
 class ActivityLookup(ABC):

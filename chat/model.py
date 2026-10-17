@@ -41,6 +41,85 @@ class OrgRoomMessage(models.Model):
     created_at = columns.DateTime(required=True)
 
 
+class OrgRoomMedia(models.Model):
+    """Shared-item index of a room for the info panel's media tabs.
+
+    One row per attachment or extracted link, keyed like the message's
+    own (room_id, 'YYYYMM') bucket plus a kind sub-partition so each tab
+    reads one partition without ALLOW FILTERING. Rows are written on
+    send (links re-indexed on edit) and dropped with the message.
+    """
+
+    __table_name__ = "org_room_media"
+    __keyspace__ = "amigoact"
+
+    room_id = columns.UUID(primary_key=True, partition_key=True)
+    bucket = columns.Text(primary_key=True, partition_key=True)
+    # 'image' | 'video' | 'file' | 'link' - one partition per tab kind.
+    kind = columns.Text(primary_key=True, partition_key=True)
+    message_id = columns.UUID(
+        primary_key=True, clustering_order="ASC"
+    )
+    item_index = columns.Integer(
+        primary_key=True, clustering_order="ASC"
+    )
+    author_id = columns.UUID(required=True)
+    # Attachment rows only: the staged media asset id.
+    media_id = columns.UUID(required=False)
+    # Attachments store the /media/ path; links store ciphertext
+    # ('v1gcm:' prefix) so the index never weakens body encryption.
+    url = columns.Text(required=True)
+    mime = columns.Text(required=False)
+    name = columns.Text(required=False)
+    size_bytes = columns.BigInt(required=False)
+    created_at = columns.DateTime(required=True)
+
+
+class OrgRoomMediaByAuthor(models.Model):
+    """Author-scoped mirror of org_room_media for the sender filter.
+
+    Same payload, partitioned by (room_id, kind, author_id) and
+    clustered by (bucket, message_id, item_index): a sender-filtered
+    tab still reads one partition while the month walk stays identical
+    to the unfiltered path. Written and dropped together with the base
+    index row.
+    """
+
+    __table_name__ = "org_room_media_by_author"
+    __keyspace__ = "amigoact"
+
+    room_id = columns.UUID(primary_key=True, partition_key=True)
+    kind = columns.Text(primary_key=True, partition_key=True)
+    author_id = columns.UUID(primary_key=True, partition_key=True)
+    bucket = columns.Text(primary_key=True, clustering_order="ASC")
+    message_id = columns.UUID(
+        primary_key=True, clustering_order="ASC"
+    )
+    item_index = columns.Integer(
+        primary_key=True, clustering_order="ASC"
+    )
+    media_id = columns.UUID(required=False)
+    url = columns.Text(required=True)
+    mime = columns.Text(required=False)
+    name = columns.Text(required=False)
+    size_bytes = columns.BigInt(required=False)
+    created_at = columns.DateTime(required=True)
+
+
+class OrgRoomMediaAuthor(models.Model):
+    """One row per (room, kind, author) that ever shared, for the
+    sender filter's option list. last_at refreshes on each index write;
+    the row is dropped once no by-author item of the pair remains."""
+
+    __table_name__ = "org_room_media_authors"
+    __keyspace__ = "amigoact"
+
+    room_id = columns.UUID(primary_key=True, partition_key=True)
+    kind = columns.Text(primary_key=True, clustering_order="ASC")
+    author_id = columns.UUID(primary_key=True, clustering_order="ASC")
+    last_at = columns.DateTime(required=True)
+
+
 class OrgRoomReaction(models.Model):
     """One user's emoji reaction; toggling removes the (emoji,user) pair."""
 

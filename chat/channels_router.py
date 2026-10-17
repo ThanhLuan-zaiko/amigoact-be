@@ -21,7 +21,7 @@ from chat.schemas import (
     ChannelUpdateRequest,
 )
 from core.dependencies import CurrentUser, get_current_user
-from core.dependencies_workspace import get_channel_service
+from core.dependencies_chat import get_channel_service
 
 router = APIRouter(tags=["chat"])
 

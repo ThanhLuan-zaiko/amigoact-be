@@ -120,6 +120,43 @@ class DmRoomListResponse(BaseModel):
     items: list[DmRoomResponse]
 
 
+class SharedMediaItemResponse(BaseModel):
+    """One indexed attachment/link joined with its author."""
+
+    message_id: UUID
+    kind: str  # "image" | "video" | "file" | "link"
+    media_id: UUID | None = None
+    url: str
+    mime: str = ""
+    name: str = ""
+    size_bytes: int = 0
+    author_id: UUID
+    author_name: str
+    author_avatar_url: str | None = None
+    created_at: datetime | None = None
+
+
+class SharedMediaPageResponse(BaseModel):
+    """Newest-first page of one media tab plus its resume cursor."""
+
+    items: list[SharedMediaItemResponse]
+    next_cursor: str | None = None
+
+
+class SharedMediaAuthorResponse(BaseModel):
+    """One sender offered by the media tabs' author filter."""
+
+    author_id: UUID
+    author_name: str
+    author_avatar_url: str | None = None
+    kinds: list[str]
+    last_at: datetime | None = None
+
+
+class SharedMediaAuthorsResponse(BaseModel):
+    items: list[SharedMediaAuthorResponse]
+
+
 class InboxRoomResponse(BaseModel):
     """One inbox row: room identity plus last-message preview."""
 
@@ -128,6 +165,7 @@ class InboxRoomResponse(BaseModel):
     org_id: UUID
     org_name: str
     title: str
+    org_slug: str = ""
     peer_id: UUID | None = None
     avatar_url: str | None = None
     last_message_id: UUID | None = None

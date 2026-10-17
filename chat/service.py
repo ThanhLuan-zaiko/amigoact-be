@@ -24,7 +24,8 @@ from chat.helpers import (
     unread_count,
 )
 from chat.helpers import message_snapshot
-from chat.interfaces import ActivityLookup, ChannelStore, ChatEvents, ChatStore
+from chat.channel_interfaces import ChannelStore
+from chat.interfaces import ActivityLookup, ChatEvents, ChatStore
 from chat.model import OrgRoomMessage
 from chat.room_admin import ChatRoomAdmin
 from chat.rooms import emit, emit_inbox, open_room

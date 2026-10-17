@@ -6,7 +6,7 @@ from types import SimpleNamespace
 from typing import Any
 from uuid import UUID
 
-from chat.interfaces import ChannelStore
+from chat.channel_interfaces import ChannelStore
 from tests.unit.workspace_fakes import _uid
 
 

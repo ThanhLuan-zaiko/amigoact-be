@@ -7,15 +7,21 @@ IF NOT EXISTS result needed to converge both callers on one room id
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from datetime import datetime
 from uuid import UUID
 
 from cassandra.cqlengine.connection import get_session
 
+from chat.dtos import SharedItemDraft
+from chat.helpers import MEDIA_KINDS
 from chat.interfaces import ChatStore
 from chat.model import (
     OrgDmPair,
     OrgDmRoom,
+    OrgRoomMedia,
+    OrgRoomMediaAuthor,
+    OrgRoomMediaByAuthor,
     OrgRoomMessage,
     OrgRoomMute,
     OrgRoomPin,
@@ -100,6 +106,129 @@ class CqlChatStore(ChatStore):
             bucket=message.bucket,
             message_id=message.message_id,
         ).delete()
+
+    def index_media(
+        self,
+        room_id: UUID,
+        bucket: str,
+        message_id: UUID,
+        author_id: UUID,
+        now: datetime,
+        items: Iterable[SharedItemDraft],
+    ) -> None:
+        seen_authors: set[str] = set()
+        for item in items:
+            payload = dict(
+                media_id=item.media_id,
+                url=item.url,
+                mime=item.mime or None,
+                name=item.name or None,
+                size_bytes=item.size_bytes or None,
+                created_at=now,
+            )
+            OrgRoomMedia.create(
+                room_id=room_id,
+                bucket=bucket,
+                kind=item.kind,
+                message_id=message_id,
+                item_index=item.item_index,
+                author_id=author_id,
+                **payload,
+            )
+            OrgRoomMediaByAuthor.create(
+                room_id=room_id,
+                kind=item.kind,
+                author_id=author_id,
+                bucket=bucket,
+                message_id=message_id,
+                item_index=item.item_index,
+                **payload,
+            )
+            if item.kind not in seen_authors:
+                seen_authors.add(item.kind)
+                OrgRoomMediaAuthor.objects(
+                    room_id=room_id, kind=item.kind, author_id=author_id
+                ).update(last_at=now)
+
+    def list_media_page(
+        self,
+        room_id: UUID,
+        bucket: str,
+        kind: str,
+        upper: UUID | None,
+        limit: int,
+        author_id: UUID | None = None,
+    ) -> list[OrgRoomMedia | OrgRoomMediaByAuthor]:
+        if author_id is not None:
+            # Sender filter: same month slice inside the author's own
+            # (room, kind) partition; bucket equality frees ORDER BY on
+            # the remaining clustering columns.
+            query = OrgRoomMediaByAuthor.objects(
+                room_id=room_id, kind=kind, author_id=author_id
+            ).filter(bucket=bucket)
+        else:
+            query = OrgRoomMedia.objects(
+                room_id=room_id, bucket=bucket, kind=kind
+            )
+        if upper is not None:
+            # Inclusive bound: same-message rows left of the served
+            # item_index are dropped by the service's cursor filter.
+            query = query.filter(message_id__lte=upper)
+        return list(
+            query.order_by("-message_id", "-item_index").limit(limit)
+        )
+
+    def list_media_authors(
+        self, room_id: UUID
+    ) -> list[OrgRoomMediaAuthor]:
+        return list(OrgRoomMediaAuthor.objects(room_id=room_id).all())
+
+    def delete_media_index(
+        self,
+        room_id: UUID,
+        bucket: str,
+        message_id: UUID,
+        kinds: Iterable[str] | None = None,
+    ) -> None:
+        # The by-author mirror and the presence row are keyed by
+        # author_id, which the delete caller does not know: read the
+        # doomed base rows first to learn every (kind, author) pair.
+        removed: dict[tuple[str, UUID], list[OrgRoomMedia]] = {}
+        for kind in tuple(kinds) if kinds is not None else MEDIA_KINDS:
+            rows = list(
+                OrgRoomMedia.objects(
+                    room_id=room_id,
+                    bucket=bucket,
+                    kind=kind,
+                    message_id=message_id,
+                ).all()
+            )
+            for row in rows:
+                removed.setdefault((kind, row.author_id), []).append(row)
+        for (kind, author_id), rows in removed.items():
+            for row in rows:
+                row.delete()
+                OrgRoomMediaByAuthor.objects(
+                    room_id=room_id,
+                    kind=kind,
+                    author_id=author_id,
+                    bucket=bucket,
+                    message_id=row.message_id,
+                    item_index=row.item_index,
+                ).delete()
+            # Presence row lives only while the author still owns at
+            # least one item of that kind anywhere in the room.
+            remaining = (
+                OrgRoomMediaByAuthor.objects(
+                    room_id=room_id, kind=kind, author_id=author_id
+                )
+                .limit(1)
+                .first()
+            )
+            if remaining is None:
+                OrgRoomMediaAuthor.objects(
+                    room_id=room_id, kind=kind, author_id=author_id
+                ).delete()
 
     def get_read(self, room_id: UUID, user_id: UUID) -> OrgRoomRead | None:
         return OrgRoomRead.objects(
