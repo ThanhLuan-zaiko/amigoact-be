@@ -138,20 +138,31 @@ class FakeOrgs(OrgRepository):
 class FakeMedia(MediaRepository):
     def __init__(self) -> None:
         self.assets: dict[UUID, Any] = {}
+        self.feed: dict[UUID, UUID] = {}
 
-    def create_asset(self, asset_id, org_id, file_url, mime, size_bytes, now, role="gallery", file_hash=None, uploader_id=None, original_name=None, owner_type="organization"):  # noqa: ANN001, ANN202
+    def create_asset(self, asset_id, owner_id, file_url, mime, size_bytes, now, role="gallery", file_hash=None, uploader_id=None, original_name=None, *, owner_type, owner_feed=True):  # noqa: ANN001, ANN202
         row = SimpleNamespace(
-            asset_id=asset_id, owner_id=org_id, file_url=file_url,
+            asset_id=asset_id, owner_id=owner_id, file_url=file_url,
             mime=mime, size_bytes=size_bytes, role=role, created_at=now,
             file_hash=file_hash, uploader_id=uploader_id,
             original_name=original_name, upload_status="active",
             owner_type=owner_type,
         )
         self.assets[asset_id] = row
+        if owner_feed:
+            self.feed[asset_id] = owner_id
         return row
 
-    def list_by_org(self, org_id):  # noqa: ANN001, ANN202
-        return [a for a in self.assets.values() if a.owner_id == org_id]
+    def list_gallery(self, org_id):  # noqa: ANN001, ANN202
+        return [
+            self.assets[asset_id]
+            for asset_id, feed_owner in self.feed.items()
+            if feed_owner == org_id
+            and asset_id in self.assets
+            and self.assets[asset_id].owner_type == "organization"
+            and self.assets[asset_id].role
+            in ("gallery", "cover", "logo")
+        ]
 
     def get_asset(self, asset_id):  # noqa: ANN001, ANN202
         return self.assets.get(asset_id)
@@ -176,6 +187,7 @@ class FakeMedia(MediaRepository):
         return row
 
     def delete_asset(self, asset_id):  # noqa: ANN001, ANN202
+        self.feed.pop(asset_id, None)
         return self.assets.pop(asset_id, None)
 
     def set_upload_status(self, asset_id, status):  # noqa: ANN001, ANN202
@@ -183,8 +195,18 @@ class FakeMedia(MediaRepository):
         if row is not None:
             row.upload_status = status
 
-    def known_org_ids(self):  # noqa: ANN001, ANN202
+    def protected_dir_ids(self):  # noqa: ANN001, ANN202
         return {str(a.owner_id) for a in self.assets.values()}
+
+
+class FakeModeration:
+    """ModerationStore stand-in: records every enqueued asset id."""
+
+    def __init__(self) -> None:
+        self.enqueued: list[UUID] = []
+
+    def enqueue(self, moderation_id, asset_id, now):  # noqa: ANN001, ANN202
+        self.enqueued.append(asset_id)
 
 
 class FakeStore(MediaStore):

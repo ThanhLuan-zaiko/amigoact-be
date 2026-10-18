@@ -8,6 +8,7 @@ from uuid import UUID
 
 from core.exceptions import NotFoundError
 from core.media import media_kind
+from core.media_rules import is_gallery_asset
 from orgs.interfaces import (
     ActivityDirectory,
     MediaRepository,
@@ -46,12 +47,30 @@ class PublicOrgService:
         self._posts = posts
         self._users = users
 
-    def _media_url(self, asset_id: UUID | None) -> str | None:
-        """Resolve a brand asset to its semi-public /media/ URL."""
+    def _brand_url(
+        self, org: Organization, asset_id: UUID | None, role: str
+    ) -> str | None:
+        """Brand pointer -> URL, only for this org's own logo/cover."""
         if asset_id is None or self._media is None:
             return None
         asset = self._media.get_asset(asset_id)
-        if asset is None:
+        if (
+            asset is None
+            or not is_gallery_asset(asset, org.id)
+            or asset.role != role
+            or getattr(asset, "deleted_at", None) is not None
+        ):
+            return None
+        return f"/media/{asset.file_url}"
+
+    def _avatar_url(
+        self, user_id: UUID, asset_id: UUID | None
+    ) -> str | None:
+        """Avatar pointer -> URL, only for the user's own asset."""
+        if asset_id is None or self._media is None:
+            return None
+        asset = self._media.get_asset(asset_id)
+        if asset is None or asset.owner_id != user_id:
             return None
         return f"/media/{asset.file_url}"
 
@@ -73,12 +92,20 @@ class PublicOrgService:
             city=getattr(org, "city", None),
             country=getattr(org, "country", None),
             verified_at=getattr(org, "verified_at", None),
-            logo_url=self._media_url(getattr(org, "logo_media_id", None)),
-            cover_url=self._media_url(getattr(org, "cover_media_id", None)),
+            logo_url=self._brand_url(
+                org, getattr(org, "logo_media_id", None), "logo"
+            ),
+            cover_url=self._brand_url(
+                org, getattr(org, "cover_media_id", None), "cover"
+            ),
             created_at=org.created_at,
             owner_name=brief.full_name if brief else None,
-            owner_avatar_url=self._media_url(
-                getattr(brief, "avatar_media_id", None)
+            owner_avatar_url=(
+                self._avatar_url(
+                    brief.id, getattr(brief, "avatar_media_id", None)
+                )
+                if brief is not None
+                else None
             ),
         )
 
@@ -120,7 +147,9 @@ class PublicOrgService:
             return [], 0
         covers: list[OrgMediaBrief] = []
         gallery: list[OrgMediaBrief] = []
-        for asset in self._media.list_by_org(org_id):
+        for asset in self._media.list_gallery(org_id):
+            if not is_gallery_asset(asset, org_id):
+                continue
             role = getattr(asset, "role", None) or "gallery"
             if role not in ("gallery", "cover"):
                 continue
@@ -162,8 +191,9 @@ class PublicOrgService:
             return []
         return [
             f"/media/{asset.file_url}"
-            for asset in self._media.list_by_org(org_id)
-            if asset.role == "gallery"
+            for asset in self._media.list_gallery(org_id)
+            if is_gallery_asset(asset, org_id)
+            and asset.role == "gallery"
             and (asset.upload_status or "active") == "active"
             and getattr(asset, "deleted_at", None) is None
             and (asset.mime or "").startswith("image/")
@@ -207,8 +237,12 @@ class PublicOrgService:
             license_number=getattr(org, "license_number", None),
             tax_code=getattr(org, "tax_code", None),
             verified_at=getattr(org, "verified_at", None),
-            logo_url=self._media_url(getattr(org, "logo_media_id", None)),
-            cover_url=self._media_url(getattr(org, "cover_media_id", None)),
+            logo_url=self._brand_url(
+                org, getattr(org, "logo_media_id", None), "logo"
+            ),
+            cover_url=self._brand_url(
+                org, getattr(org, "cover_media_id", None), "cover"
+            ),
             gallery=self._gallery_urls(org.id),
             activity_count=listing.total if listing is not None else 0,
             activities=listing.items if listing is not None else [],

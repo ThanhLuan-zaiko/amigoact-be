@@ -10,10 +10,10 @@ from uuid import UUID
 
 import json
 
+from chat.attachments import ChatAttachments
 from chat.dtos import AttachmentBrief, ChatMessageSnapshot, MentionBrief
 from chat.helpers import (
     MAX_ATTACHMENTS,
-    MAX_MENTIONS,
     REPLY_PREVIEW_LEN,
     bucket_of,
     bucket_of_uuid,
@@ -23,6 +23,7 @@ from chat.helpers import (
     message_snapshot,
 )
 from chat.channel_interfaces import ChannelStore
+from chat.mentions import resolve_mentions
 from chat.interfaces import (
     ActivityLookup,
     ChatEvents,
@@ -36,7 +37,6 @@ from core.exceptions import (
     NotFoundError,
 )
 from core.ids import uuid7
-from core.media import MediaUploader
 from core.security import utcnow
 from orgs.interfaces import (
     MediaRepository,
@@ -59,7 +59,7 @@ class ChatComposer:
         access: AccessControl,
         events: ChatEvents,
         media: MediaRepository,
-        uploader: MediaUploader,
+        attachments: ChatAttachments,
         activities: ActivityLookup | None = None,
         cipher=None,  # noqa: ANN001
         notifications=None,  # noqa: ANN001
@@ -72,7 +72,7 @@ class ChatComposer:
         self._access = access
         self._events = events
         self._media = media
-        self._uploader = uploader
+        self._attachments = attachments
         self._activities = activities
         self._cipher = cipher
         self._notifications = notifications
@@ -87,24 +87,11 @@ class ChatComposer:
         )
 
     def _mentions(self, ctx, actor_id: UUID, text: str) -> list[MentionBrief]:  # noqa: ANN001
-        """@name matches against org members; dm rooms never mention."""
-        if ctx.dm is not None or "@" not in text:
-            return []
-        folded = text.casefold()
-        candidates = [ctx.org.owner_id] + [
-            row.user_id for row in self._members.list_by_org(ctx.org.id)
-        ]
-        found: dict[UUID, MentionBrief] = {}
-        for user_id in candidates:
-            if user_id == actor_id or user_id in found:
-                continue
-            brief = self._users.get_brief(user_id)
-            name = (brief.full_name if brief else "") or ""
-            if name and f"@{name.casefold()}" in folded:
-                found[user_id] = MentionBrief(user_id=user_id, name=name)
-            if len(found) >= MAX_MENTIONS:
-                break
-        return list(found.values())
+        """@name matches room-visible members (see mentions.py)."""
+        return resolve_mentions(
+            self._members, self._users, self._access, self._channels,
+            ctx, actor_id, text,
+        )
 
     def _notify_mentions(
         self, ctx, actor_id: UUID, room_id: UUID,  # noqa: ANN001
@@ -175,38 +162,44 @@ class ChatComposer:
                 "A message needs text or an attachment."
             )
         reply = self._reply_fields(room_id, reply_to_id)
-        attachments = self._resolve_attachments(ctx.org.id, actor_id, attachment_ids)
         mentions = self._mentions(ctx, actor_id, text)
 
         now = utcnow()
         message_id = uuid7()
-        row = self._chat.create(
-            room_id,
-            bucket_of(now),
-            message_id,
-            actor_id,
-            self._encrypt(text),
-            now,
-            reply_to_id=reply_to_id if reply else None,
-            reply_to_author=reply[0] if reply else None,
-            reply_to_body=(
-                self._encrypt(reply[1]) if reply else None
-            ),
-            attachments_json=(
-                encode_attachments(attachments) if attachments else None
-            ),
-            mentions_json=(
-                encode_mentions(mentions) if mentions else None
-            ),
+        attachments = self._attachments.resolve(
+            room_id, actor_id, attachment_ids, message_id
         )
-        # Media-tab index: attachments + links land in org_room_media
-        # (links stay ciphertext, matching the body's at-rest rule).
-        index_items = build_index_items(attachments, text, self._cipher)
-        if index_items:
-            self._chat.index_media(
-                room_id, bucket_of(now), message_id, actor_id, now,
-                index_items,
+        try:
+            row = self._chat.create(
+                room_id,
+                bucket_of(now),
+                message_id,
+                actor_id,
+                self._encrypt(text),
+                now,
+                reply_to_id=reply_to_id if reply else None,
+                reply_to_author=reply[0] if reply else None,
+                reply_to_body=(
+                    self._encrypt(reply[1]) if reply else None
+                ),
+                attachments_json=(
+                    encode_attachments(attachments) if attachments else None
+                ),
+                mentions_json=(
+                    encode_mentions(mentions) if mentions else None
+                ),
             )
+            # Media-tab index: attachments + links land in org_room_media
+            # (links stay ciphertext, matching the body's at-rest rule).
+            index_items = build_index_items(attachments, text, self._cipher)
+            if index_items:
+                self._chat.index_media(
+                    room_id, bucket_of(now), message_id, actor_id, now,
+                    index_items,
+                )
+        except Exception:
+            self._attachments.release_claims(attachments)
+            raise
         self._access.record(
             ctx.org.id, actor_id, "chat.send", "chat", message_id, "allowed"
         )
@@ -286,23 +279,20 @@ class ChatComposer:
         mime: str,
         content: bytes,
     ) -> AttachmentBrief:
-        """Validate room access then delegate to the org media pipeline."""
+        """Validate room access, then stage the file as a chat attachment."""
         ctx = self._room(room_id, actor_id, "chat.attach")
         self._check_post(ctx, actor_id)
-        snap = self._uploader.upload_media(
-            ctx.org.id, actor_id, filename, mime, content, "attachment"
+        brief = self._attachments.stage(
+            ctx.org.id, room_id, actor_id, filename, mime, content
         )
+        # resource stays None: audit readers are org managers who must
+        # never learn a dm attachment's media id (the file path derives
+        # straight from it).
         self._access.record(
             ctx.org.id, actor_id, "chat.attach", "chat",
-            snap.id, "allowed",
+            None, "allowed",
         )
-        return AttachmentBrief(
-            media_id=snap.id,
-            url=snap.file_url,
-            mime=snap.mime,
-            name=snap.original_name or filename,
-            size_bytes=snap.size_bytes,
-        )
+        return brief
 
     def _reply_fields(
         self, room_id: UUID, reply_to_id: UUID | None
@@ -321,29 +311,3 @@ class ChatComposer:
         if self._cipher is not None:
             raw = self._cipher.decrypt(raw)
         return author, raw[:REPLY_PREVIEW_LEN]
-
-    def _resolve_attachments(
-        self, org_id: UUID, actor_id: UUID, attachment_ids: list[UUID]
-    ) -> list[AttachmentBrief]:
-        """Each id must be an attachment the same actor uploaded to this org."""
-        out: list[AttachmentBrief] = []
-        for media_id in attachment_ids:
-            asset = self._media.get_asset(media_id)
-            if asset is None:
-                raise NotFoundError("Attachment not found.")
-            if (
-                asset.owner_id != org_id
-                or asset.uploader_id != actor_id
-                or getattr(asset, "role", "gallery") != "attachment"
-            ):
-                raise ForbiddenError("Attachment does not belong here.")
-            out.append(
-                AttachmentBrief(
-                    media_id=media_id,
-                    url=f"/media/{asset.file_url}",
-                    mime=asset.mime,
-                    name=asset.original_name or "file",
-                    size_bytes=int(asset.size_bytes or 0),
-                )
-            )
-        return out

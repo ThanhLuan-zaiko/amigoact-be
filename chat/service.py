@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 from uuid import UUID
 
 if TYPE_CHECKING:
+    from chat.attachments import ChatAttachments
     from chat.composer import ChatComposer
     from chat.room_admin import ChatRoomAdmin
 
@@ -66,6 +67,7 @@ class ChatService:
         cipher=None,  # noqa: ANN001
         media: MediaRepository | None = None,
         channels: ChannelStore | None = None,
+        attachments: "ChatAttachments | None" = None,
     ) -> None:
         self._chat = chat
         self._orgs = orgs
@@ -79,7 +81,7 @@ class ChatService:
         # tests may inject a custom one through the admin parameter.
         self._admin = admin or ChatRoomAdmin(
             chat, orgs, members, users, access, events, activities,
-            cipher, media, channels,
+            cipher, media, channels, attachments,
         )
         self._cipher = cipher
         self._media, self._channels = media, channels
@@ -131,9 +133,8 @@ class ChatService:
     ) -> ChatPage:
         """Newest page first; the cursor resumes the bucket walk.
 
-        A normal cursor is the oldest message id seen. When a request only
-        finds empty buckets the resume marker 'bb:{YYYYMM}' continues the
-        walk one month earlier, so gaps never stall pagination.
+        A normal cursor is the oldest message id seen; 'bb:{YYYYMM}'
+        resumes one month earlier, so gaps never stall pagination.
         """
         _org, floor, dm = self._open_room(room_id, viewer_id, "chat.list")
         upper: UUID | None = None
@@ -244,6 +245,11 @@ class ChatService:
         self, room_id: UUID, actor_id: UUID, message_id: UUID
     ) -> None:
         self._admin.delete_message(room_id, actor_id, message_id)
+
+    def discard_attachment(
+        self, room_id: UUID, actor_id: UUID, media_id: UUID
+    ) -> None:
+        self._admin.discard_attachment(room_id, actor_id, media_id)
 
     def mark_read(
         self, room_id: UUID, user_id: UUID, message_id: UUID

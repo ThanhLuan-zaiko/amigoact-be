@@ -146,6 +146,7 @@ SYNC_MODELS = [
     chat_models.OrgRoomMedia,
     chat_models.OrgRoomMediaByAuthor,
     chat_models.OrgRoomMediaAuthor,
+    chat_models.OrgChatAttachmentClaim,
     report_models.ReportSnapshot,
     report_models.ExportJob,
 ]

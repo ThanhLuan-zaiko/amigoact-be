@@ -12,9 +12,8 @@ async def _upload(
     payload: bytes, mime: str,
 ) -> str:
     made = await client.post(
-        f"/orgs/{org_id}/media",
+        f"/orgs/{org_id}/posts/media",
         files={"file": (name, payload, mime)},
-        data={"role": "attachment"},
         headers=headers,
     )
     assert made.status_code == 201, made.text

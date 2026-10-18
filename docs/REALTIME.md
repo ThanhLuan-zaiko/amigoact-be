@@ -186,9 +186,9 @@ Phát sinh từ: `create_org` → `created`, `update_org` → `updated`,
 `soft_delete_org` → `removed`, `restore_org` → `restored`,
 `hard_delete_org` → `removed` (slug chụp trước khi xóa). `MediaService`
 phát thêm `updated` sau upload/đổi vai trò/thay bytes/xóa media có role
-`gallery`/`cover`/`logo` (đổi logo, cover, danh bạ `media[]`); role
-`attachment` không phát vì nó chỉ thuộc bài đăng, không chạm bề mặt
-public nào.
+`gallery`/`cover`/`logo` (đổi logo, cover, danh bạ `media[]`); file chat
+và bài đăng (`owner_type` `chat`/`post`) không phát vì chúng nằm ngoài gallery,
+không chạm bề mặt public nào.
 
 Payload chỉ chứa field vốn public — guest nào cũng nghe được nên không
 được đưa dữ liệu riêng vào đây. Client coi event là gợi ý refetch và

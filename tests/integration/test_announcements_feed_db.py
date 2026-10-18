@@ -172,9 +172,8 @@ async def test_post_media_endpoint_lists_everything_cover_first(
 
     async def upload(name: str, payload: bytes, mime: str) -> str:
         made = await client.post(
-            f"/orgs/{org_id}/media",
+            f"/orgs/{org_id}/posts/media",
             files={"file": (name, payload, mime)},
-            data={"role": "attachment"},
             headers=owner_h,
         )
         assert made.status_code == 201, made.text

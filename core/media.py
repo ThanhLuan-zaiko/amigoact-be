@@ -154,27 +154,6 @@ def normalize_image(content: bytes, mime: str) -> tuple[str, bytes]:
         return clean, content
 
 
-class MediaUploader(ABC):
-    """Narrow upload port; features reuse the org media pipeline.
-
-    Implemented by orgs.media_service.MediaService: validates mime and
-    size, normalizes images, stores bytes via MediaStore and writes the
-    metadata row. Chat attaches uploaded files to messages through it.
-    """
-
-    @abstractmethod
-    def upload_media(
-        self,
-        org_id: UUID,
-        user_id: UUID,
-        filename: str,
-        mime: str,
-        content: bytes,
-        role: str = "gallery",
-    ):  # noqa: ANN201
-        """Validate + store one file, return its asset snapshot."""
-
-
 class MediaStore(ABC):
     """Binary storage port. ScyllaDB keeps metadata, this keeps bytes."""
 

@@ -19,7 +19,7 @@ from tests.unit.chat_fakes import (
     FakeActivities,
     FakeChatEvents,
     FakeChatStore,
-    FakeUploader,
+    make_attachments,
 )
 from tests.unit.workspace_fakes import (
     NOW,
@@ -40,7 +40,7 @@ def _world(cipher=True):
     c = ChatCipher(b"\x01" * 32) if cipher else None
     composer = ChatComposer(
         chat, orgs, members, users, access, events,
-        FakeMedia(), FakeUploader(), activities,
+        FakeMedia(), make_attachments(), activities,
         cipher=c, notifications=notify,
     )
     svc = ChatService(

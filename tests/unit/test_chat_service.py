@@ -28,7 +28,7 @@ from tests.unit.chat_fakes import (
     FakeActivities,
     FakeChatEvents,
     FakeChatStore,
-    FakeUploader,
+    make_attachments,
 )
 from tests.unit.workspace_fakes import (
     NOW,
@@ -45,13 +45,13 @@ def _service(media: FakeMedia | None = None):
     owner = _uid()
     org_id = add_org(orgs, members, users, owner)
     media = media if media is not None else FakeMedia()
-    uploader = FakeUploader()
+    attachments = make_attachments(media)
     service = ChatService(
         chat, orgs, members, users, access, events, activities,
         media=media,
         composer=ChatComposer(
             chat, orgs, members, users, access, events,
-            media, uploader, activities,
+            media, attachments, activities,
         ),
     )
     return (
@@ -291,8 +291,7 @@ def test_message_carries_author_avatar_url() -> None:
     svc, _, _, _, users, _, _, _, org_id, owner = _service(media=media)
     face = media.create_asset(
         _uid(), owner, "users/u/a.png", "image/png", 10, utcnow(),
-        role="avatar",
-    )
+        role="avatar", owner_type="organization")
     users.add(owner, "o@x.com", "Owner", avatar_media_id=face.asset_id)
     snap = svc.send_message(org_id, owner, "hi")
     assert snap.author_avatar_url == "/media/users/u/a.png"

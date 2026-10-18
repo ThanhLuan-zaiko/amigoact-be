@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
+from core.media_rules import is_gallery_asset
 from core.security import utcnow
 from orgs.interfaces import MediaRepository
 from orgs.model import (
@@ -35,7 +36,7 @@ class CqlMediaRepository(MediaRepository):
     def create_asset(
         self,
         asset_id: UUID,
-        org_id: UUID,
+        owner_id: UUID,
         file_url: str,
         mime: str,
         size_bytes: int,
@@ -44,11 +45,13 @@ class CqlMediaRepository(MediaRepository):
         file_hash: str | None = None,
         uploader_id: UUID | None = None,
         original_name: str | None = None,
-        owner_type: str = "organization",
+        *,
+        owner_type: str,
+        owner_feed: bool = True,
     ) -> MediaAsset:
         row = MediaAsset.create(
             asset_id=asset_id,
-            owner_id=org_id,
+            owner_id=owner_id,
             owner_type=owner_type,
             file_url=file_url,
             file_hash=file_hash,
@@ -64,14 +67,15 @@ class CqlMediaRepository(MediaRepository):
             created_at=now,
             updated_at=now,
         )
-        MediaByOwner.create(
-            owner_id=org_id,
-            created_at=now,
-            asset_id=asset_id,
-            file_url=file_url,
-            mime=mime,
-            owner_type=owner_type,
-        )
+        if owner_feed:
+            MediaByOwner.create(
+                owner_id=owner_id,
+                created_at=now,
+                asset_id=asset_id,
+                file_url=file_url,
+                mime=mime,
+                owner_type=owner_type,
+            )
         if file_hash:
             MediaByHash.create(file_hash=file_hash, asset_id=asset_id)
         if uploader_id is not None:
@@ -81,15 +85,15 @@ class CqlMediaRepository(MediaRepository):
                 asset_id=asset_id,
                 file_url=file_url,
                 mime=mime,
-                owner_type="organization",
+                owner_type=owner_type,
             )
         return row
 
-    def list_by_org(self, org_id: UUID) -> list[MediaAsset]:
+    def list_gallery(self, org_id: UUID) -> list[MediaAsset]:
         rows: list[MediaAsset] = []
         for link in MediaByOwner.objects(owner_id=org_id).all():
             asset = self.get_asset(link.asset_id)
-            if asset is not None:
+            if asset is not None and is_gallery_asset(asset, org_id):
                 rows.append(asset)
         return rows
 
@@ -160,5 +164,14 @@ class CqlMediaRepository(MediaRepository):
     def set_upload_status(self, asset_id: UUID, status: str) -> None:
         MediaAsset.objects(asset_id=asset_id).update(upload_status=status)
 
-    def known_org_ids(self) -> set[str]:
-        return {str(org.id) for org in Organization.objects.all()}
+    def protected_dir_ids(self) -> set[str]:
+        org_ids = {str(org.id) for org in Organization.objects.all()}
+        # Every live asset's owner_id also names a folder worth keeping:
+        # legacy activity media sits under orgs/<activity_id>/, and the
+        # asset row is the only durable proof that folder is wanted.
+        asset_owners = {
+            str(row.owner_id)
+            for row in MediaAsset.objects.all()
+            if row.owner_id is not None
+        }
+        return org_ids | asset_owners

@@ -27,7 +27,7 @@ from tests.unit.chat_fakes import (
     FakeActivities,
     FakeChatEvents,
     FakeChatStore,
-    FakeUploader,
+    make_attachments,
 )
 from tests.unit.workspace_fakes import (
     NOW,
@@ -59,7 +59,7 @@ def _stack():
     cipher = ChatCipher(KEY)
     composer = ChatComposer(
         chat, orgs, members, users, access, events,
-        FakeMedia(), FakeUploader(), activities, cipher=cipher,
+        FakeMedia(), make_attachments(), activities, cipher=cipher,
     )
     service = ChatService(
         chat, orgs, members, users, access, events, activities,
@@ -114,7 +114,7 @@ def test_build_index_items_kinds_and_link_encryption() -> None:
 def test_send_indexes_attachments_and_links() -> None:
     svc, media_svc, chat, org_id, owner, *_ = _stack()
     svc.send_message(org_id, owner, "pic + https://ex.com/a")
-    # Attachment ids resolve through the uploader only; a bare link is
+    # Attachment ids resolve through ChatAttachments only; a bare link is
     # enough to prove the write path without staging media assets.
     rows = [r for r in chat.media if r.room_id == org_id]
     assert len(rows) == 1

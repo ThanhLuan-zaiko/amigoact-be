@@ -1087,14 +1087,15 @@ CREATE TABLE IF NOT EXISTS certificate_revocations (
 CREATE TABLE IF NOT EXISTS media_assets (
     asset_id uuid PRIMARY KEY,
     owner_id uuid,
-    owner_type text, // user | activity | certificate | announcement
+    owner_type text, // organization | chat | post | user | activity | certificate
     file_url text,
     file_hash text,
     mime text,
     width int,
     height int,
     size_bytes bigint,
-    role text, // gallery | cover | logo (one cover and one logo per owner)
+    role text, // org rows: gallery | cover | logo (one cover, one logo per org)
+    // attachment: chat, post and certificate files (chat/post skip media_by_owner)
     // Central file-registry fields from the relational design (deployed
     // keyspaces: ALTER TABLE media_assets ADD uploader_id uuid,
     // ADD storage_key text, ADD backend text, ADD original_name text,
@@ -1113,6 +1114,8 @@ CREATE TABLE IF NOT EXISTS media_assets (
     deleted_at timestamp
 );
 
+// Per-owner feed; the org gallery reads it through is_gallery_asset
+// (owner_type organization + gallery/cover/logo). Chat and post files skip it.
 CREATE TABLE IF NOT EXISTS media_by_owner (
     owner_id uuid,
     created_at timestamp,
@@ -1539,6 +1542,19 @@ CREATE TABLE IF NOT EXISTS org_room_media_authors (
     last_at timestamp,
     PRIMARY KEY ((room_id), kind, author_id)
 ) WITH CLUSTERING ORDER BY (kind ASC, author_id ASC);
+
+// Single-use claim tying a staged chat file to exactly one message.
+// A media id may only ever be claimed once: the send-time INSERT IF NOT
+// EXISTS makes a second send fail instead of silently sharing one file
+// across messages (a delete would then wipe bytes the survivor renders).
+// Rows are released when the message or the staged chip is discarded.
+CREATE TABLE IF NOT EXISTS chat_attachment_claims (
+    media_id uuid,
+    room_id uuid,
+    message_id uuid,
+    created_at timestamp,
+    PRIMARY KEY ((media_id))
+);
 
 // Canonical dm pair -> room. user_lo < user_hi keeps exactly one row per
 // pair; creation races resolve through IF NOT EXISTS on this partition.

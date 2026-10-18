@@ -7,7 +7,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from uuid import UUID
 
-from orgs.model import MediaAsset, MemberByUser, Organization, OrganizationMember
+from orgs.media_interfaces import MediaRepository  # noqa: F401
+from orgs.model import MemberByUser, Organization, OrganizationMember
 
 
 ORG_KINDS: tuple[str, ...] = ("organization", "club", "group", "business")
@@ -146,64 +147,6 @@ class OrgRepository(ABC):
     @abstractmethod
     def delete_everything(self, org_id: UUID) -> bool:
         """Hard delete: drop org, slug index, memberships and media rows."""
-
-
-class MediaRepository(ABC):
-    """Persistence port for org gallery metadata (bytes live in MediaStore)."""
-
-    @abstractmethod
-    def create_asset(
-        self,
-        asset_id: UUID,
-        org_id: UUID,
-        file_url: str,
-        mime: str,
-        size_bytes: int,
-        now: datetime,
-        role: str = "gallery",
-        file_hash: str | None = None,
-        uploader_id: UUID | None = None,
-        original_name: str | None = None,
-        owner_type: str = "organization",
-    ) -> MediaAsset:
-        """Insert the metadata row plus the owner/uploader/hash feeds."""
-
-    @abstractmethod
-    def list_by_org(self, org_id: UUID) -> list[MediaAsset]:
-        """Newest-first gallery rows for one org."""
-
-    @abstractmethod
-    def get_asset(self, asset_id: UUID) -> MediaAsset | None:
-        """Load one asset by primary key."""
-
-    @abstractmethod
-    def set_role(self, asset_id: UUID, role: str) -> MediaAsset | None:
-        """Update the gallery/cover/logo role, return the fresh row."""
-
-    @abstractmethod
-    def replace_content(
-        self,
-        asset_id: UUID,
-        file_url: str,
-        mime: str,
-        size_bytes: int,
-        file_hash: str | None,
-        original_name: str | None,
-        now: datetime,
-    ) -> MediaAsset | None:
-        """Swap stored file metadata after a byte rewrite; feeds stay in sync."""
-
-    @abstractmethod
-    def delete_asset(self, asset_id: UUID) -> MediaAsset | None:
-        """Remove metadata rows, return the removed row for file cleanup."""
-
-    @abstractmethod
-    def set_upload_status(self, asset_id: UUID, status: str) -> None:
-        """Flip active/rejected visibility after moderation review."""
-
-    @abstractmethod
-    def known_org_ids(self) -> set[str]:
-        """Every org id owning a folder, used for orphan sweeps."""
 
 
 class MemberRepository(ABC):

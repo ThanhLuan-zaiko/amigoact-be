@@ -120,6 +120,24 @@ class OrgRoomMediaAuthor(models.Model):
     last_at = columns.DateTime(required=True)
 
 
+class OrgChatAttachmentClaim(models.Model):
+    """Single-use claim tying a staged chat file to exactly one message.
+
+    A staged asset may only ever attach to one message: the LWT insert
+    makes a second send fail instead of silently sharing the file and
+    letting one delete wipe it for both. Rows are released when the
+    message (or the uploader's staged chip) is discarded.
+    """
+
+    __table_name__ = "chat_attachment_claims"
+    __keyspace__ = "amigoact"
+
+    media_id = columns.UUID(primary_key=True)
+    room_id = columns.UUID(required=True)
+    message_id = columns.UUID(required=True)
+    created_at = columns.DateTime(required=True)
+
+
 class OrgRoomReaction(models.Model):
     """One user's emoji reaction; toggling removes the (emoji,user) pair."""
 

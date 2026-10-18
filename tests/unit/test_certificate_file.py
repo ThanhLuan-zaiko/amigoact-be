@@ -217,8 +217,7 @@ def test_template_background_feeds_render(tmp_path) -> None:
     )
     media.create_asset(
         bg_id, activity.org_id, rel, "image/png", 1,
-        datetime.now(UTC),
-    )
+        datetime.now(UTC), owner_type="organization")
     tpl = templates.create(
         uuid_utils.uuid7(), activity.org_id, "M\u1eabu", bg_id,
         '{"title_y": 250}', datetime.now(UTC),

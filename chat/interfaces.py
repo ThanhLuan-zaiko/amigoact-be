@@ -9,6 +9,7 @@ from uuid import UUID
 
 from chat.dtos import SharedItemDraft
 from chat.model import (
+    OrgChatAttachmentClaim,
     OrgDmPair,
     OrgDmRoom,
     OrgRoomMedia,
@@ -220,6 +221,30 @@ class ChatStore(ABC):
         On a creation race the winner's pair row is returned so both
         callers converge on one room id.
         """
+
+
+class AttachmentClaimStore(ABC):
+    """Single-use binding of a staged chat file to one message."""
+
+    @abstractmethod
+    def claim_attachment(
+        self, media_id: UUID, room_id: UUID, message_id: UUID, now: datetime
+    ) -> bool:
+        """LWT-claim one staged file for exactly one message.
+
+        False when the media id is already claimed: the caller rejects
+        the send instead of sharing one file across messages.
+        """
+
+    @abstractmethod
+    def claimed_attachment(
+        self, media_id: UUID
+    ) -> OrgChatAttachmentClaim | None:
+        """The claim row of one staged file, or None when unclaimed."""
+
+    @abstractmethod
+    def release_attachment(self, media_id: UUID) -> None:
+        """Drop one claim row (send rollback or file discard)."""
 
 
 class ActivityLookup(ABC):

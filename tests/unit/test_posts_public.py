@@ -106,11 +106,9 @@ def test_excerpt_truncates_long_bodies() -> None:
 def test_cover_url_prefers_cover_then_first_image() -> None:
     env = Env()
     cover = env.media.create_asset(
-        _uid(), env.org.id, "posts/c.png", "image/png", 10, NOW
-    )
+        _uid(), env.org.id, "posts/c.png", "image/png", 10, NOW, owner_type="organization")
     other = env.media.create_asset(
-        _uid(), env.org.id, "posts/o.png", "image/png", 10, NOW
-    )
+        _uid(), env.org.id, "posts/o.png", "image/png", 10, NOW, owner_type="organization")
     env.post(
         media_ids=[cover.asset_id, other.asset_id],
         cover_media_id=cover.asset_id,
@@ -202,11 +200,9 @@ def test_list_timeline_media_is_cover_first() -> None:
     """The teaser mosaic leads with the cover asset, then position order."""
     env = Env()
     first = env.media.create_asset(
-        _uid(), env.org.id, "posts/a.png", "image/png", 10, NOW
-    )
+        _uid(), env.org.id, "posts/a.png", "image/png", 10, NOW, owner_type="organization")
     cover = env.media.create_asset(
-        _uid(), env.org.id, "posts/c.mp4", "video/mp4", 10, NOW
-    )
+        _uid(), env.org.id, "posts/c.mp4", "video/mp4", 10, NOW, owner_type="organization")
     post = env.post(
         media_ids=[first.asset_id, cover.asset_id],
         cover_media_id=cover.asset_id,
@@ -223,8 +219,7 @@ def test_list_timeline_media_is_cover_first() -> None:
 def test_list_timeline_carries_author_avatar_url() -> None:
     env = Env()
     asset = env.media.create_asset(
-        _uid(), env.org.id, "users/u/a.png", "image/png", 10, NOW
-    )
+        _uid(), env.org.id, "users/u/a.png", "image/png", 10, NOW, owner_type="organization")
     env.users.add(
         env.owner,
         "owner@example.com",
@@ -301,13 +296,11 @@ def test_public_post_media_lists_everything_cover_first() -> None:
     env = Env()
     ids = [
         env.media.create_asset(
-            _uid(), env.org.id, f"posts/{i}.png", "image/png", 10, NOW
-        ).asset_id
+            _uid(), env.org.id, f"posts/{i}.png", "image/png", 10, NOW, owner_type="organization").asset_id
         for i in range(8)
     ]
     cover = env.media.create_asset(
-        _uid(), env.org.id, "posts/c.mp4", "video/mp4", 10, NOW
-    )
+        _uid(), env.org.id, "posts/c.mp4", "video/mp4", 10, NOW, owner_type="organization")
     post = env.post(
         media_ids=[*ids, cover.asset_id], cover_media_id=cover.asset_id
     )

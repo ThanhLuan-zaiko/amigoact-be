@@ -20,6 +20,18 @@ def _trim(value: str) -> str:
     return value.strip()
 
 
+class PostUploadResponse(BaseModel):
+    """One board-editor upload; file_url is the public /media/ path."""
+
+    id: UUID
+    org_id: UUID
+    kind: Literal["image", "video"]
+    mime: str
+    size_bytes: int
+    file_url: str
+    original_name: str | None = None
+
+
 class CreatePostRequest(BaseModel):
     """New board post or article draft.
 

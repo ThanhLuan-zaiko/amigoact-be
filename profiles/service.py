@@ -236,6 +236,8 @@ class ProfileService:
             file_hash=hashlib.sha256(content).hexdigest(),
             uploader_id=user_id,
             original_name=filename,
+            owner_type="user",
+            owner_feed=False,
         )
         self._users.set_avatar_media(user_id, asset_id, now)
         if old_asset_id is not None and old_asset_id != asset_id:

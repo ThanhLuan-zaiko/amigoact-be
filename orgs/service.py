@@ -327,6 +327,10 @@ class OrgService:
         swept = 0
         if self._store is not None:
             self._store.delete_org_dir(org_id)
-            known = self._media.known_org_ids() if self._media is not None else set()
+            known = (
+                self._media.protected_dir_ids()
+                if self._media is not None
+                else set()
+            )
             swept = self._store.sweep_orphans(set(known))
         return swept if removed else 0

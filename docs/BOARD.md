@@ -47,7 +47,7 @@ mới nhất trước), `org_posts_pinned` (rail ghim), `org_post_drafts`
 | `divider` | — | Đường kẻ ngang |
 
 Khối media chỉ giữ `asset_id`; URL file phân giải lúc đọc qua `media[]` của
-response (role `attachment`, không vào gallery). Tương thích ngược: bài cũ
+response (`owner_type` `post`, không vào gallery; editor upload qua `POST /orgs/{org_id}/posts/media`). Tương thích ngược: bài cũ
 `body` + `media_ids` vẫn hợp lệ — `blocks` rỗng thì client render `body` và
 dải ảnh như trước. Giới hạn: tối đa `MAX_BLOCKS` khối, media block ≤ 4.
 

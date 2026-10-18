@@ -10,12 +10,18 @@ from types import SimpleNamespace
 from typing import Any
 from uuid import UUID
 
-from chat.interfaces import ChatEvents, ChatStore
+from chat.attachments import ChatAttachments
+from chat.interfaces import (
+    AttachmentClaimStore,
+    ChatEvents,
+    ChatStore,
+)
+from tests.unit.org_fakes import FakeMedia, FakeStore
 from tests.unit.workspace_fakes import NOW, _uid
 
 
-class FakeChatStore(ChatStore):
-    """Room message rows, read pointers, and dm room rows."""
+class FakeChatStore(ChatStore, AttachmentClaimStore):
+    """Room message rows, read pointers, dm rows, attachment claims."""
 
     def __init__(self) -> None:
         self.messages: list[Any] = []
@@ -24,6 +30,7 @@ class FakeChatStore(ChatStore):
         self.reads: dict[tuple[UUID, UUID], Any] = {}
         self.dm_rooms: dict[tuple[UUID, UUID], Any] = {}
         self.dm_pairs: dict[tuple[UUID, UUID, UUID], Any] = {}
+        self.claims: dict[UUID, Any] = {}
 
     def create(self, room_id, bucket, message_id, author_id, body, now,
                reply_to_id=None, reply_to_author=None, reply_to_body=None,
@@ -245,6 +252,21 @@ class FakeChatStore(ChatStore):
             if rid == room_id
         ]
 
+    def claim_attachment(self, media_id, room_id, message_id, now):  # noqa: ANN001, ANN202
+        if media_id in self.claims:
+            return False
+        self.claims[media_id] = SimpleNamespace(
+            media_id=media_id, room_id=room_id,
+            message_id=message_id, created_at=now,
+        )
+        return True
+
+    def claimed_attachment(self, media_id):  # noqa: ANN001, ANN202
+        return self.claims.get(media_id)
+
+    def release_attachment(self, media_id):  # noqa: ANN001, ANN202
+        self.claims.pop(media_id, None)
+
     def get_dm_room(self, user_id, room_id):  # noqa: ANN001, ANN202
         return self.dm_rooms.get((user_id, room_id))
 
@@ -274,22 +296,15 @@ class FakeChatStore(ChatStore):
         return pair
 
 
-class FakeUploader:
-    """MediaUploader port: records calls, returns a canned snapshot."""
-
-    def __init__(self) -> None:
-        self.calls: list[tuple] = []
-
-    def upload_media(self, org_id, user_id, filename, mime, content,
-                     role="gallery"):  # noqa: ANN001, ANN202
-        media_id = _uid()
-        self.calls.append((org_id, user_id, filename, mime, role))
-        return SimpleNamespace(
-            id=media_id, org_id=org_id,
-            file_url=f"/media/orgs/{org_id}/{media_id}.bin",
-            mime=mime, size_bytes=len(content),
-            original_name=filename,
-        )
+def make_attachments(
+    media: Any = None, claims: Any = None
+) -> ChatAttachments:
+    """ChatAttachments over in-memory metadata and bytes."""
+    return ChatAttachments(
+        media if media is not None else FakeMedia(),
+        FakeStore(),
+        claims if claims is not None else FakeChatStore(),
+    )
 
 
 class FakeActivities:

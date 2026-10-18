@@ -174,6 +174,7 @@ class CertificateFileService:
             uploader_id=certificate.issued_by,
             original_name=filename,
             owner_type="certificate",
+            owner_feed=False,
         )
         self._certificates.attach_file(certificate, asset_id, utcnow())
         return CertificateFile(filename=filename, content=content)

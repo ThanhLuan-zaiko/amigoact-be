@@ -14,6 +14,7 @@ from fastapi import Depends, Request
 from core.config import Settings, get_settings
 from core.dependencies import (
     get_access_control,
+    get_media_store,
     get_notification_service,
     user_directory,
 )
@@ -26,6 +27,7 @@ if TYPE_CHECKING:
     from posts.lifecycle_service import PostLifecycleService
     from posts.public_service import PublicPostService
     from posts.service import PostService
+    from posts.uploads import PostUploads
     from rbac.interfaces import AccessControl
 
 
@@ -73,6 +75,29 @@ def get_post_service(
         events=WsPostEvents(manager),
         notifications=notifications,
         announcements=WsAnnouncementFeedEvents(manager),
+    )
+
+
+def get_post_upload_service(
+    settings: Settings = Depends(get_settings),
+    access: AccessControl = Depends(get_access_control),
+) -> PostUploads:
+    """Build one PostUploads per request for board-editor media."""
+    from admin.repository import CqlModerationStore
+    from orgs.media_repository import CqlMediaRepository
+    from orgs.member_repository import CqlMemberRepository
+    from orgs.repository import CqlOrgRepository
+    from posts.uploads import PostUploads
+
+    return PostUploads(
+        orgs=CqlOrgRepository(settings.scylla_keyspace),
+        members=CqlMemberRepository(),
+        access=access,
+        media=CqlMediaRepository(),
+        store=get_media_store(settings),
+        max_image_bytes=settings.media_max_image_mb * 1024 * 1024,
+        max_video_bytes=settings.media_max_video_mb * 1024 * 1024,
+        moderation=CqlModerationStore(),
     )
 
 

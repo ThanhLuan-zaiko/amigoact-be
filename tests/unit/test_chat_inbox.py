@@ -20,7 +20,7 @@ from tests.unit.chat_fakes import (
     FakeActivities,
     FakeChatEvents,
     FakeChatStore,
-    FakeUploader,
+    make_attachments,
 )
 from tests.unit.workspace_fakes import (
     NOW,
@@ -40,7 +40,7 @@ def _world():
         chat, orgs, members, users, access, events, activities,
         composer=ChatComposer(
             chat, orgs, members, users, access, events,
-            FakeMedia(), FakeUploader(), activities,
+            FakeMedia(), make_attachments(), activities,
         ),
     )
     inbox = ChatInboxService(chat, orgs, members, users, activities)
@@ -151,12 +151,10 @@ def test_inbox_rows_carry_org_logo_and_peer_avatar() -> None:
     org_id = add_org(orgs, members, users, owner)
     peer = _member(members, users, org_id, "peer@x.com")
     logo = media.create_asset(
-        _uid(), org_id, "orgs/x/logo.png", "image/png", 10, NOW
-    )
+        _uid(), org_id, "orgs/x/logo.png", "image/png", 10, NOW, owner_type="organization")
     orgs.orgs[org_id].logo_media_id = logo.asset_id
     face = media.create_asset(
-        _uid(), org_id, "users/p/a.png", "image/png", 10, NOW
-    )
+        _uid(), org_id, "users/p/a.png", "image/png", 10, NOW, owner_type="organization")
     users.add(peer, "peer@x.com", "Peer", avatar_media_id=face.asset_id)
     act_id = _uid()
     activities.add(act_id, org_id, title="Workshop")

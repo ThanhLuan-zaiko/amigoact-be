@@ -274,7 +274,7 @@ def test_purging_revision_keeps_live_assets() -> None:
     env = Env()
     att = env.media.create_asset(
         _uid(), env.org_id, "orgs/x/keep.png", "image/png", 1, NOW,
-        role="attachment",
+        role="attachment", owner_type="post", owner_feed=False,
     )
     env.files.files["orgs/x/keep.png"] = b"1"
     snap = env.svc.create_post(
@@ -291,11 +291,10 @@ def test_hard_delete_purges_attachments_only() -> None:
     env = Env()
     att = env.media.create_asset(
         _uid(), env.org_id, "orgs/x/att.png", "image/png", 1, NOW,
-        role="attachment",
+        role="attachment", owner_type="post", owner_feed=False,
     )
     gal = env.media.create_asset(
-        _uid(), env.org_id, "orgs/x/gal.png", "image/png", 1, NOW,
-    )
+        _uid(), env.org_id, "orgs/x/gal.png", "image/png", 1, NOW, owner_type="organization")
     env.files.files["orgs/x/att.png"] = b"1"
     env.files.files["orgs/x/gal.png"] = b"2"
     snap = env.svc.create_post(

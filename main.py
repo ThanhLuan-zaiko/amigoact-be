@@ -151,6 +151,7 @@ from orgs.router import router as orgs_router  # noqa: E402
 from posts.comments_router import router as post_comments_router  # noqa: E402
 from posts.lifecycle_router import router as post_lifecycle_router  # noqa: E402
 from posts.public_router import router as posts_public_router  # noqa: E402
+from posts.media_router import router as post_media_router  # noqa: E402
 from posts.router import router as posts_router  # noqa: E402
 from profiles.router import router as profiles_router  # noqa: E402
 from rbac.router import router as rbac_router  # noqa: E402
@@ -187,6 +188,7 @@ app.include_router(reviews_router)
 app.include_router(stats_router)
 app.include_router(audit_router)
 app.include_router(posts_router)
+app.include_router(post_media_router)
 app.include_router(post_lifecycle_router)
 app.include_router(posts_public_router)  # guest announcements read
 app.include_router(post_comments_router)

@@ -74,13 +74,13 @@ Hai endpoint guest (không auth), phục vụ trang khám phá `/orgs` bên FE:
   (resolve qua `UserDirectory` + media) là danh tính hiển thị public giống
   `author_*` của bài đăng — danh tính con người đứng sau card. Card còn
   kèm `media[]` (tối đa 6 tile `{url, kind, mime}`, role `cover` xếp đầu
-  rồi gallery mới nhất — ảnh lẫn video, loại `logo`/`attachment`) và
+  rồi gallery mới nhất — ảnh lẫn video, loại `logo` và file chat/bài đăng) và
   `media_count` (tổng số media đủ điều kiện để UI hiện `+N`); preview chỉ
   gắn sau khi cắt trang nên không tốn read ngoài item hiển thị. Lightbox
   feed đọc `GET /orgs/{slug}/gallery` → `PublicOrgMediaPage` — toàn bộ
   media `cover`+`gallery` (ảnh lẫn video, cover dẫn đầu, tối đa 100),
   không giới hạn 8 ảnh như `gallery` của detail; cùng bộ lọc public
-  (loại `logo`/`attachment`/asset chết, `404` khi org thiếu/đã xóa).
+  (loại `logo`, file chat/bài đăng và asset chết, `404` khi org thiếu/đã xóa).
   Path nói `/gallery` vì route member `GET /orgs/{id}/media` đã chiếm
   shape `{id}/media`. Detail trả
   tín hiệu tin cậy
@@ -96,7 +96,7 @@ Hai endpoint guest (không auth), phục vụ trang khám phá `/orgs` bên FE:
   `docs/REALTIME.md` §5. `MediaService` cũng phát `"updated"` sau khi
   upload/đổi vai trò/thay bytes/xóa media public (`gallery`/`cover`/`logo`),
   nên đổi logo hay cover cập nhật ngay danh bạ, trang chi tiết và rail
-  phải; role `attachment` (media bài đăng) không bao giờ phát vì nó nằm
+  phải; file chat và media bài đăng (`owner_type` `chat`/`post`) không bao giờ phát vì chúng nằm
   ngoài mọi bề mặt public.
 
 ## 5. Thư viện ảnh/video
@@ -155,7 +155,8 @@ test (viết fake `MediaStore` như test media hiện tại). Đường dẫn t�
   mutation nên tự đồng bộ (org cũ trước bảng này cần backfill một lần,
   `CREATE TABLE IF NOT EXISTS` không đụng data hiện có).
 - `media_assets` + `media_by_owner`: metadata (`role` = `gallery`/`cover`/
-  `logo`/`attachment`) và feed mới-nhất-trước của từng org.
+  `logo`) và feed mới-nhất-trước của từng org; file chat và bài đăng có
+  `owner_type` riêng (`chat`/`post`) và không ghi vào feed này.
 - `certificates_by_id`: feed `certificate_id -> (activity_id, student_id)`
   cho download PDF (bảng chính partition theo `activity_id`); tạo bằng
   `migrate/certificate_files.py` (additive, backfill idempotent).

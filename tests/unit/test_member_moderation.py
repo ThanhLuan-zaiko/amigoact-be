@@ -205,8 +205,7 @@ def test_roster_carries_member_avatar_url() -> None:
     media = FakeMedia()
     service, _, _, users, _, org_id, owner = _service(media=media)
     face = media.create_asset(
-        _uid(), owner, "users/u/a.png", "image/png", 10, NOW, role="avatar"
-    )
+        _uid(), owner, "users/u/a.png", "image/png", 10, NOW, role="avatar", owner_type="organization")
     users.add(
         owner, "owner@example.com", "Owner",
         avatar_media_id=face.asset_id,

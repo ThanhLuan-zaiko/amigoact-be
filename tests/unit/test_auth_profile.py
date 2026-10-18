@@ -75,8 +75,7 @@ def test_session_profile_resolves_avatar_url() -> None:
         "image/png",
         4,
         user.created_at,
-        role="avatar",
-    )
+        role="avatar", owner_type="organization")
     parts["users"].set_avatar_media(user.id, asset.asset_id, user.created_at)
     assert service.get_profile(user.id).avatar_url == "/media/users/u/a.png"
 

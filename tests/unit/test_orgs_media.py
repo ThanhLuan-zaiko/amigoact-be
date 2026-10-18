@@ -11,11 +11,14 @@ from core.exceptions import (
     NotFoundError,
     UnsupportedMediaError,
 )
+from core.ids import uuid7
+from core.media_rules import ATTACHMENT_ROLE, CHAT_OWNER, POST_OWNER
 from tests.unit.org_fakes import (
     FakeDirectoryEvents,
     make_media_services,
     new_owner,
 )
+from tests.unit.workspace_fakes import NOW
 
 
 def test_brand_media_ids_follow_roles_and_delete() -> None:
@@ -59,7 +62,7 @@ def test_upload_cover_demotes_previous_cover() -> None:
     second = service.upload_media(
         org.id, owner, "b.png", "image/png", b"1" * 10, "cover"
     )
-    roles = {a.asset_id: a.role for a in media.list_by_org(org.id)}
+    roles = {a.asset_id: a.role for a in media.list_gallery(org.id)}
     assert roles[first.id] == "gallery"
     assert roles[second.id] == "cover"
 
@@ -124,19 +127,67 @@ def test_list_media_surfaces_role() -> None:
     assert listed[0].role == "cover"
 
 
-def test_attachment_role_uploads_but_stays_out_of_gallery() -> None:
-    orgs_service, service, orgs, _, _ = make_media_services()
-    owner, member = new_owner(), new_owner()
+def test_attachment_role_is_rejected() -> None:
+    orgs_service, service, _, media, _ = make_media_services()
+    owner = new_owner()
     org = orgs_service.create_org(owner, "Club A", "club-a", "", "club")
-    orgs.members[org.id].add(member)
+    with pytest.raises(InvalidMediaRoleError):
+        service.upload_media(
+            org.id, owner, "att.png", "image/png", b"1" * 10, "attachment"
+        )
+    assert media.list_gallery(org.id) == []
 
-    snap = service.upload_media(
-        org.id, member, "att.png", "image/png", b"1" * 10, "attachment"
+
+def test_non_brand_upload_never_rewrites_other_roles() -> None:
+    orgs_service, service, _, media, _ = make_media_services()
+    owner = new_owner()
+    org = orgs_service.create_org(owner, "Club A", "club-a", "", "club")
+    cover = service.upload_media(
+        org.id, owner, "a.png", "image/png", b"1" * 10, "cover"
     )
-    assert snap.role == "attachment"
-    # Members can attach, but the asset never joins the gallery list.
-    listed = service.list_media(org.id, owner)
-    assert all(item.id != snap.id for item in listed)
+    service.upload_media(org.id, owner, "b.png", "image/png", b"2" * 10)
+    assert media.get_asset(cover.id).role == "cover"
+
+
+def test_gallery_ops_never_touch_chat_or_post_files() -> None:
+    orgs_service, service, _, media, _ = make_media_services()
+    owner = new_owner()
+    org = orgs_service.create_org(owner, "Club A", "club-a", "", "club")
+    chat = media.create_asset(
+        uuid7(), org.id, "orgs/c/chat.png", "image/png", 4, NOW,
+        ATTACHMENT_ROLE, owner_type=CHAT_OWNER, owner_feed=False,
+    )
+    post = media.create_asset(
+        uuid7(), org.id, "orgs/p/post.png", "image/png", 4, NOW,
+        ATTACHMENT_ROLE, owner_type=POST_OWNER, owner_feed=False,
+    )
+    legacy = media.create_asset(
+        uuid7(), org.id, "orgs/l/legacy.png", "image/png", 4, NOW,
+        ATTACHMENT_ROLE, owner_type="organization")
+    hidden = [chat, post, legacy]
+    gallery = service.upload_media(org.id, owner, "g.png", "image/png", b"1" * 10)
+    cover = service.upload_media(
+        org.id, owner, "c.png", "image/png", b"2" * 10, "cover"
+    )
+
+    assert {item.id for item in service.list_media(org.id, owner)} == {
+        gallery.id,
+        cover.id,
+    }
+    for row in hidden:
+        assert media.get_asset(row.asset_id).role == ATTACHMENT_ROLE
+        with pytest.raises(NotFoundError):
+            service.set_media_role(org.id, owner, row.asset_id, "gallery")
+        with pytest.raises(NotFoundError):
+            service.replace_media(
+                org.id, owner, row.asset_id, "x.png", "image/png", b"3" * 10
+            )
+        with pytest.raises(NotFoundError):
+            service.delete_media(org.id, owner, row.asset_id)
+
+    assert service.delete_all_media(org.id, owner) == 2
+    for row in hidden:
+        assert media.get_asset(row.asset_id).role == ATTACHMENT_ROLE
 
 
 def test_delete_all_media_owner_only() -> None:
@@ -150,7 +201,7 @@ def test_delete_all_media_owner_only() -> None:
         service.delete_all_media(org.id, stranger)
 
     assert service.delete_all_media(org.id, owner) == 2
-    assert media.list_by_org(org.id) == []
+    assert media.list_gallery(org.id) == []
     assert service.delete_all_media(org.id, owner) == 0
 
 
@@ -229,17 +280,14 @@ def test_replace_media_rules() -> None:
 
 
 def test_media_mutations_ping_public_directory() -> None:
-    """Gallery/brand churn emits orgs:directory; attachments stay quiet."""
+    """Every gallery/brand mutation emits orgs:directory once."""
     events = FakeDirectoryEvents()
-    orgs_service, service, _, media, _ = make_media_services(events=events)
+    orgs_service, service, _, _, _ = make_media_services(events=events)
     owner = new_owner()
     org = orgs_service.create_org(owner, "Club A", "club-a", "", "club")
 
     snap = service.upload_media(
         org.id, owner, "a.png", "image/png", b"1" * 10
-    )
-    service.upload_media(
-        org.id, owner, "b.png", "image/png", b"2" * 10, "attachment"
     )
     assert events.calls == [("updated", org.id, "club-a")]
 
@@ -249,16 +297,11 @@ def test_media_mutations_ping_public_directory() -> None:
     )
     assert events.calls == [("updated", org.id, "club-a")] * 3
 
-    attachment = service.upload_media(
-        org.id, owner, "c.png", "image/png", b"4" * 10, "attachment"
-    )
-    service.delete_media(org.id, owner, attachment.id)
-    assert events.calls == [("updated", org.id, "club-a")] * 3
-
     service.delete_media(org.id, owner, snap.id)
     assert events.calls == [("updated", org.id, "club-a")] * 4
 
     # Bulk wipe pings once per sweep, and stays quiet when nothing remains.
+    service.upload_media(org.id, owner, "b.png", "image/png", b"2" * 10)
     service.delete_all_media(org.id, owner)
     service.delete_all_media(org.id, owner)
-    assert events.calls == [("updated", org.id, "club-a")] * 5
+    assert events.calls == [("updated", org.id, "club-a")] * 6

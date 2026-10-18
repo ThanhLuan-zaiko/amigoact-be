@@ -1,9 +1,10 @@
-"""Post media validation and attachment cleanup (no FastAPI here).
+"""Post media validation and upload cleanup (no FastAPI here).
 
-Every asset a post references (legacy attachments, cover, image/video
-blocks) must be a live asset owned by the same org with the right mime
-family. Hard delete purges the post's "attachment"-role uploads; gallery
-or brand assets reused in an article are never touched.
+Every asset a post references must be a live asset of the same org with the
+right mime family: either a post-owned board upload (owner_type post) or an
+org gallery asset (gallery, cover or logo). Chat files and legacy rows never
+pass. Hard delete purges only the post-owned uploads; gallery or brand assets
+reused in an article are never touched.
 """
 
 from __future__ import annotations
@@ -13,14 +14,22 @@ from uuid import UUID
 
 from core.exceptions import NotFoundError
 from core.media import MediaStore
+from core.media_rules import POST_OWNER, asset_owner_type, is_gallery_asset
 from orgs.interfaces import MediaRepository
 from posts.blocks import MAX_MEDIA_BLOCKS, media_refs
 
 MAX_ATTACHMENTS = 4
 
 
+def _referable(asset: Any, org_id: UUID) -> bool:
+    """Post-owned upload of this org, or a gallery asset of this org."""
+    if asset_owner_type(asset) == POST_OWNER:
+        return asset.owner_id == org_id
+    return is_gallery_asset(asset, org_id)
+
+
 class PostMediaRules:
-    """Validates referenced assets; optionally deletes attachment bytes."""
+    """Validates referenced assets; optionally deletes upload bytes."""
 
     def __init__(
         self, media: MediaRepository, files: MediaStore | None = None
@@ -32,7 +41,7 @@ class PostMediaRules:
         asset = self._media.get_asset(asset_id)
         if (
             asset is None
-            or asset.owner_id != org_id
+            or not _referable(asset, org_id)
             or not (asset.mime or "").startswith(f"{family}/")
             or (asset.upload_status or "active") != "active"
         ):
@@ -60,14 +69,14 @@ class PostMediaRules:
         return ordered
 
     def purge_attachments(self, org_id: UUID, asset_ids: list[UUID]) -> int:
-        """Delete attachment-role assets (metadata + bytes); best-effort."""
+        """Delete post-owned uploads (metadata + bytes); best-effort."""
         removed = 0
         for asset_id in dict.fromkeys(asset_ids):
             asset = self._media.get_asset(asset_id)
             if (
                 asset is None
+                or asset_owner_type(asset) != POST_OWNER
                 or asset.owner_id != org_id
-                or (getattr(asset, "role", None) or "gallery") != "attachment"
             ):
                 continue
             self._media.delete_asset(asset_id)

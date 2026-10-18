@@ -156,9 +156,8 @@ async def test_public_gallery_endpoint_lists_everything(
     )
     assert clip.status_code == 201, clip.text
     hidden = await client.post(
-        f"/orgs/{org_id}/media",
+        f"/orgs/{org_id}/posts/media",
         files={"file": ("p.png", png, "image/png")},
-        data={"role": "attachment"},
         headers=headers,
     )
     assert hidden.status_code == 201, hidden.text

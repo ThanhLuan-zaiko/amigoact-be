@@ -13,7 +13,7 @@ from fastapi import Depends, Request
 from core.config import Settings, get_settings
 from core.dependencies import (
     get_access_control,
-    get_media_service,
+    get_media_store,
     get_notification_service,
     user_directory,
 )
@@ -37,7 +37,10 @@ def get_chat_service(
 ) -> ChatService:
     """Build one ChatService per request over the org chat tables."""
     from activities.repository import CqlActivityStore
+    from admin.repository import CqlModerationStore
+    from chat.attachments import ChatAttachments
     from chat.channel_repository import CqlChannelStore
+    from chat.claim_repository import CqlClaimStore
     from chat.composer import ChatComposer
     from chat.crypto import chat_cipher
     from chat.events import WsChatEvents
@@ -55,6 +58,14 @@ def get_chat_service(
     events = WsChatEvents(getattr(request.app.state, "ws_manager", None))
     activities = CqlActivityStore(settings.scylla_keyspace)
     cipher = chat_cipher(settings)
+    attachments = ChatAttachments(
+        CqlMediaRepository(),
+        get_media_store(settings),
+        CqlClaimStore(settings.scylla_keyspace),
+        settings.media_max_image_mb * 1024 * 1024,
+        settings.media_max_video_mb * 1024 * 1024,
+        CqlModerationStore(),
+    )
     return ChatService(
         chat=store,
         orgs=orgs,
@@ -66,6 +77,7 @@ def get_chat_service(
         cipher=cipher,
         media=CqlMediaRepository(),
         channels=channels,
+        attachments=attachments,
         composer=ChatComposer(
             chat=store,
             orgs=orgs,
@@ -74,7 +86,7 @@ def get_chat_service(
             access=access,
             events=events,
             media=CqlMediaRepository(),
-            uploader=get_media_service(request, settings, access),
+            attachments=attachments,
             activities=activities,
             cipher=cipher,
             notifications=notifications,

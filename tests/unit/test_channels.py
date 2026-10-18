@@ -32,7 +32,7 @@ from tests.unit.chat_fakes import (
     FakeActivities,
     FakeChatEvents,
     FakeChatStore,
-    FakeUploader,
+    make_attachments,
 )
 from tests.unit.workspace_fakes import (
     NOW,
@@ -61,7 +61,7 @@ def _world():
     )
     composer = ChatComposer(
         chat, orgs, members, users, access, events,
-        FakeMedia(), FakeUploader(), activities, channels=channels,
+        FakeMedia(), make_attachments(), activities, channels=channels,
     )
     rooms = ChatService(
         chat, orgs, members, users, access, events, activities,

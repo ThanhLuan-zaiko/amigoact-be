@@ -146,8 +146,12 @@ class ActivityMediaService:
         if kind is None:
             mime = mime if mime in MEDIA_MIMES else "application/octet-stream"
         asset_id = uuid7()
+        # Bytes live under the OWNING ORG folder (orgs/<org_id>/), never
+        # under orgs/<activity_id>/: the orphan sweep whitelists org
+        # folders, so activity-named folders would be wiped on any org
+        # hard delete. owner_id still records the activity.
         relative = self._store.save_typed(
-            activity_id, asset_id, mime, filename, content
+            org_id, asset_id, mime, filename, content
         )
         now = utcnow()
         self._media.create_asset(

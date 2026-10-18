@@ -128,6 +128,23 @@ def unmute_room(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
+@router.delete(
+    "/chat/rooms/{room_id}/attachments/{media_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_class=Response,
+    response_model=None,
+)
+def discard_room_attachment(
+    room_id: UUID,
+    media_id: UUID,
+    current_user: CurrentUser = Depends(get_current_user),
+    service: ChatService = Depends(get_chat_service),
+) -> Response:
+    """Uploader drops one staged (unsent) attachment: file plus row."""
+    service.discard_attachment(room_id, current_user.id, media_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @router.post(
     "/chat/rooms/{room_id}/attachments",
     response_model=AttachmentResponse,
@@ -142,8 +159,8 @@ async def upload_room_attachment(
 ) -> AttachmentResponse:
     """Stage one image/video as a message attachment.
 
-    The returned media_id is echoed back in SendMessageRequest; the org
-    media pipeline keeps validation, normalization and storage.
+    The returned media_id is echoed back in SendMessageRequest. Chat owns
+    the file (chat/attachments.py): it stays out of the org gallery.
     """
     mime = file.content_type or "application/octet-stream"
     guessed = media_kind(mime)

@@ -9,10 +9,12 @@ from chat.dtos import (
     ReadSnapshot,
     RoomReadSnapshot,
 )
+from chat.attachments import ChatAttachments
 from chat.helpers import (
     REACTION_EMOJIS,
     avatar_url,
     bucket_of_uuid,
+    decode_attachments,
     message_snapshot,
     tally_reactions,
 )
@@ -63,6 +65,7 @@ class ChatRoomAdmin:
         cipher=None,  # noqa: ANN001
         media: MediaRepository | None = None,
         channels: ChannelStore | None = None,
+        attachments: ChatAttachments | None = None,
     ) -> None:
         self._chat = chat
         self._orgs = orgs
@@ -74,6 +77,7 @@ class ChatRoomAdmin:
         self._cipher = cipher
         self._media = media
         self._channels = channels
+        self._attachments = attachments
 
     def _ctx(self, room_id: UUID, user_id: UUID, action: str):
         return open_room(
@@ -135,6 +139,10 @@ class ChatRoomAdmin:
                 )
                 raise ForbiddenError("Only org managers can do this.")
         self._chat.delete(row)
+        if self._attachments is not None:
+            self._attachments.discard(
+                room_id, decode_attachments(row.attachments_json)
+            )
         self._chat.delete_media_index(room_id, row.bucket, message_id)
         self._chat.clear_pin(room_id, message_id)
         self._access.record(
@@ -148,6 +156,15 @@ class ChatRoomAdmin:
             org.id,
             (actor_id, dm.peer_id) if dm is not None else (),
         )
+
+    def discard_attachment(
+        self, room_id: UUID, actor_id: UUID, media_id: UUID
+    ) -> None:
+        """Drop one staged (unsent) attachment chip: file plus row."""
+        self._open_room(room_id, actor_id, "chat.attach.discard")
+        if self._attachments is None:
+            raise RuntimeError("ChatAttachments is not wired.")
+        self._attachments.discard_staged(room_id, actor_id, media_id)
 
     def mark_read(
         self, room_id: UUID, user_id: UUID, message_id: UUID

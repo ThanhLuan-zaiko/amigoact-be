@@ -173,8 +173,8 @@ def test_update_only_by_author() -> None:
 
 def test_update_with_blocks_replaces_article_and_media() -> None:
     (svc, posts, _, _, _, _, media, _, _, org_id, owner) = _service()
-    img = media.create_asset(_uid(), org_id, "orgs/a.png", "image/png", 1, NOW)
-    vid = media.create_asset(_uid(), org_id, "orgs/v.mp4", "video/mp4", 1, NOW)
+    img = media.create_asset(_uid(), org_id, "orgs/a.png", "image/png", 1, NOW, owner_type="organization")
+    vid = media.create_asset(_uid(), org_id, "orgs/v.mp4", "video/mp4", 1, NOW, owner_type="organization")
     snap = svc.create_post(org_id, owner, "discussion", "T", "old", [])
     blocks = [
         ParagraphBlock(type="paragraph", text="Intro"),
@@ -197,7 +197,7 @@ def test_update_with_blocks_replaces_article_and_media() -> None:
 
 def test_block_media_kind_must_match_asset() -> None:
     (svc, _, _, _, _, _, media, _, _, org_id, owner) = _service()
-    img = media.create_asset(_uid(), org_id, "orgs/a.png", "image/png", 1, NOW)
+    img = media.create_asset(_uid(), org_id, "orgs/a.png", "image/png", 1, NOW, owner_type="organization")
     with pytest.raises(NotFoundError):
         svc.create_post(
             org_id, owner, "discussion", "T", "", [],
@@ -225,15 +225,12 @@ def test_media_attachment_validation() -> None:
     (svc, _, orgs, members, users, _, media, _, _, org_id,
      owner) = _service()
     good = media.create_asset(
-        _uid(), org_id, "/m/a.png", "image/png", 10, NOW
-    )
+        _uid(), org_id, "/m/a.png", "image/png", 10, NOW, owner_type="organization")
     foreign_org = add_org(orgs, members, users, _uid())
     foreign = media.create_asset(
-        _uid(), foreign_org, "/m/b.png", "image/png", 10, NOW
-    )
+        _uid(), foreign_org, "/m/b.png", "image/png", 10, NOW, owner_type="organization")
     video = media.create_asset(
-        _uid(), org_id, "/m/c.mp4", "video/mp4", 10, NOW
-    )
+        _uid(), org_id, "/m/c.mp4", "video/mp4", 10, NOW, owner_type="organization")
     with pytest.raises(NotFoundError):
         svc.create_post(
             org_id, owner, "discussion", "", "x", [foreign.asset_id]

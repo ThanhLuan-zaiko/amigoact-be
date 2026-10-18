@@ -18,6 +18,19 @@ class PostMediaBrief:
 
 
 @dataclass(frozen=True)
+class PostUploadSnapshot:
+    """One board-editor upload: a post-owned file, never an org gallery row."""
+
+    id: UUID
+    org_id: UUID
+    kind: str
+    mime: str
+    size_bytes: int
+    file_url: str
+    original_name: str | None
+
+
+@dataclass(frozen=True)
 class PostSnapshot:
     """Post row joined with author, attachments and comment total.
 

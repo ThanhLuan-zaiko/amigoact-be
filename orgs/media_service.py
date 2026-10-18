@@ -17,7 +17,14 @@ from core.exceptions import (
     OrgDeletedError,
     UnsupportedMediaError,
 )
-from core.media import MediaStore, MediaUploader, media_kind, normalize_image
+from core.media import MediaStore, media_kind, normalize_image
+from core.media_rules import (
+    BRAND_ROLES,
+    GALLERY_ROLES,
+    asset_role,
+    is_gallery_asset,
+    prepare_upload,
+)
 from core.security import utcnow
 from orgs.interfaces import (
     MediaRepository,
@@ -29,11 +36,6 @@ from rbac.interfaces import AccessControl
 if TYPE_CHECKING:
     from admin.interfaces import ModerationStore
     from orgs.model import MediaAsset, Organization
-
-# "attachment" marks post-uploaded assets: members may add them and they
-# stay out of the public gallery (filtered by role at read time).
-_MEDIA_ROLES = ("gallery", "cover", "logo", "attachment")
-_BRAND_ROLES = ("cover", "logo")
 
 
 @dataclass(frozen=True)
@@ -54,7 +56,7 @@ class MediaSnapshot:
     updated_at: datetime | None
 
 
-class MediaService(MediaUploader):
+class MediaService:
     """Gallery lifecycle: member uploads, owner/media manager brands."""
 
     def __init__(
@@ -78,7 +80,7 @@ class MediaService(MediaUploader):
         self._moderation = moderation
 
     def _emit_updated(self, org: Organization) -> None:
-        """Ping the public directory; attachments never fan out."""
+        """Ping the public directory on every gallery change."""
         if self._events is not None:
             self._events.directory_changed("updated", org.id, org.slug)
 
@@ -123,7 +125,7 @@ class MediaService(MediaUploader):
             id=row.asset_id,
             org_id=org_id,
             kind=media_kind(row.mime) or "image",
-            role=getattr(row, "role", None) or "gallery",
+            role=asset_role(row),
             mime=row.mime,
             size_bytes=int(row.size_bytes or 0),
             file_url=f"/media/{row.file_url}",
@@ -139,9 +141,12 @@ class MediaService(MediaUploader):
     ) -> None:
         """Single cover/logo per org; last writer wins on concurrent race."""
         # TODO: enforce branding uniqueness with LWT on a dedicated table.
-        for other in self._media.list_by_org(org_id):
-            current = getattr(other, "role", None) or "gallery"
-            if current == role and other.asset_id != keep:
+        for other in self._media.list_gallery(org_id):
+            if (
+                is_gallery_asset(other, org_id)
+                and asset_role(other) == role
+                and other.asset_id != keep
+            ):
                 self._media.set_role(other.asset_id, "gallery")
 
     def _sync_brand(
@@ -164,9 +169,9 @@ class MediaService(MediaUploader):
         self, org: Organization, user_id: UUID, kind: str, role: str
     ) -> None:
         """Brand roles (cover/logo) are owner-only and images only."""
-        if role not in _MEDIA_ROLES:
+        if role not in GALLERY_ROLES:
             raise InvalidMediaRoleError("Media role is invalid.")
-        if role in _BRAND_ROLES:
+        if role in BRAND_ROLES:
             if kind != "image":
                 raise InvalidMediaRoleError("Cover and logo must be images.")
             if not self._can_manage(org, user_id):
@@ -189,48 +194,37 @@ class MediaService(MediaUploader):
             raise OrgDeletedError("Organization is soft-deleted.")
         if not self._orgs.is_member(org_id, user_id):
             raise ForbiddenError("Only org members can upload media.")
-        kind = media_kind(mime)
-        if kind is None:
-            raise UnsupportedMediaError("Only images and videos are allowed.")
-        limit = (
-            self._max_image_bytes if kind == "image" else self._max_video_bytes
+        prepared = prepare_upload(
+            mime, content, self._max_image_bytes, self._max_video_bytes
         )
-        if len(content) > limit:
-            raise MediaTooLargeError("File exceeds the size limit.")
-        self._check_role(org, user_id, kind, role)
-        if kind == "image":
-            try:
-                mime, content = normalize_image(content, mime)
-            except ValueError as exc:
-                raise MediaTooLargeError(
-                    "Image exceeds the pixel limit."
-                ) from exc
+        self._check_role(org, user_id, prepared.kind, role)
         from core.ids import uuid7
 
         asset_id = uuid7()
         relative = self._store.save_typed(
-            org_id, asset_id, mime, filename, content
+            org_id, asset_id, prepared.mime, filename, prepared.content
         )
         now = utcnow()
-        self._demote_role(org_id, role)
+        if role in BRAND_ROLES:
+            self._demote_role(org_id, role)
         row = self._media.create_asset(
             asset_id,
             org_id,
             relative,
-            mime,
-            len(content),
+            prepared.mime,
+            len(prepared.content),
             now,
             role,
-            file_hash=hashlib.sha256(content).hexdigest(),
+            file_hash=prepared.file_hash,
             uploader_id=user_id,
             original_name=filename,
+            owner_type="organization",
         )
         if self._moderation is not None:
             self._moderation.enqueue(uuid7(), asset_id, now)
-        if role in _BRAND_ROLES:
+        if role in BRAND_ROLES:
             self._sync_brand(org_id, role, asset_id)
-        if role != "attachment":
-            self._emit_updated(org)
+        self._emit_updated(org)
         return self._media_snapshot(org_id, row)
 
     def set_media_role(
@@ -238,17 +232,18 @@ class MediaService(MediaUploader):
     ) -> MediaSnapshot:
         """Owner or media manager marks cover/logo, or clears it."""
         org = self._require_manager(org_id, user_id)
-        if role not in _MEDIA_ROLES:
+        if role not in GALLERY_ROLES:
             raise InvalidMediaRoleError("Media role is invalid.")
         row = self._media.get_asset(media_id)
-        if row is None or row.owner_id != org_id:
+        if not is_gallery_asset(row, org_id):
             raise NotFoundError("Media not found.")
-        if role in _BRAND_ROLES and media_kind(row.mime) != "image":
+        if role in BRAND_ROLES and media_kind(row.mime) != "image":
             raise InvalidMediaRoleError("Cover and logo must be images.")
-        self._demote_role(org_id, role, keep=media_id)
+        if role in BRAND_ROLES:
+            self._demote_role(org_id, role, keep=media_id)
         updated = self._media.set_role(media_id, role)
         assert updated is not None
-        if role in _BRAND_ROLES:
+        if role in BRAND_ROLES:
             self._sync_brand(org_id, role, media_id)
         else:
             self._clear_brand_if(org_id, media_id)
@@ -264,9 +259,8 @@ class MediaService(MediaUploader):
             raise ForbiddenError("Only org members can view media.")
         return [
             self._media_snapshot(org_id, row)
-            for row in self._media.list_by_org(org_id)
-            # Post attachments live outside the member gallery grid.
-            if (getattr(row, "role", None) or "gallery") != "attachment"
+            for row in self._media.list_gallery(org_id)
+            if is_gallery_asset(row, org_id)
         ]
 
     def replace_media(
@@ -286,7 +280,7 @@ class MediaService(MediaUploader):
         """
         org = self._require_manager(org_id, user_id)
         row = self._media.get_asset(media_id)
-        if row is None or row.owner_id != org_id:
+        if not is_gallery_asset(row, org_id):
             raise NotFoundError("Media not found.")
         if media_kind(row.mime) != "image":
             raise UnsupportedMediaError("Only image assets can be re-edited.")
@@ -316,28 +310,31 @@ class MediaService(MediaUploader):
         assert updated is not None
         if old_relative != new_relative:
             self._store.delete_file(old_relative)
-        if (getattr(row, "role", None) or "gallery") != "attachment":
-            self._emit_updated(org)
+        self._emit_updated(org)
         return self._media_snapshot(org_id, updated)
 
     def delete_media(self, org_id: UUID, user_id: UUID, media_id: UUID) -> None:
         """Owner or media manager removes one gallery file."""
         org = self._require_manager(org_id, user_id)
         row = self._media.get_asset(media_id)
-        if row is None or row.owner_id != org_id:
+        if not is_gallery_asset(row, org_id):
             raise NotFoundError("Media not found.")
         self._clear_brand_if(org_id, media_id)
         self._media.delete_asset(media_id)
         self._store.delete_file(row.file_url)
-        if (getattr(row, "role", None) or "gallery") != "attachment":
-            self._emit_updated(org)
+        self._emit_updated(org)
 
     def delete_all_media(self, org_id: UUID, user_id: UUID) -> int:
         """Owner or media manager wipes the gallery, 500 rows per call."""
         # Idempotent: missing rows/files are skipped, safe to retry.
         org = self._require_manager(org_id, user_id)
+        gallery = [
+            row
+            for row in self._media.list_gallery(org_id)
+            if is_gallery_asset(row, org_id)
+        ][:500]
         removed = 0
-        for row in self._media.list_by_org(org_id)[:500]:
+        for row in gallery:
             self._media.delete_asset(row.asset_id)
             self._store.delete_file(row.file_url)
             removed += 1

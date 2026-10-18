@@ -67,8 +67,7 @@ def test_public_snapshot_resolves_brand_media_urls() -> None:
     org = service.create_org(owner, "Pic", "pic-1", "", "club")
     logo = media.create_asset(
         uuid7(), org.id, "orgs/pic-1/logo.png", "image/png", 10,
-        datetime.now(timezone.utc), role="logo",
-    )
+        datetime.now(timezone.utc), role="logo", owner_type="organization")
     orgs.set_brand_media(org.id, "logo", logo.asset_id, datetime.now(timezone.utc))
 
     item = public.list_public_orgs().items[0]
@@ -83,8 +82,7 @@ def test_public_listing_carries_owner_brief() -> None:
     owner = new_owner()
     avatar = media.create_asset(
         uuid7(), owner, "users/o/a.png", "image/png", 10,
-        datetime.now(timezone.utc), role="avatar",
-    )
+        datetime.now(timezone.utc), role="avatar", owner_type="organization")
     users.add(
         owner, "o@x.com", "Owner Name", avatar_media_id=avatar.asset_id
     )
@@ -116,16 +114,13 @@ def test_public_listing_carries_media_preview() -> None:
     owner = new_owner()
     org = service.create_org(owner, "Show", "show-pub", "", "club")
     now = datetime.now(timezone.utc)
-    media.create_asset(uuid7(), org.id, "o/clip.mp4", "video/mp4", 1, now)
+    media.create_asset(uuid7(), org.id, "o/clip.mp4", "video/mp4", 1, now, owner_type="organization")
     media.create_asset(
-        uuid7(), org.id, "o/cover.png", "image/png", 1, now, role="cover"
-    )
+        uuid7(), org.id, "o/cover.png", "image/png", 1, now, role="cover", owner_type="organization")
     media.create_asset(
-        uuid7(), org.id, "o/logo.png", "image/png", 1, now, role="logo"
-    )
+        uuid7(), org.id, "o/logo.png", "image/png", 1, now, role="logo", owner_type="organization")
     media.create_asset(
-        uuid7(), org.id, "o/post.png", "image/png", 1, now, role="attachment"
-    )
+        uuid7(), org.id, "o/post.png", "image/png", 1, now, role="attachment", owner_type="organization")
 
     item = public.list_public_orgs().items[0]
     assert [m.url for m in item.media] == [
@@ -135,6 +130,33 @@ def test_public_listing_carries_media_preview() -> None:
     assert item.media[0].kind == "image"
     assert item.media[1].kind == "video"
     assert item.media_count == 2
+
+
+def test_public_surfaces_ignore_chat_and_post_rows_in_feed() -> None:
+    """Stale chat/post rows still tagged gallery never reach public reads."""
+    orgs, media = FakeOrgs(), FakeMedia()
+    service = OrgService(orgs)
+    public = PublicOrgService(orgs, media)
+    owner = new_owner()
+    org = service.create_org(owner, "Show", "show-stale", "", "club")
+    now = datetime.now(timezone.utc)
+    media.create_asset(
+        uuid7(), org.id, "o/chat.png", "image/png", 1, now, owner_type="chat"
+    )
+    media.create_asset(
+        uuid7(), org.id, "o/post.png", "image/png", 1, now, owner_type="post"
+    )
+    media.create_asset(uuid7(), org.id, "o/gallery.png", "image/png", 1, now, owner_type="organization")
+
+    item = public.list_public_orgs().items[0]
+    assert [m.url for m in item.media] == ["/media/o/gallery.png"]
+    assert item.media_count == 1
+    assert [m.url for m in public.list_public_media("show-stale")] == [
+        "/media/o/gallery.png"
+    ]
+    assert public.get_public_org("show-stale").gallery == [
+        "/media/o/gallery.png"
+    ]
 
 
 def test_public_media_list_keeps_videos_and_beats_preview_cap() -> None:
@@ -147,21 +169,17 @@ def test_public_media_list_keeps_videos_and_beats_preview_cap() -> None:
     org = service.create_org(owner, "Full", "full-pub", "", "club")
     now = datetime.now(timezone.utc)
     media.create_asset(
-        uuid7(), org.id, "o/cover.png", "image/png", 1, now, role="cover"
-    )
+        uuid7(), org.id, "o/cover.png", "image/png", 1, now, role="cover", owner_type="organization")
     media.create_asset(
-        uuid7(), org.id, "o/logo.png", "image/png", 1, now, role="logo"
-    )
+        uuid7(), org.id, "o/logo.png", "image/png", 1, now, role="logo", owner_type="organization")
     media.create_asset(
         uuid7(), org.id, "o/post.png", "image/png", 1, now,
-        role="attachment",
-    )
+        role="attachment", owner_type="organization")
     for index in range(9):
         media.create_asset(
-            uuid7(), org.id, f"o/{index}.png", "image/png", 1, now
-        )
-    media.create_asset(uuid7(), org.id, "o/clip.mp4", "video/mp4", 1, now)
-    dead = media.create_asset(uuid7(), org.id, "o/dead.png", "image/png", 1, now)
+            uuid7(), org.id, f"o/{index}.png", "image/png", 1, now, owner_type="organization")
+    media.create_asset(uuid7(), org.id, "o/clip.mp4", "video/mp4", 1, now, owner_type="organization")
+    dead = media.create_asset(uuid7(), org.id, "o/dead.png", "image/png", 1, now, owner_type="organization")
     media.delete_asset(dead.asset_id)
 
     items = public.list_public_media("full-pub")
@@ -237,12 +255,11 @@ def test_public_detail_gallery_keeps_only_live_gallery_images() -> None:
     owner = new_owner()
     org = service.create_org(owner, "Gal", "gal-pub", "", "club")
     now = datetime.now(timezone.utc)
-    media.create_asset(uuid7(), org.id, "o/1.png", "image/png", 1, now)
-    media.create_asset(uuid7(), org.id, "o/2.png", "image/png", 1, now)
+    media.create_asset(uuid7(), org.id, "o/1.png", "image/png", 1, now, owner_type="organization")
+    media.create_asset(uuid7(), org.id, "o/2.png", "image/png", 1, now, owner_type="organization")
     media.create_asset(
-        uuid7(), org.id, "o/logo.png", "image/png", 1, now, role="logo"
-    )
-    media.create_asset(uuid7(), org.id, "o/clip.mp4", "video/mp4", 1, now)
+        uuid7(), org.id, "o/logo.png", "image/png", 1, now, role="logo", owner_type="organization")
+    media.create_asset(uuid7(), org.id, "o/clip.mp4", "video/mp4", 1, now, owner_type="organization")
     detail = public.get_public_org("gal-pub")
     assert detail.gallery == ["/media/o/1.png", "/media/o/2.png"]
 

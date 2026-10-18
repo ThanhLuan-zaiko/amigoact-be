@@ -66,40 +66,6 @@ async def test_reply_and_edit_roundtrip(client: AsyncClient) -> None:
     assert items[replied.json()["message_id"]]["reply_to_id"] == message_id
 
 
-async def test_attachment_upload_then_send(client: AsyncClient) -> None:
-    org_id, owner_h, member_h, _mid = await _org_with_member(
-        client, "ws-attach"
-    )
-
-    uploaded = await client.post(
-        f"/chat/rooms/{org_id}/attachments",
-        files={"file": ("dot.png", _PNG, "image/png")},
-        headers=member_h,
-    )
-    assert uploaded.status_code == 201, uploaded.text
-    media_id = uploaded.json()["media_id"]
-    assert uploaded.json()["url"].startswith("/media/")
-
-    sent = await client.post(
-        f"/chat/rooms/{org_id}/messages",
-        json={"body": "", "attachment_ids": [media_id]},
-        headers=member_h,
-    )
-    assert sent.status_code == 201, sent.text
-    attachments = sent.json()["attachments"]
-    assert len(attachments) == 1
-    assert attachments[0]["media_id"] == media_id
-    assert attachments[0]["mime"].startswith("image/")
-
-    # An empty text-only message is still rejected.
-    empty = await client.post(
-        f"/chat/rooms/{org_id}/messages",
-        json={"body": "   "},
-        headers=member_h,
-    )
-    assert empty.status_code == 400
-
-
 async def test_reactions_mentions_and_encrypted_body(
     client: AsyncClient,
 ) -> None:
