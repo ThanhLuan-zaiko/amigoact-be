@@ -11,8 +11,11 @@ from core.dependencies import get_access_control, get_media_store
 from core.dependencies import get_notification_service, user_directory
 
 if TYPE_CHECKING:  # pragma: no cover - type imports only
+    from activities.category_service import CategoryService
+    from activities.delete_service import ActivityDeleteService
     from activities.detail_service import ActivityDetailService
     from activities.service import ActivityService
+    from activities.tag_service import TagService
     from admin.service import AdminService
     from hours.rule_service import RuleService
     from hours.service import HourService
@@ -78,9 +81,12 @@ def get_activity_service(
     access: AccessControl = Depends(get_access_control),
 ) -> ActivityService:
     """Build one ActivityService per request over activity feeds."""
+    from activities.category_repository import CqlCategoryStore
     from activities.events import WsActivityEvents
-    from activities.repository import CqlActivityStore, CqlCategoryStore
+    from activities.repository import CqlActivityStore
     from activities.service import ActivityService
+    from activities.tag_repository import CqlTagStore
+    from activities.tag_service import TagService
     from orgs.repository import CqlOrgRepository
 
     return ActivityService(
@@ -88,10 +94,55 @@ def get_activity_service(
         categories=CqlCategoryStore(),
         orgs=CqlOrgRepository(settings.scylla_keyspace),
         access=access,
-        events=WsActivityEvents(
-            getattr(request.app.state, "ws_manager", None)
-        ),
+        events=WsActivityEvents(getattr(request.app.state, "ws_manager", None)),
+        tags=TagService(CqlTagStore(settings.scylla_keyspace)),
     )
+
+
+def get_category_service(
+    settings: Settings = Depends(get_settings),
+    access: AccessControl = Depends(get_access_control),
+) -> CategoryService:
+    """Category catalog reads/writes share the activity stores."""
+    from activities.category_repository import CqlCategoryStore
+    from activities.category_service import CategoryService
+    from orgs.repository import CqlOrgRepository
+
+    return CategoryService(
+        categories=CqlCategoryStore(),
+        orgs=CqlOrgRepository(settings.scylla_keyspace),
+        access=access,
+    )
+
+
+def get_activity_delete_service(
+    request: Request,
+    settings: Settings = Depends(get_settings),
+    access: AccessControl = Depends(get_access_control),
+) -> ActivityDeleteService:
+    """Trash lifecycle: soft delete, restore, hard purge + bytes."""
+    from activities.delete_service import ActivityDeleteService
+    from activities.events import WsActivityEvents
+    from activities.repository import CqlActivityStore
+    from orgs.repository import CqlOrgRepository
+
+    return ActivityDeleteService(
+        activities=CqlActivityStore(settings.scylla_keyspace),
+        orgs=CqlOrgRepository(settings.scylla_keyspace),
+        access=access,
+        events=WsActivityEvents(getattr(request.app.state, "ws_manager", None)),
+        store=get_media_store(settings),
+    )
+
+
+def get_tag_service(
+    settings: Settings = Depends(get_settings),
+) -> TagService:
+    """Global folksonomy catalog for the /tags typeahead surface."""
+    from activities.tag_repository import CqlTagStore
+    from activities.tag_service import TagService
+
+    return TagService(CqlTagStore(settings.scylla_keyspace))
 
 
 def get_activity_detail_service(

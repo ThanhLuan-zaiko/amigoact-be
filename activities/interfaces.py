@@ -10,15 +10,8 @@ from uuid import UUID
 from activities.model import (
     ActivitiesBySlug,
     Activity,
-    ActivityAnnouncement,
     ActivityCategory,
-    ActivityMedia,
-    ActivityPartner,
-    ActivitySchedule,
-    ActivitySkill,
-    ActivitySlot,
-    ActivityStaff,
-    RegistrationForm,
+    TagBySlug,
 )
 
 
@@ -46,6 +39,7 @@ class ActivityFields:
         registration_deadline: datetime | None,
         person_in_charge_id: UUID | None,
         campus_id: UUID | None = None,
+        tag_names: list[str] | None = None,
     ) -> None:
         self.title = title
         self.slug = slug
@@ -65,6 +59,7 @@ class ActivityFields:
         self.registration_deadline = registration_deadline
         self.person_in_charge_id = person_in_charge_id
         self.campus_id = campus_id
+        self.tag_names = tag_names or []
 
 
 class ActivityStore(ABC):
@@ -124,6 +119,33 @@ class ActivityStore(ABC):
     ) -> list[Activity]:
         """Public feed filtered to one catalog category."""
 
+    @abstractmethod
+    def list_by_tag(
+        self, tag_slug: str, limit: int = 50
+    ) -> list[Activity]:
+        """Public feed filtered to one community tag slug."""
+
+    @abstractmethod
+    def mark_deleted(
+        self, activity_id: UUID, now: datetime
+    ) -> Activity | None:
+        """Soft delete: clear feeds into the trash bin; slug stays claimed."""
+
+    @abstractmethod
+    def mark_restored(
+        self, activity_id: UUID, now: datetime
+    ) -> Activity | None:
+        """Clear deleted_at and rewrite every feed projection."""
+
+    @abstractmethod
+    def list_trash(self, org_id: UUID, limit: int = 50) -> list[Activity]:
+        """Manager-only trash listing, newest deletions first."""
+
+    @abstractmethod
+    def delete_everything(self, activity_id: UUID) -> list[str]:
+        """Purge the row, every feed and edge, plus media rows; returns
+        the file_urls whose bytes still sit on disk."""
+
 
 class CategoryStore(ABC):
     """Persistence port for the activity category catalog."""
@@ -151,101 +173,22 @@ class CategoryStore(ABC):
         """Insert one catalog row (global or org-scoped)."""
 
 
-class ActivityLinkStore(ABC):
-    """Persistence port for skill and partner edges of one activity."""
+class TagStore(ABC):
+    """Persistence port for the global tag catalog (tags_by_slug)."""
 
     @abstractmethod
-    def set_skills(
-        self, activity_id: UUID, edges: list[tuple[UUID, bool]]
-    ) -> None:
-        """Replace all skill edges (skill_id, is_required pairs)."""
+    def get_by_slug(self, slug: str) -> TagBySlug | None:
+        """Load one catalog row by its canonical slug."""
 
     @abstractmethod
-    def list_skills(self, activity_id: UUID) -> list[ActivitySkill]:
-        """Skill edges of one activity."""
+    def claim(
+        self, tag_id: UUID, slug: str, name: str, now: datetime
+    ) -> TagBySlug:
+        """LWT-insert the slug; returns the winner on a lost race."""
 
     @abstractmethod
-    def set_partners(
-        self,
-        activity: Activity,
-        edges: list[tuple[UUID, str, str | None]],
-    ) -> None:
-        """Replace partner edges plus the per-org reverse feed."""
-
-    @abstractmethod
-    def list_partners(self, activity_id: UUID) -> list[ActivityPartner]:
-        """Partner edges of one activity."""
-
-    @abstractmethod
-    def list_partner_feed(
-        self, org_id: UUID, limit: int = 50
-    ) -> list[Activity]:
-        """Activities one org partners on, newest first."""
-
-
-class ActivityStaffStore(ABC):
-    """Persistence port for staff assignments."""
-
-    @abstractmethod
-    def set_staff(
-        self,
-        activity_id: UUID,
-        rows: list[tuple[UUID, str]],
-        assigned_by: UUID,
-        now: datetime,
-    ) -> None:
-        """Replace all assignments (user_id, staff_role pairs)."""
-
-    @abstractmethod
-    def list_staff(self, activity_id: UUID) -> list[ActivityStaff]:
-        """Staff rows of one activity."""
-
-
-class ScheduleStore(ABC):
-    """Persistence port for activity schedules (sessions)."""
-
-    @abstractmethod
-    def create(
-        self,
-        schedule_id: UUID,
-        activity_id: UUID,
-        title: str,
-        location: str | None,
-        start_at: datetime | None,
-        end_at: datetime | None,
-        now: datetime,
-    ) -> ActivitySchedule:
-        """Insert one schedule row."""
-
-    @abstractmethod
-    def list(self, activity_id: UUID) -> list[ActivitySchedule]:
-        """All schedules of one activity."""
-
-    @abstractmethod
-    def delete(self, activity_id: UUID, schedule_id: UUID) -> bool:
-        """Remove one schedule. False when it never existed."""
-
-
-class AnnouncementStore(ABC):
-    """Persistence port for the activity news board."""
-
-    @abstractmethod
-    def create(
-        self,
-        activity_id: UUID,
-        announcement_id: UUID,
-        title: str,
-        body: str,
-        created_by: UUID,
-        now: datetime,
-    ) -> ActivityAnnouncement:
-        """Append one announcement."""
-
-    @abstractmethod
-    def list(
-        self, activity_id: UUID, limit: int = 50
-    ) -> list[ActivityAnnouncement]:
-        """Newest-first announcements of one activity."""
+    def search(self, query: str, limit: int = 20) -> list[TagBySlug]:
+        """Folded-substring search across the whole catalog."""
 
 
 class ActivityEvents(ABC):
@@ -261,82 +204,3 @@ class ActivityEvents(ABC):
         status: str,
     ) -> None:
         """Publish lifecycle changes onto activities:{org_id}."""
-
-
-class RegistrationFormStore(ABC):
-    """Persistence port for per-activity sign-up form questions."""
-
-    @abstractmethod
-    def list_form(self, activity_id: UUID) -> list[RegistrationForm]:
-        """Questions in display order."""
-
-    @abstractmethod
-    def replace_form(
-        self,
-        activity_id: UUID,
-        questions: list[tuple[UUID, str, str, bool]],
-    ) -> None:
-        """Rewrite the form; each tuple is
-        (question_id, label, field_type, required) at list position."""
-
-
-class SlotStore(ABC):
-    """Persistence port for per-schedule capacity slots."""
-
-    @abstractmethod
-    def list(self, schedule_id: UUID) -> list[ActivitySlot]:
-        """All slots of one schedule."""
-
-    @abstractmethod
-    def list_for_activity(self, activity_id: UUID) -> list[ActivitySlot]:
-        """All slots across the activity's schedules."""
-
-    @abstractmethod
-    def create(
-        self,
-        slot_id: UUID,
-        schedule_id: UUID,
-        title: str,
-        capacity: int | None,
-        start_at: datetime | None,
-        end_at: datetime | None,
-    ) -> ActivitySlot:
-        """Insert one slot."""
-
-    @abstractmethod
-    def delete(self, schedule_id: UUID, slot_id: UUID) -> bool:
-        """Remove one slot. False when it never existed."""
-
-
-class ActivityMediaStore(ABC):
-    """Persistence port for the ordered activity_media gallery."""
-
-    @abstractmethod
-    def list_for_activity(self, activity_id: UUID) -> list[ActivityMedia]:
-        """All entries ordered by position."""
-
-    @abstractmethod
-    def create(
-        self,
-        activity_id: UUID,
-        position: int,
-        asset_id: UUID,
-        role: str,
-        caption: str | None,
-    ) -> ActivityMedia:
-        """Insert one gallery entry."""
-
-    @abstractmethod
-    def update(
-        self,
-        activity_id: UUID,
-        position: int,
-        asset_id: UUID,
-        caption: str | None,
-        role: str,
-    ) -> None:
-        """Replace caption/role of one entry."""
-
-    @abstractmethod
-    def delete(self, activity_id: UUID, position: int, asset_id: UUID) -> None:
-        """Remove one gallery entry."""

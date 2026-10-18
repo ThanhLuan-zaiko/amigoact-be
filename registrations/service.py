@@ -5,11 +5,11 @@ from __future__ import annotations
 import json
 from uuid import UUID
 
-from activities.interfaces import (
-    ActivityStore,
+from activities.edge_interfaces import (
     RegistrationFormStore,
     SlotStore,
 )
+from activities.interfaces import ActivityStore
 from core.exceptions import (
     ForbiddenError,
     InvalidRegistrationStateError,

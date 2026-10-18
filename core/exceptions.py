@@ -64,6 +64,11 @@ class OrgDeletedError(DomainError):
     status = 410
 
 
+class ActivityDeletedError(DomainError):
+    code = "ACTIVITY_DELETED"
+    status = 410
+
+
 class UnsupportedMediaError(DomainError):
     code = "UNSUPPORTED_MEDIA"
     status = 415

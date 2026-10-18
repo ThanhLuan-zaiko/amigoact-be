@@ -5,17 +5,18 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Response
 from pydantic import BaseModel
 
+from activities.model import tag_slug
 from activities.schemas import (
     ActivityBody,
     ActivityResponse,
     ActivitySummary,
-    CategoryCreate,
-    CategoryItem,
     DiscoveryBucket,
     DiscoveryResponse,
+    TagItem,
+    TagRef,
     slugify,
 )
 from core.dependencies import (
@@ -23,12 +24,18 @@ from core.dependencies import (
     get_current_user,
     get_optional_user,
 )
-from core.dependencies_features import get_activity_service
+from core.dependencies_features import (
+    get_activity_delete_service,
+    get_activity_service,
+    get_tag_service,
+)
 
 if TYPE_CHECKING:
+    from activities.delete_service import ActivityDeleteService
     from activities.interfaces import ActivityFields
     from activities.model import Activity
     from activities.service import ActivityService
+    from activities.tag_service import TagService
 
 router = APIRouter(tags=["activities"])
 
@@ -62,7 +69,16 @@ def _fields(body: ActivityBody, *, keep_slug: bool) -> ActivityFields:
         requirements_json=None,
         registration_deadline=body.registration_deadline,
         person_in_charge_id=body.person_in_charge_id,
+        tag_names=body.tags,
     )
+
+
+def _tags(row: Activity) -> list[TagRef]:
+    """Stored canonical names plus their deterministic slugs."""
+    return [
+        TagRef(name=name, slug=tag_slug(name))
+        for name in row.tag_names or []
+    ]
 
 
 def _response(row: Activity) -> ActivityResponse:
@@ -74,6 +90,7 @@ def _response(row: Activity) -> ActivityResponse:
         description=row.description or "",
         category_id=row.category_id,
         status=row.status,
+        tags=_tags(row),
         location=row.location,
         address=row.address,
         city=row.city,
@@ -89,6 +106,7 @@ def _response(row: Activity) -> ActivityResponse:
         published_at=row.published_at,
         created_at=row.created_at,
         updated_at=row.updated_at,
+        deleted_at=row.deleted_at,
     )
 
 
@@ -101,6 +119,8 @@ def _summary(row: Activity) -> ActivitySummary:
         status=row.status,
         start_at=row.start_at,
         category_id=row.category_id,
+        tags=_tags(row),
+        deleted_at=row.deleted_at,
     )
 
 
@@ -108,34 +128,29 @@ def _summary(row: Activity) -> ActivitySummary:
 def discovery_feed(
     status: str = Query(default="published"),
     category_id: UUID | None = Query(default=None),
+    tag: str | None = Query(default=None, max_length=60),
     limit: int = Query(default=50, ge=1, le=100),
     service: ActivityService = Depends(get_activity_service),
 ) -> list[ActivitySummary]:
     """Public discovery feed; newest-first published activities."""
     return [
         _summary(row)
-        for row in service.list_public(status, category_id, limit)
+        for row in service.list_public(
+            status, category_id, limit, tag_slug=tag
+        )
     ]
 
 
-@router.get("/categories", response_model=list[CategoryItem])
-def list_categories(
-    org_id: UUID | None = Query(default=None),
-    viewer: CurrentUser | None = Depends(get_optional_user),
-    service: ActivityService = Depends(get_activity_service),
-) -> list[CategoryItem]:
-    """Global catalog plus the member's org customs."""
+@router.get("/tags", response_model=list[TagItem])
+def search_tags(
+    q: str = Query(default="", max_length=60),
+    limit: int = Query(default=20, ge=1, le=100),
+    service: TagService = Depends(get_tag_service),
+) -> list[TagItem]:
+    """Global folksonomy catalog for typeahead pickers."""
     return [
-        CategoryItem(
-            id=row.id,
-            name=row.name,
-            slug=row.slug,
-            org_scoped=row.org_scoped,
-            default_hours=row.default_hours,
-        )
-        for row in service.list_categories(
-            org_id, viewer.id if viewer else None
-        )
+        TagItem(id=row.id, name=row.name, slug=row.slug)
+        for row in service.search(q, limit)
     ]
 
 
@@ -181,12 +196,14 @@ def get_activity(
 )
 def list_org_activities(
     org_id: UUID,
+    trash: bool = Query(default=False),
     current: CurrentUser = Depends(get_current_user),
     service: ActivityService = Depends(get_activity_service),
 ) -> list[ActivitySummary]:
-    """Member feed of every activity in the org."""
+    """Member feed of every activity in the org; ?trash=1 is manager-only."""
     return [
-        _summary(row) for row in service.list_org(org_id, current.id)
+        _summary(row)
+        for row in service.list_org(org_id, current.id, trash)
     ]
 
 
@@ -266,32 +283,38 @@ def transition_activity(
     )
 
 
-@router.post(
-    "/orgs/{org_id}/categories",
-    response_model=CategoryItem,
-    status_code=201,
+@router.delete(
+    "/orgs/{org_id}/activities/{activity_id}",
+    response_model=ActivityResponse | None,
+    status_code=200,
 )
-def create_category(
+def delete_activity(
     org_id: UUID,
-    body: CategoryCreate,
+    activity_id: UUID,
+    hard: bool = Query(default=False),
     current: CurrentUser = Depends(get_current_user),
-    service: ActivityService = Depends(get_activity_service),
-) -> CategoryItem:
-    """Managers add an org-scoped category to the catalog."""
-    row = service.create_category(
-        org_id,
-        current.id,
-        body.name,
-        body.slug,
-        body.description,
-        body.icon,
-        body.default_hours,
-        body.color,
+    service: ActivityDeleteService = Depends(get_activity_delete_service),
+) -> ActivityResponse | Response:
+    """Soft delete to trash by default; hard=true purges permanently."""
+    if hard:
+        service.hard_delete(org_id, activity_id, current.id)
+        return Response(status_code=204)
+    return _response(
+        service.soft_delete(org_id, activity_id, current.id)
     )
-    return CategoryItem(
-        id=row.id,
-        name=row.name,
-        slug=row.slug,
-        org_scoped=row.org_scoped,
-        default_hours=row.default_hours,
+
+
+@router.post(
+    "/orgs/{org_id}/activities/{activity_id}/restore",
+    response_model=ActivityResponse,
+)
+def restore_activity(
+    org_id: UUID,
+    activity_id: UUID,
+    current: CurrentUser = Depends(get_current_user),
+    service: ActivityDeleteService = Depends(get_activity_delete_service),
+) -> ActivityResponse:
+    """Managers bring a soft-deleted activity back with its slug."""
+    return _response(
+        service.restore(org_id, activity_id, current.id)
     )

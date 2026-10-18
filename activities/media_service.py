@@ -6,7 +6,8 @@ import hashlib
 from dataclasses import dataclass
 from uuid import UUID
 
-from activities.interfaces import ActivityMediaStore, ActivityStore
+from activities.edge_interfaces import ActivityMediaStore
+from activities.interfaces import ActivityStore
 from admin.interfaces import ModerationStore
 from core.exceptions import (
     ForbiddenError,
@@ -75,7 +76,7 @@ class ActivityMediaService:
 
     def _activity(self, activity_id: UUID) -> UUID:
         row = self._activities.get(activity_id)
-        if row is None:
+        if row is None or row.deleted_at is not None:
             raise NotFoundError("Activity not found.")
         return row.org_id
 

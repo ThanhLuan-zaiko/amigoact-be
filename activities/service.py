@@ -11,8 +11,11 @@ from activities.interfaces import (
     ActivityStore,
     CategoryStore,
 )
-from activities.model import Activity, ActivityCategory
+from activities.model import Activity
+from activities.model import tag_slug as _tag_key
+from activities.tag_service import TagService
 from core.exceptions import (
+    ActivityDeletedError,
     ForbiddenError,
     InvalidOrgStateError,
     NotFoundError,
@@ -29,17 +32,6 @@ _LIFECYCLE: dict[str, set[str]] = {
     "completed": set(),
     "cancelled": set(),
 }
-
-
-@dataclass(frozen=True)
-class CategorySnapshot:
-    """Flat category row for pickers."""
-
-    id: UUID
-    name: str
-    slug: str
-    org_scoped: bool
-    default_hours: float | None
 
 
 @dataclass(frozen=True)
@@ -69,6 +61,7 @@ class ActivityService:
         categories: CategoryStore,
         orgs: OrgRepository,
         access: AccessControl,
+        tags: TagService,
         events: ActivityEvents | None = None,
     ) -> None:
         self._activities = activities
@@ -76,6 +69,7 @@ class ActivityService:
         self._orgs = orgs
         self._access = access
         self._events = events
+        self._tags = tags
 
     def _emit(
         self,
@@ -143,6 +137,7 @@ class ActivityService:
         """Member with activity:create opens a draft."""
         self._require_manager(org_id, actor_id, "activity:create")
         self._check_category(org_id, fields.category_id)
+        fields.tag_names = self._tags.ensure(fields.tag_names)
         row = self._activities.create(org_id, actor_id, fields, utcnow())
         self._access.record(
             org_id, actor_id, "activity.create", "activity", row.id,
@@ -161,11 +156,14 @@ class ActivityService:
         """Replace editable fields while the activity is editable."""
         self._require_manager(org_id, actor_id, "activity:manage")
         row = self._org_activity(org_id, activity_id)
+        if row.deleted_at is not None:
+            raise ActivityDeletedError("Activity is soft-deleted.")
         if row.status in {"completed", "cancelled"}:
             raise InvalidOrgStateError(
                 "Completed or cancelled activities cannot be edited."
             )
         self._check_category(org_id, fields.category_id)
+        fields.tag_names = self._tags.ensure(fields.tag_names)
         fields.slug = fields.slug or row.slug
         updated = self._activities.update_details(
             activity_id, fields, utcnow()
@@ -190,6 +188,8 @@ class ActivityService:
         """Move the lifecycle forward along the allowed edges."""
         self._require_manager(org_id, actor_id, "activity:manage")
         row = self._org_activity(org_id, activity_id)
+        if row.deleted_at is not None:
+            raise ActivityDeletedError("Activity is soft-deleted.")
         if target not in _LIFECYCLE.get(row.status, set()):
             raise InvalidOrgStateError(
                 f"Cannot move {row.status} to {target}."
@@ -212,7 +212,7 @@ class ActivityService:
     ) -> Activity:
         """Public statuses for anyone; drafts only for org members."""
         row = self._activities.get(activity_id)
-        if row is None:
+        if row is None or row.deleted_at is not None:
             raise NotFoundError("Activity not found.")
         if row.status not in _PUBLIC_STATUSES and not self._is_member(
             row.org_id, viewer_id
@@ -232,31 +232,71 @@ class ActivityService:
             raise NotFoundError("Activity not found.")
         return self.get_visible(index.activity_id, viewer_id)
 
-    def list_org(self, org_id: UUID, viewer_id: UUID) -> list[Activity]:
-        """Org feed for members, any lifecycle state included."""
+    def list_org(
+        self, org_id: UUID, viewer_id: UUID, trash: bool = False
+    ) -> list[Activity]:
+        """Org feed for members; trash lists are manager-only."""
         self._org(org_id)
+        if trash:
+            self._require_manager(org_id, viewer_id, "activity:manage")
+            return self._activities.list_trash(org_id)
         if not self._is_member(org_id, viewer_id):
-            raise ForbiddenError("Only org members can list activities.")
-        return self._activities.list_by_org(org_id)
+            raise ForbiddenError(
+                "Only org members can list activities."
+            )
+        return [
+            row
+            for row in self._activities.list_by_org(org_id)
+            if row.deleted_at is None
+        ]
 
     def list_public(
         self,
         status: str = "published",
         category_id: UUID | None = None,
         limit: int = 50,
+        tag_slug: str | None = None,
     ) -> list[Activity]:
         """Discovery feed; only public lifecycle states are served."""
         if status not in _PUBLIC_STATUSES:
             raise InvalidOrgStateError("Status filter is not public.")
+        if tag_slug is not None:
+            return [
+                row
+                for row in self._activities.list_by_tag(
+                    _tag_key(tag_slug), limit
+                )
+                if row.status in _PUBLIC_STATUSES
+                and row.deleted_at is None
+                and (category_id is None or row.category_id == category_id)
+            ]
         if category_id is not None:
-            return self._activities.list_by_category(category_id, limit)
-        return self._activities.list_by_status(status, limit)
+            return [
+                row
+                for row in self._activities.list_by_category(
+                    category_id, limit
+                )
+                if row.deleted_at is None
+            ]
+        return [
+            row
+            for row in self._activities.list_by_status(status, limit)
+            if row.deleted_at is None
+        ]
 
     def discovery(self, limit: int = 6) -> DiscoveryView:
         """Curated shelves: ongoing/published highlights, soonest starts,
         and a few items per non-empty global category."""
-        published = self._activities.list_by_status("published", 50)
-        ongoing = self._activities.list_by_status("ongoing", 20)
+        published = [
+            row
+            for row in self._activities.list_by_status("published", 50)
+            if row.deleted_at is None
+        ]
+        ongoing = [
+            row
+            for row in self._activities.list_by_status("ongoing", 20)
+            if row.deleted_at is None
+        ]
         # Stored timestamps come back naive UTC; normalize both sides so
         # aware values (fakes, other sources) compare the same way.
         now = utcnow().replace(tzinfo=None)
@@ -281,6 +321,7 @@ class ActivityService:
                 row
                 for row in self._activities.list_by_category(cat.id, 4)
                 if row.status in _PUBLIC_STATUSES
+                and row.deleted_at is None
             ]
             if items:
                 buckets.append(
@@ -288,44 +329,4 @@ class ActivityService:
                 )
         return DiscoveryView(
             featured=featured, upcoming=upcoming, categories=buckets
-        )
-
-    def list_categories(
-        self, org_id: UUID | None, viewer_id: UUID | None
-    ) -> list[CategorySnapshot]:
-        """Global catalog for anyone; org customs need membership."""
-        scope = None
-        if org_id is not None and self._is_member(org_id, viewer_id):
-            scope = org_id
-        return [self._category(c) for c in self._categories.list(scope)]
-
-    def create_category(
-        self,
-        org_id: UUID,
-        actor_id: UUID,
-        name: str,
-        slug: str,
-        description: str | None,
-        icon: str | None,
-        default_hours: float | None,
-        color: str | None,
-    ) -> CategorySnapshot:
-        """Managers extend the catalog with org-scoped categories."""
-        self._require_manager(org_id, actor_id, "activity:manage")
-        from core.ids import uuid7
-
-        row = self._categories.create(
-            uuid7(), org_id, name, slug, description, icon,
-            default_hours, color,
-        )
-        return self._category(row)
-
-    @staticmethod
-    def _category(row: ActivityCategory) -> CategorySnapshot:
-        return CategorySnapshot(
-            id=row.id,
-            name=row.name,
-            slug=row.slug,
-            org_scoped=row.org_id is not None,
-            default_hours=row.default_hours,
         )

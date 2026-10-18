@@ -8,7 +8,7 @@ from uuid import UUID
 import pytest
 import uuid_utils
 
-from activities.interfaces import ActivityMediaStore
+from activities.edge_interfaces import ActivityMediaStore
 from activities.media_service import ActivityMediaService
 from core.exceptions import (
     ForbiddenError,

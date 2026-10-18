@@ -128,6 +128,9 @@ app.add_middleware(
 # Outermost: 404/410 are HTTP-cacheable by default; API errors must never be.
 app.add_middleware(NoStoreErrorsMiddleware)
 
+from activities.category_router import (  # noqa: E402
+    router as activity_category_router,
+)
 from activities.detail_router import router as activity_detail_router  # noqa: E402
 from activities.router import router as activities_router  # noqa: E402
 from activities.slots_router import router as slots_router  # noqa: E402
@@ -175,6 +178,7 @@ app.include_router(admin_router)
 app.include_router(notifications_router)
 app.include_router(profiles_router)
 app.include_router(activities_router)
+app.include_router(activity_category_router)
 app.include_router(activity_detail_router)
 app.include_router(slots_router)
 app.include_router(activity_media_router)

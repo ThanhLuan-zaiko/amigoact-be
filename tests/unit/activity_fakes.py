@@ -9,17 +9,22 @@ from uuid import UUID
 import uuid_utils
 
 from activities.detail_service import ActivityDetailService
-from activities.interfaces import (
-    ActivityEvents,
+from activities.edge_interfaces import (
     ActivityLinkStore,
     ActivityStaffStore,
-    ActivityStore,
     AnnouncementStore,
-    CategoryStore,
     ScheduleStore,
     SlotStore,
 )
+from activities.interfaces import (
+    ActivityEvents,
+    ActivityStore,
+    CategoryStore,
+    TagStore,
+)
+from activities.model import tag_slug
 from activities.service import ActivityService
+from activities.tag_service import TagService
 from tests.unit.member_fakes import FakeAccess, FakeUsers
 from tests.unit.org_fakes import FakeOrgs
 from tests.unit.profile_fakes import FakeProfiles
@@ -32,7 +37,7 @@ class FakeActivities(ActivityStore):
     def create(self, org_id, created_by, fields, now):  # noqa: ANN001, ANN202
         row = SimpleNamespace(
             id=uuid_utils.uuid7(), org_id=org_id, created_by=created_by,
-            status="draft", published_at=None,
+            status="draft", published_at=None, deleted_at=None,
             cover_media_id=None, created_at=now, updated_at=now,
             **{k: getattr(fields, k) for k in vars(fields)},
         )
@@ -68,15 +73,56 @@ class FakeActivities(ActivityStore):
         return row
 
     def list_by_org(self, org_id, limit=50):  # noqa: ANN001, ANN202
-        return [r for r in self.rows.values() if r.org_id == org_id][:limit]
+        return [
+            r for r in self.rows.values()
+            if r.org_id == org_id and r.deleted_at is None
+        ][:limit]
 
     def list_by_status(self, status, limit=50):  # noqa: ANN001, ANN202
-        return [r for r in self.rows.values() if r.status == status][:limit]
+        return [
+            r for r in self.rows.values()
+            if r.status == status and r.deleted_at is None
+        ][:limit]
 
     def list_by_category(self, category_id, limit=50):  # noqa: ANN001, ANN202
         return [
-            r for r in self.rows.values() if r.category_id == category_id
+            r for r in self.rows.values()
+            if r.category_id == category_id and r.deleted_at is None
         ][:limit]
+
+    def list_by_tag(self, slug, limit=50):  # noqa: ANN001, ANN202
+        return [
+            r
+            for r in self.rows.values()
+            if r.deleted_at is None
+            and slug in {tag_slug(n) for n in (r.tag_names or [])}
+        ][:limit]
+
+    def mark_deleted(self, activity_id, now):  # noqa: ANN001, ANN202
+        row = self.rows.get(activity_id)
+        if row is None:
+            return None
+        row.deleted_at = now
+        row.updated_at = now
+        return row
+
+    def mark_restored(self, activity_id, now):  # noqa: ANN001, ANN202
+        row = self.rows.get(activity_id)
+        if row is None:
+            return None
+        row.deleted_at = None
+        row.updated_at = now
+        return row
+
+    def list_trash(self, org_id, limit=50):  # noqa: ANN001, ANN202
+        return [
+            r for r in self.rows.values()
+            if r.org_id == org_id and r.deleted_at is not None
+        ][:limit]
+
+    def delete_everything(self, activity_id):  # noqa: ANN001, ANN202
+        self.rows.pop(activity_id, None)
+        return []
 
 
 class FakeCategories(CategoryStore):
@@ -108,6 +154,33 @@ class FakeCategories(CategoryStore):
         )
         self.rows[category_id] = row
         return row
+
+
+class FakeTags(TagStore):
+    def __init__(self) -> None:
+        self.rows: dict[str, Any] = {}
+
+    def get_by_slug(self, slug):  # noqa: ANN001, ANN202
+        return self.rows.get(slug)
+
+    def claim(self, tag_id, slug, name, now):  # noqa: ANN001, ANN202
+        return self.rows.setdefault(
+            slug,
+            SimpleNamespace(
+                slug=slug, tag_id=tag_id, name=name, created_at=now
+            ),
+        )
+
+    def search(self, query, limit=20):  # noqa: ANN001, ANN202
+        needle = query.strip().lower()
+        rows = [
+            r
+            for r in self.rows.values()
+            if not needle
+            or needle in r.slug
+            or needle in r.name.lower()
+        ]
+        return sorted(rows, key=lambda r: r.name.lower())[:limit]
 
 
 class FakeLinks(ActivityLinkStore):
@@ -274,6 +347,7 @@ def make_services() -> tuple[
         categories=categories,
         orgs=orgs,
         access=access,
+        tags=TagService(FakeTags()),
     )
     return service, detail, activities, orgs, access, categories, users, skills
 
@@ -291,6 +365,7 @@ def _fields(service: Any, **overrides: Any) -> Any:
         max_participants=None, start_at=now + timedelta(days=7),
         end_at=None, hours_awarded=4.0, requirements_json=None,
         registration_deadline=None, person_in_charge_id=None,
+        tag_names=[],
     )
     defaults.update(overrides)
     if defaults["slug"] is None:

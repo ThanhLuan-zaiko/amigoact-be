@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from activities.interfaces import (
+from activities.edge_interfaces import (
     ActivityLinkStore,
     ActivityStaffStore,
     RegistrationFormStore,

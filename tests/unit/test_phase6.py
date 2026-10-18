@@ -20,6 +20,7 @@ from stats.service import OrgStatsService
 from tests.unit.activity_fakes import (
     FakeActivities,
     FakeCategories,
+    FakeTags,
     _fields,
     _org_with_owner,
 )
@@ -286,6 +287,7 @@ def test_org_stats_forbidden_for_outsiders() -> None:
 
 def test_discovery_curates_sections() -> None:
     from activities.service import ActivityService
+    from activities.tag_service import TagService
     from tests.unit.member_fakes import FakeAccess
 
     activities = FakeActivities()
@@ -293,7 +295,7 @@ def test_discovery_curates_sections() -> None:
     orgs = FakeOrgs()
     service = ActivityService(
         activities=activities, categories=categories, orgs=orgs,
-        access=FakeAccess(),
+        access=FakeAccess(), tags=TagService(FakeTags()),
     )
     owner = uid()
     org = _org_with_owner(orgs, owner)

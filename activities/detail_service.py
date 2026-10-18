@@ -6,13 +6,13 @@ from dataclasses import dataclass
 from datetime import datetime
 from uuid import UUID
 
-from activities.interfaces import (
+from activities.edge_interfaces import (
     ActivityLinkStore,
     ActivityStaffStore,
-    ActivityStore,
     AnnouncementStore,
     ScheduleStore,
 )
+from activities.interfaces import ActivityStore
 from activities.model import (
     Activity,
     ActivityAnnouncement,
@@ -112,7 +112,11 @@ class ActivityDetailService:
 
     def _org_activity(self, org_id: UUID, activity_id: UUID) -> Activity:
         row = self._activities.get(activity_id)
-        if row is None or row.org_id != org_id:
+        if (
+            row is None
+            or row.org_id != org_id
+            or row.deleted_at is not None
+        ):
             raise NotFoundError("Activity not found.")
         return row
 

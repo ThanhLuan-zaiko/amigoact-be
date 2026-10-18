@@ -4,11 +4,8 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from activities.interfaces import (
-    ActivityEvents,
-    ActivityStore,
-    RegistrationFormStore,
-)
+from activities.edge_interfaces import RegistrationFormStore
+from activities.interfaces import ActivityEvents, ActivityStore
 from core.exceptions import (
     ForbiddenError,
     InvalidRegistrationStateError,
@@ -49,7 +46,11 @@ class FormService:
 
     def _activity(self, org_id: UUID, activity_id: UUID):
         row = self._activities.get(activity_id)
-        if row is None or row.org_id != org_id:
+        if (
+            row is None
+            or row.org_id != org_id
+            or row.deleted_at is not None
+        ):
             raise NotFoundError("Activity not found.")
         return row
 

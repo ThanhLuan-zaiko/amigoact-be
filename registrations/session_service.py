@@ -5,7 +5,7 @@ from __future__ import annotations
 import secrets
 from uuid import UUID
 
-from activities.interfaces import ScheduleStore
+from activities.edge_interfaces import ScheduleStore
 from core.exceptions import (
     AlreadyCheckedInError,
     InvalidRegistrationStateError,

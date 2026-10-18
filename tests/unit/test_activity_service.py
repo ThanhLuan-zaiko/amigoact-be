@@ -68,10 +68,12 @@ def test_lifecycle_edges() -> None:
 def test_lifecycle_publishes_activity_events() -> None:
     """Committed create/update/transition fan out on activities:{org}."""
     from activities.service import ActivityService
+    from activities.tag_service import TagService
     from tests.unit.activity_fakes import (
         FakeActivities,
         FakeActivityEvents,
         FakeCategories,
+        FakeTags,
     )
     from tests.unit.member_fakes import FakeAccess
     from tests.unit.org_fakes import FakeOrgs
@@ -80,7 +82,8 @@ def test_lifecycle_publishes_activity_events() -> None:
     activities, orgs = FakeActivities(), FakeOrgs()
     service = ActivityService(
         activities=activities, categories=FakeCategories(),
-        orgs=orgs, access=FakeAccess(), events=events,
+        orgs=orgs, access=FakeAccess(), tags=TagService(FakeTags()),
+        events=events,
     )
     owner = uuid_utils.uuid7()
     org = _org_with_owner(orgs, owner)
@@ -101,10 +104,12 @@ def test_lifecycle_publishes_activity_events() -> None:
 def test_failed_lifecycle_publishes_nothing() -> None:
     """Rejected mutations must never emit a live event."""
     from activities.service import ActivityService
+    from activities.tag_service import TagService
     from tests.unit.activity_fakes import (
         FakeActivities,
         FakeActivityEvents,
         FakeCategories,
+        FakeTags,
     )
     from tests.unit.member_fakes import FakeAccess
     from tests.unit.org_fakes import FakeOrgs
@@ -113,7 +118,8 @@ def test_failed_lifecycle_publishes_nothing() -> None:
     activities, orgs = FakeActivities(), FakeOrgs()
     service = ActivityService(
         activities=activities, categories=FakeCategories(),
-        orgs=orgs, access=FakeAccess(), events=events,
+        orgs=orgs, access=FakeAccess(), tags=TagService(FakeTags()),
+        events=events,
     )
     owner, outsider = uuid_utils.uuid7(), uuid_utils.uuid7()
     org = _org_with_owner(orgs, owner)
@@ -182,16 +188,21 @@ def test_org_list_requires_membership() -> None:
 
 
 def test_category_scoping() -> None:
-    service, _, _, orgs, _, categories, *_ = _svc()
+    service, _, _, orgs, access, categories, *_ = _svc()
+    from activities.category_service import CategoryService
+
+    categories_svc = CategoryService(
+        categories=categories, orgs=orgs, access=access
+    )
     owner, member = uuid_utils.uuid7(), uuid_utils.uuid7()
     org = _org_with_owner(orgs, owner)
     global_cat = categories.seed("Environment", "environment")
     org_cat = categories.seed("Club Fest", "club-fest", org.id)
 
-    anon = service.list_categories(org.id, None)
+    anon = categories_svc.list_categories(org.id, None)
     assert {c.slug for c in anon} == {"environment"}
     orgs.members[org.id].add(member)
-    scoped = service.list_categories(org.id, member)
+    scoped = categories_svc.list_categories(org.id, member)
     assert {c.slug for c in scoped} == {"environment", "club-fest"}
 
     with pytest.raises(NotFoundError):

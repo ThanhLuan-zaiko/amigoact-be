@@ -7,82 +7,33 @@ from uuid import UUID
 
 from cassandra.cqlengine.connection import get_session
 
+from activities.feed_helpers import _clear_feeds, _feeds, _hydrate
 from activities.interfaces import (
     ActivityFields,
     ActivityStore,
-    CategoryStore,
 )
 from activities.model import (
     ActivitiesByCategory,
     ActivitiesByOrg,
     ActivitiesBySlug,
     ActivitiesByStatus,
+    ActivitiesByTag,
+    ActivitiesTrashByOrg,
     Activity,
-    ActivityCategory,
+    ActivityAnnouncement,
+    ActivityMedia,
+    ActivityPartner,
+    ActivitySchedule,
+    ActivitySkill,
+    ActivitySlot,
+    ActivityStaff,
+    PartnerActivitiesByOrg,
+    RegistrationForm,
+    ScheduleByActivity,
 )
 from core.exceptions import SlugTakenError
-
-
-def _feeds(row: Activity) -> None:
-    """Write every denormalized feed projection for one activity."""
-    ActivitiesByOrg.create(
-        org_id=row.org_id,
-        start_at=row.start_at,
-        activity_id=row.id,
-        title=row.title,
-        status=row.status,
-        campus_id=row.campus_id,
-    )
-    ActivitiesByStatus.create(
-        status=row.status,
-        start_at=row.start_at,
-        activity_id=row.id,
-        org_id=row.org_id,
-        title=row.title,
-    )
-    if row.category_id is not None:
-        ActivitiesByCategory.create(
-            category_id=row.category_id,
-            start_at=row.start_at,
-            activity_id=row.id,
-            org_id=row.org_id,
-            title=row.title,
-        )
-    ActivitiesBySlug.create(
-        org_id=row.org_id,
-        slug=row.slug,
-        activity_id=row.id,
-        title=row.title,
-        status=row.status,
-        start_at=row.start_at,
-    )
-
-
-def _clear_feeds(row: Activity) -> None:
-    """Delete feed rows at the coordinates of the passed snapshot."""
-    ActivitiesByOrg.objects(
-        org_id=row.org_id, start_at=row.start_at, activity_id=row.id
-    ).delete()
-    ActivitiesByStatus.objects(
-        status=row.status, start_at=row.start_at, activity_id=row.id
-    ).delete()
-    if row.category_id is not None:
-        ActivitiesByCategory.objects(
-            category_id=row.category_id,
-            start_at=row.start_at,
-            activity_id=row.id,
-        ).delete()
-    ActivitiesBySlug.objects(org_id=row.org_id, slug=row.slug).delete()
-
-
-def _hydrate(ids: list[UUID]) -> list[Activity]:
-    """Resolve feed-row ids to full activities, preserving order."""
-    rows = {
-        row.id: row
-        for row in (Activity.objects(id=i).first() for i in ids)
-        if row is not None
-    }
-    return [rows[i] for i in ids if i in rows]
+from orgs.media_repository import media_feeds_delete
+from orgs.model import MediaAsset, MediaByOwner
 
 
 class CqlActivityStore(ActivityStore):
@@ -140,6 +91,7 @@ class CqlActivityStore(ActivityStore):
             longitude=fields.longitude,
             is_remote=fields.is_remote,
             registration_deadline=fields.registration_deadline,
+            tag_names=fields.tag_names,
             created_at=now,
             updated_at=now,
         )
@@ -201,6 +153,7 @@ class CqlActivityStore(ActivityStore):
             is_remote=fields.is_remote,
             registration_deadline=fields.registration_deadline,
             campus_id=fields.campus_id,
+            tag_names=fields.tag_names,
             updated_at=now,
         )
         new = self.get(activity_id)
@@ -251,41 +204,100 @@ class CqlActivityStore(ActivityStore):
         )
         return _hydrate([row.activity_id for row in feed])
 
-
-class CqlCategoryStore(CategoryStore):
-    """Catalog reads include global rows plus the org's customs."""
-
-    def get(self, category_id: UUID) -> ActivityCategory | None:
-        return ActivityCategory.objects(id=category_id).first()
-
-    def list(self, org_id: UUID | None) -> list[ActivityCategory]:
-        return sorted(
-            (
-                row
-                for row in ActivityCategory.objects.all()
-                if row.org_id is None or row.org_id == org_id
-            ),
-            key=lambda row: (row.name or "").lower(),
+    def list_by_tag(
+        self, slug: str, limit: int = 50
+    ) -> list[Activity]:
+        feed = list(
+            ActivitiesByTag.objects(tag_slug=slug).limit(limit).all()
         )
+        return _hydrate([row.activity_id for row in feed])
 
-    def create(
-        self,
-        category_id: UUID,
-        org_id: UUID | None,
-        name: str,
-        slug: str,
-        description: str | None,
-        icon: str | None,
-        default_hours: float | None,
-        color: str | None,
-    ) -> ActivityCategory:
-        return ActivityCategory.create(
-            id=category_id,
-            org_id=org_id,
-            name=name,
-            slug=slug,
-            description=description,
-            icon=icon,
-            default_hours=default_hours,
-            color=color,
+    def mark_deleted(
+        self, activity_id: UUID, now: datetime
+    ) -> Activity | None:
+        row = self.get(activity_id)
+        if row is None:
+            return None
+        _clear_feeds(row, keep_slug=True)
+        ActivitiesTrashByOrg.create(
+            org_id=row.org_id,
+            deleted_at=now,
+            activity_id=row.id,
+            title=row.title,
+            status=row.status,
+            start_at=row.start_at,
         )
+        row.deleted_at = now
+        row.updated_at = now
+        row.save()
+        return row
+
+    def mark_restored(
+        self, activity_id: UUID, now: datetime
+    ) -> Activity | None:
+        row = self.get(activity_id)
+        if row is None:
+            return None
+        _feeds(row)
+        if row.deleted_at is not None:
+            ActivitiesTrashByOrg.objects(
+                org_id=row.org_id,
+                deleted_at=row.deleted_at,
+                activity_id=row.id,
+            ).delete()
+        row.deleted_at = None
+        row.updated_at = now
+        row.save()
+        return row
+
+    def list_trash(self, org_id: UUID, limit: int = 50) -> list[Activity]:
+        feed = list(
+            ActivitiesTrashByOrg.objects(org_id=org_id)
+            .limit(limit)
+            .all()
+        )
+        return _hydrate([row.activity_id for row in feed])
+
+    def delete_everything(self, activity_id: UUID) -> list[str]:
+        row = self.get(activity_id)
+        if row is None:
+            return []
+        _clear_feeds(row)
+        if row.deleted_at is not None:
+            ActivitiesTrashByOrg.objects(
+                org_id=row.org_id,
+                deleted_at=row.deleted_at,
+                activity_id=row.id,
+            ).delete()
+        for edge in ActivityPartner.objects(activity_id=activity_id):
+            PartnerActivitiesByOrg.objects(
+                org_id=edge.org_id,
+                start_at=row.start_at,
+                activity_id=activity_id,
+            ).delete()
+            edge.delete()
+        ActivitySkill.objects(activity_id=activity_id).delete()
+        ActivityStaff.objects(activity_id=activity_id).delete()
+        ActivityAnnouncement.objects(activity_id=activity_id).delete()
+        RegistrationForm.objects(activity_id=activity_id).delete()
+        # activity_id is not the schedule PK, so the purge scans once;
+        # it also catches start_at-less schedules the feed never indexed.
+        for schedule in (
+            ActivitySchedule.objects.filter(activity_id=activity_id)
+            .allow_filtering()
+            .all()
+        ):
+            ActivitySlot.objects(schedule_id=schedule.id).delete()
+            schedule.delete()
+        ScheduleByActivity.objects(activity_id=activity_id).delete()
+        ActivityMedia.objects(activity_id=activity_id).delete()
+        paths: list[str] = []
+        for link in MediaByOwner.objects(owner_id=activity_id).all():
+            asset = MediaAsset.objects(asset_id=link.asset_id).first()
+            if asset is not None:
+                paths.append(asset.file_url)
+                media_feeds_delete(asset)
+                asset.delete()
+            link.delete()
+        row.delete()
+        return paths

@@ -44,6 +44,14 @@ class ActivityBody(BaseModel):
     hours_awarded: float = Field(default=0.0, ge=0.0)
     registration_deadline: datetime | None = None
     person_in_charge_id: UUID | None = None
+    # Community tags as display names; the service canonicalizes them
+    # against the global catalog (dedupe by slug, lazy claim).
+    tags: list[str] = Field(default_factory=list, max_length=10)
+
+    @field_validator("tags")
+    @classmethod
+    def _tag_shape(cls, value: list[str]) -> list[str]:
+        return [name.strip() for name in value if name.strip()][:10]
 
     @field_validator("end_at")
     @classmethod
@@ -52,6 +60,21 @@ class ActivityBody(BaseModel):
         if value is not None and start is not None and value <= start:
             raise ValueError("end_at must be after start_at")
         return value
+
+
+class TagRef(BaseModel):
+    """Tag chip on an activity payload: canonical name plus slug."""
+
+    name: str
+    slug: str
+
+
+class TagItem(BaseModel):
+    """One global catalog row for typeahead pickers."""
+
+    id: UUID
+    name: str
+    slug: str
 
 
 class ActivityResponse(BaseModel):
@@ -64,6 +87,7 @@ class ActivityResponse(BaseModel):
     description: str
     category_id: UUID | None
     status: str
+    tags: list[TagRef] = Field(default_factory=list)
     location: str | None
     address: str | None
     city: str | None
@@ -79,6 +103,7 @@ class ActivityResponse(BaseModel):
     published_at: datetime | None
     created_at: datetime
     updated_at: datetime
+    deleted_at: datetime | None = None
 
 
 class ActivitySummary(BaseModel):
@@ -91,6 +116,8 @@ class ActivitySummary(BaseModel):
     status: str
     start_at: datetime | None
     category_id: UUID | None
+    tags: list[TagRef] = Field(default_factory=list)
+    deleted_at: datetime | None = None
 
 
 class DiscoveryBucket(BaseModel):

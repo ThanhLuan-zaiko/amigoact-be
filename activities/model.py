@@ -2,9 +2,25 @@
 
 from __future__ import annotations
 
+import re
+import unicodedata
+
 import core.database  # noqa: F401  (reactor compat shim must run first)
 from core.ids import uuid7
 from cassandra.cqlengine import columns, models
+
+
+def tag_slug(name: str) -> str:
+    """Canonical tag key: ASCII slug like schemas.slugify minus fallback.
+
+    Empty result means the name carries no usable characters and is not a
+    valid tag at all (callers filter it out).
+    """
+    text = unicodedata.normalize("NFKD", name.strip())
+    text = text.replace("đ", "d").replace("Đ", "D")
+    text = "".join(ch for ch in text if not unicodedata.combining(ch))
+    text = re.sub(r"[^a-zA-Z0-9]+", "-", text).strip("-").lower()
+    return re.sub(r"-{2,}", "-", text)
 
 
 class Activity(models.Model):
@@ -37,6 +53,10 @@ class Activity(models.Model):
     is_remote = columns.Boolean(required=False, default=False)
     registration_deadline = columns.DateTime(required=False)
     published_at = columns.DateTime(required=False)
+    # Canonical display names resolved by TagService.ensure; tag_slug(name)
+    # keys the activities_by_tag read model, so no second slug column.
+    tag_names = columns.List(columns.Text, required=False)
+    deleted_at = columns.DateTime(required=False)
     created_at = columns.DateTime(required=True)
     updated_at = columns.DateTime(required=True)
 
@@ -85,6 +105,48 @@ class ActivitiesByCategory(models.Model):
     )
     org_id = columns.UUID(required=True)
     title = columns.Text(required=True)
+
+
+class ActivitiesByTag(models.Model):
+    """Community-tag feed partitioned by canonical slug."""
+
+    __table_name__ = "activities_by_tag"
+    __keyspace__ = "amigoact"
+
+    tag_slug = columns.Text(primary_key=True, partition_key=True)
+    start_at = columns.DateTime(primary_key=True, clustering_order="DESC")
+    activity_id = columns.UUID(
+        primary_key=True, clustering_order="ASC", default=uuid7
+    )
+    org_id = columns.UUID(required=True)
+    title = columns.Text(required=True)
+    status = columns.Text(required=True)
+
+
+class ActivitiesTrashByOrg(models.Model):
+    """Manager trash bin: soft-deleted rows stay listable per org."""
+
+    __table_name__ = "activities_trash_by_org"
+    __keyspace__ = "amigoact"
+
+    org_id = columns.UUID(primary_key=True, partition_key=True)
+    deleted_at = columns.DateTime(primary_key=True, clustering_order="DESC")
+    activity_id = columns.UUID(primary_key=True, clustering_order="ASC")
+    title = columns.Text(required=True)
+    status = columns.Text(required=True)
+    start_at = columns.DateTime(required=False)
+
+
+class TagBySlug(models.Model):
+    """Global folksonomy catalog; the slug row doubles as the LWT claim."""
+
+    __table_name__ = "tags_by_slug"
+    __keyspace__ = "amigoact"
+
+    slug = columns.Text(primary_key=True)
+    tag_id = columns.UUID(required=True)
+    name = columns.Text(required=True)
+    created_at = columns.DateTime(required=True)
 
 
 class ActivityMedia(models.Model):

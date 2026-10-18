@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from activities.interfaces import ActivityMediaStore
+from activities.edge_interfaces import ActivityMediaStore
 from activities.model import ActivityMedia
 
 

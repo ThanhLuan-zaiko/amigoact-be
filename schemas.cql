@@ -527,7 +527,7 @@ CREATE TABLE IF NOT EXISTS users_by_skill (
 );
 
 // -----------------------------------------------------------------------------
-// 5. ACTIVITIES / EVENTS (13 tables)
+// 5. ACTIVITIES / EVENTS (15 tables)
 // -----------------------------------------------------------------------------
 
 CREATE TABLE IF NOT EXISTS activities (
@@ -550,7 +550,8 @@ CREATE TABLE IF NOT EXISTS activities (
     // slug text, ADD person_in_charge_id uuid, ADD address text,
     // ADD city text, ADD latitude decimal, ADD longitude decimal,
     // ADD is_remote boolean, ADD registration_deadline timestamp,
-    // ADD published_at timestamp).
+    // ADD published_at timestamp, ADD tag_names list<text>,
+    // ADD deleted_at timestamp).
     slug text, // unique per org via activities_by_slug (LWT claim)
     person_in_charge_id uuid, // on-site answerable contact, != created_by
     address text,
@@ -560,8 +561,47 @@ CREATE TABLE IF NOT EXISTS activities (
     is_remote boolean,
     registration_deadline timestamp,
     published_at timestamp,
+    // Canonical display names of community tags; the slug derivation is
+    // deterministic (activities/model.py tag_slug), so feeds key off it.
+    tag_names list<text>,
+    // Soft-delete stamp; feeds move to activities_trash_by_org while the
+    // activities_by_slug claim stays so restore keeps the same URL.
+    deleted_at timestamp,
     created_at timestamp,
     updated_at timestamp
+);
+
+// Manager trash bin: soft-deleted activities listed per org, newest
+// deletions first. Feeds are cleared on delete and rewritten on restore.
+CREATE TABLE IF NOT EXISTS activities_trash_by_org (
+    org_id uuid,
+    deleted_at timestamp,
+    activity_id uuid,
+    title text,
+    status text,
+    start_at timestamp,
+    PRIMARY KEY ((org_id), deleted_at, activity_id)
+) WITH CLUSTERING ORDER BY (deleted_at DESC, activity_id ASC);
+
+// Folksonomy read model: community tag -> public activity feed. The
+// partition key is the canonical slug, so no catalog join is needed.
+CREATE TABLE IF NOT EXISTS activities_by_tag (
+    tag_slug text,
+    start_at timestamp,
+    activity_id uuid,
+    org_id uuid,
+    title text,
+    status text,
+    PRIMARY KEY ((tag_slug), start_at, activity_id)
+) WITH CLUSTERING ORDER BY (start_at DESC, activity_id ASC);
+
+// Global tag catalog; the single slug row doubles as the LWT uniqueness
+// claim (first writer's display name stays canonical).
+CREATE TABLE IF NOT EXISTS tags_by_slug (
+    slug text PRIMARY KEY,
+    tag_id uuid,
+    name text,
+    created_at timestamp
 );
 
 CREATE TABLE IF NOT EXISTS activities_by_org (
