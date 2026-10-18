@@ -35,9 +35,14 @@ class ChannelStore(ABC):
         visibility: str,
         created_by: UUID,
         now: datetime,
+        parent_room_id: UUID | None = None,
+        activity_id: UUID | None = None,
     ) -> OrgChatChannelById | None:
-        """Claim the casefolded name (LWT) then write both channel rows.
+        """Claim the casefolded name (LWT) then write the channel rows.
 
+        The claim scope is the parent room for sub-threads (their names
+        are unique per parent) or the org for top-level channels; a
+        thread row additionally mirrors into org_chat_room_threads.
         Returns None when the name is already held by another live
         channel; callers map that to CHANNEL_NAME_TAKEN.
         """
@@ -57,25 +62,32 @@ class ChannelStore(ABC):
         """Every channel row of one org, creation order (uuid7)."""
 
     @abstractmethod
+    def list_room_threads(
+        self, parent_room_id: UUID
+    ) -> list[OrgChatChannelById]:
+        """One room's sub-threads, creation order (uuid7 clustering)."""
+
+    @abstractmethod
     def update_channel(self, channel: OrgChatChannelById) -> None:
-        """Overwrite both channel rows with the (mutated) snapshot."""
+        """Overwrite the channel rows with the (mutated) snapshot."""
 
     @abstractmethod
     def claim_name(
         self,
-        org_id: UUID,
+        scope_id: UUID,
         name_folded: str,
         channel_id: UUID,
         now: datetime,
     ) -> bool:
-        """LWT-claim one channel name; False while a live channel holds it.
+        """LWT-claim one name inside a scope; False while held live.
 
-        A claim owned by a deleted or archived channel is stale: it is
-        released and claimed again inside this call.
+        scope_id is the org for top-level channels and the parent room
+        for sub-threads. A claim owned by a deleted or archived channel
+        is stale: it is released and claimed again inside this call.
         """
 
     @abstractmethod
-    def release_name(self, org_id: UUID, name_folded: str) -> None:
+    def release_name(self, scope_id: UUID, name_folded: str) -> None:
         """Drop a name claim (rename/archive frees it for reuse)."""
 
     @abstractmethod

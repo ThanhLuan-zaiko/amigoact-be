@@ -130,19 +130,25 @@ def test_no_mentions_inside_dm():
     assert notify.calls == []
 
 
-def test_pin_requires_manager_and_replaces_slot():
+def test_pin_requires_manager_and_collects_many():
     svc, chat, orgs, members, users, events, _n, org_id, owner = _world()
     sent = svc.send_message(org_id, owner, "pin me")
+    second = svc.send_message(org_id, owner, "pin me too")
     member = _member(members, users, org_id)
     with pytest.raises(Exception):
         svc.pin_message(org_id, member, sent.message_id)
     svc.pin_message(org_id, owner, sent.message_id)
+    svc.pin_message(org_id, owner, second.message_id)
     page = svc.list_messages(org_id, owner)
-    assert page.pinned is not None
-    assert page.pinned.message_id == sent.message_id
+    assert [p.message_id for p in page.pinned] == [
+        sent.message_id, second.message_id
+    ]
     assert any(c[1] == "message.pinned" for c in events.calls)
-    svc.unpin_message(org_id, owner)
-    assert svc.list_messages(org_id, owner).pinned is None
+    svc.unpin_message(org_id, owner, sent.message_id)
+    page = svc.list_messages(org_id, owner)
+    assert [p.message_id for p in page.pinned] == [second.message_id]
+    svc.unpin_message(org_id, owner, second.message_id)
+    assert svc.list_messages(org_id, owner).pinned == []
 
 
 def test_delete_clears_pin_and_mute_flags():
@@ -150,7 +156,7 @@ def test_delete_clears_pin_and_mute_flags():
     sent = svc.send_message(org_id, owner, "pin me")
     svc.pin_message(org_id, owner, sent.message_id)
     svc.delete_message(org_id, owner, sent.message_id)
-    assert svc.list_messages(org_id, owner).pinned is None
+    assert svc.list_messages(org_id, owner).pinned == []
     svc.set_mute(org_id, owner, True)
     assert svc.list_messages(org_id, owner).muted is True
     svc.set_mute(org_id, owner, False)

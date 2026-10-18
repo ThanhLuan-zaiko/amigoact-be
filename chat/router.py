@@ -86,7 +86,7 @@ def _page(room_id: UUID, viewer_id: UUID, service: ChatService,
         unread=page.unread,
         last_read_message_id=page.last_read_message_id,
         peer_last_read_message_id=page.peer_last_read_message_id,
-        pinned=_to_message(page.pinned) if page.pinned else None,
+        pinned=[_to_message(msg) for msg in page.pinned],
         muted=page.muted,
     )
 

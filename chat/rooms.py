@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 from uuid import UUID
 
 from chat.helpers import bucket_of
+from chat.channel_helpers import can_open_channel
 from chat.channel_interfaces import ChannelStore
 from chat.interfaces import ActivityLookup, ChatStore
 from core.exceptions import ForbiddenError
@@ -52,7 +53,8 @@ def open_room(
     non-participants get the generic org 404; dm_row is None for
     general and activity rooms. The floor stops history scans at the
     room's own creation month. Restricted channels additionally demand
-    a roster seat (or org owner / chat:manage).
+    a roster seat (or org owner / chat:manage); a sub-thread inherits
+    its parent channel's gate.
     """
     dm = chat.get_dm_room(user_id, room_id)
     channel = (
@@ -81,11 +83,8 @@ def open_room(
         raise ForbiddenError("Only org members can do this.")
     if (
         channel is not None
-        and channel.visibility == "restricted"
-        and org.owner_id != user_id
-        and not access.has_permission(org.id, user_id, "chat:manage")
-        and channels.get_channel_member(channel.channel_id, user_id)
-        is None
+        and channels is not None
+        and not can_open_channel(access, channels, org, channel, user_id)
     ):
         access.record(org.id, user_id, action, "chat", room_id, "denied")
         raise ForbiddenError("Only channel members can do this.")

@@ -1,7 +1,9 @@
-"""Named-channel lifecycle: create, list, update, archive, roster.
+"""Named-channel lifecycle: create, list, update, archive.
 
 channel_id doubles as the room id (open_room resolves it), so this
-service only owns channel metadata; posting gates live in the composer.
+service only owns channel metadata; posting gates live in the composer,
+restricted rosters in channel_roster.ChannelRosterService and room
+sub-threads in thread_service.ThreadService.
 """
 
 from __future__ import annotations
@@ -9,18 +11,21 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from chat.dtos import ChannelMemberSnapshot, ChannelSnapshot
+from chat.channel_helpers import (
+    channel_manager,
+    channel_row_or_404,
+    require_channel_manager,
+    require_org_member,
+)
 from chat.channel_interfaces import ChannelStore
-from chat.interfaces import ChatEvents
+from chat.dtos import ChannelSnapshot
+from chat.interfaces import ActivityLookup, ChatEvents
 from chat.rooms import emit_inbox
 from core.exceptions import (
-    ChannelArchivedError,
     ChannelNameTakenError,
-    ChannelNotFoundError,
     ForbiddenError,
     InvalidChannelStateError,
     MemberNotFoundError,
-    NotFoundError,
 )
 from core.security import utc_aware, utcnow
 from orgs.interfaces import (
@@ -38,7 +43,12 @@ CHANNEL_TOPIC_MAX = 200
 
 
 class ChannelService:
-    """Channel CRUD plus restricted-roster management (managers only)."""
+    """Channel CRUD for the org-wide directory.
+
+    Managers own every field; a sub-thread's creator may rename,
+    retopic and archive their own thread while kind/post-policy stay
+    manager-only and visibility stays derived from the parent.
+    """
 
     def __init__(
         self,
@@ -49,6 +59,7 @@ class ChannelService:
         access: AccessControl,
         events: ChatEvents,
         media: MediaRepository | None = None,
+        activities: ActivityLookup | None = None,
     ) -> None:
         self._channels = channels
         self._orgs = orgs
@@ -57,29 +68,21 @@ class ChannelService:
         self._access = access
         self._events = events
         self._media = media
-
-    def _manager(self, org: Organization, actor_id: UUID) -> bool:
-        """True for org owner or a chat:manage holder."""
-        return org.owner_id == actor_id or self._access.has_permission(
-            org.id, actor_id, "chat:manage"
-        )
-
-    def _require_manager(self, org: Organization, actor_id: UUID) -> None:
-        if not self._manager(org, actor_id):
-            self._access.record(
-                org.id, actor_id, "channel.manage", "chat",
-                None, "denied",
-            )
-            raise ForbiddenError("Only chat managers can do this.")
-
-    def _get(self, org_id: UUID, channel_id: UUID):
-        row = self._channels.get_channel_in_org(org_id, channel_id)
-        if row is None:
-            raise ChannelNotFoundError("Channel not found.")
-        return row
+        self._activities = activities
 
     @staticmethod
-    def _snap(row) -> ChannelSnapshot:  # noqa: ANN001
+    def _scope(row) -> UUID:  # noqa: ANN001
+        """Name-claim scope: the parent room for threads, else the org."""
+        return row.parent_room_id or row.org_id
+
+    def _snap(self, row) -> ChannelSnapshot:  # noqa: ANN001
+        activity_id = getattr(row, "activity_id", None)
+        activity_title = None
+        if activity_id is not None and self._activities is not None:
+            activity = self._activities.get(activity_id)
+            activity_title = (
+                getattr(activity, "title", None) if activity else None
+            )
         return ChannelSnapshot(
             channel_id=row.channel_id,
             org_id=row.org_id,
@@ -91,13 +94,10 @@ class ChannelService:
             created_by=row.created_by,
             created_at=utc_aware(row.created_at),
             archived_at=utc_aware(row.archived_at),
+            parent_room_id=getattr(row, "parent_room_id", None),
+            activity_id=activity_id,
+            activity_title=activity_title,
         )
-
-    def _avatar_url(self, asset_id: UUID | None) -> str | None:
-        if asset_id is None or self._media is None:
-            return None
-        asset = self._media.get_asset(asset_id)
-        return f"/media/{asset.file_url}" if asset is not None else None
 
     def _fan(self, action: str, channel_id: UUID, org_id: UUID) -> None:
         emit_inbox(self._events, action, channel_id, org_id)
@@ -107,13 +107,11 @@ class ChannelService:
     ) -> list[ChannelSnapshot]:
         """Visible channels: org-wide live ones, plus restricted rooms
         the viewer sits on. Managers additionally see archived rows so
-        they can restore them."""
+        they can restore them. Sub-threads never list here - they belong
+        to their parent room (ThreadService.list_room_threads)."""
         org = live_org(self._orgs, org_id)
-        if org.owner_id != viewer_id and not is_active_member(
-            self._members, org.id, viewer_id
-        ):
-            raise ForbiddenError("Only org members can do this.")
-        manager = self._manager(org, viewer_id)
+        require_org_member(self._members, org, viewer_id)
+        manager = channel_manager(self._access, org, viewer_id)
         seats = {
             row.channel_id
             for row in self._channels.list_channel_memberships(viewer_id)
@@ -121,7 +119,8 @@ class ChannelService:
         return [
             self._snap(row)
             for row in self._channels.list_channels(org_id)
-            if (row.archived_at is None or manager)
+            if getattr(row, "parent_room_id", None) is None
+            and (row.archived_at is None or manager)
             and (
                 row.visibility != "restricted"
                 or manager
@@ -141,7 +140,7 @@ class ChannelService:
         member_ids: list[UUID] | tuple[UUID, ...] = (),
     ) -> ChannelSnapshot:
         org = live_org(self._orgs, org_id)
-        self._require_manager(org, actor_id)
+        require_channel_manager(self._access, org, actor_id)
         name = (name or "").strip()
         if not name or len(name) > CHANNEL_NAME_MAX:
             raise InvalidChannelStateError(
@@ -198,8 +197,28 @@ class ChannelService:
         archived: bool | None = None,
     ) -> ChannelSnapshot:
         org = live_org(self._orgs, org_id)
-        self._require_manager(org, actor_id)
-        row = self._get(org_id, channel_id)
+        row = channel_row_or_404(self._channels, org_id, channel_id)
+        manager = channel_manager(self._access, org, actor_id)
+        creator = (
+            getattr(row, "parent_room_id", None) is not None
+            and row.created_by == actor_id
+        )
+        if not manager and not creator:
+            self._access.record(
+                org.id, actor_id, "channel.update", "chat",
+                channel_id, "denied",
+            )
+            raise ForbiddenError("Only chat managers can do this.")
+        if not manager and (
+            kind is not None
+            or post_policy is not None
+            or visibility is not None
+        ):
+            raise ForbiddenError("Only chat managers can do this.")
+        if row.parent_room_id is not None and visibility is not None:
+            raise InvalidChannelStateError(
+                "Threads inherit the parent room's audience."
+            )
         now = utcnow()
         release: str | None = None
         if name is not None:
@@ -210,7 +229,7 @@ class ChannelService:
                 )
             if clean.casefold() != row.name_folded:
                 if not self._channels.claim_name(
-                    org_id, clean.casefold(), channel_id, now
+                    self._scope(row), clean.casefold(), channel_id, now
                 ):
                     raise ChannelNameTakenError(
                         "A channel with that name exists."
@@ -229,7 +248,7 @@ class ChannelService:
             self._set_archived(row, org, actor_id, archived, now)
         self._channels.update_channel(row)
         if release is not None:
-            self._channels.release_name(org_id, release)
+            self._channels.release_name(self._scope(row), release)
         self._fan("channel.updated", channel_id, org_id)
         self._access.record(
             org_id, actor_id, "channel.update", "chat",
@@ -245,103 +264,15 @@ class ChannelService:
         archived: bool,
         now: datetime,
     ) -> None:
+        scope = self._scope(row)
         if archived and row.archived_at is None:
             row.archived_at, row.archived_by = now, actor_id
-            self._channels.release_name(org.id, row.name_folded)
+            self._channels.release_name(scope, row.name_folded)
         elif not archived and row.archived_at is not None:
             if not self._channels.claim_name(
-                org.id, row.name_folded, row.channel_id, now
+                scope, row.name_folded, row.channel_id, now
             ):
                 raise ChannelNameTakenError(
                     "A channel with that name exists."
                 )
             row.archived_at = row.archived_by = None
-
-    def list_channel_members(
-        self, org_id: UUID, channel_id: UUID, viewer_id: UUID
-    ) -> list[ChannelMemberSnapshot]:
-        """Roster of one restricted channel (managers and seated members)."""
-        org = live_org(self._orgs, org_id)
-        row = self._get(org_id, channel_id)
-        seated = self._channels.get_channel_member(
-            channel_id, viewer_id
-        ) is not None
-        if row.visibility == "restricted" and not (
-            self._manager(org, viewer_id) or seated
-        ):
-            raise ForbiddenError("Only channel members can do this.")
-        if org.owner_id != viewer_id and not is_active_member(
-            self._members, org.id, viewer_id
-        ):
-            raise ForbiddenError("Only org members can do this.")
-        out = []
-        for seat in self._channels.list_channel_members(channel_id):
-            brief = self._users.get_brief(seat.user_id)
-            out.append(
-                ChannelMemberSnapshot(
-                    user_id=seat.user_id,
-                    full_name=brief.full_name if brief else "Unknown user",
-                    added_at=utc_aware(seat.added_at),
-                    avatar_url=self._avatar_url(
-                        getattr(brief, "avatar_media_id", None)
-                    ),
-                )
-            )
-        return out
-
-    def add_channel_member(
-        self, org_id: UUID, channel_id: UUID, actor_id: UUID, user_id: UUID
-    ) -> ChannelMemberSnapshot:
-        org = live_org(self._orgs, org_id)
-        self._require_manager(org, actor_id)
-        row = self._get(org_id, channel_id)
-        if row.visibility != "restricted":
-            raise InvalidChannelStateError(
-                "Seats only apply to restricted channels."
-            )
-        if row.archived_at is not None:
-            raise ChannelArchivedError("This channel is archived.")
-        if user_id != org.owner_id and not is_active_member(
-            self._members, org.id, user_id
-        ):
-            raise MemberNotFoundError(
-                "Channel seats require active org members."
-            )
-        now = utcnow()
-        self._channels.add_channel_member(
-            channel_id, org_id, user_id, actor_id, now
-        )
-        brief = self._users.get_brief(user_id)
-        self._access.record(
-            org_id, actor_id, "channel.member_add", "chat",
-            user_id, "allowed",
-        )
-        return ChannelMemberSnapshot(
-            user_id=user_id,
-            full_name=brief.full_name if brief else "Unknown user",
-            added_at=now,
-            avatar_url=self._avatar_url(
-                getattr(brief, "avatar_media_id", None)
-            ),
-        )
-
-    def remove_channel_member(
-        self, org_id: UUID, channel_id: UUID, actor_id: UUID, user_id: UUID
-    ) -> None:
-        org = live_org(self._orgs, org_id)
-        self._require_manager(org, actor_id)
-        row = self._get(org_id, channel_id)
-        if row.visibility != "restricted":
-            raise InvalidChannelStateError(
-                "Seats only apply to restricted channels."
-            )
-        if (
-            self._channels.get_channel_member(channel_id, user_id)
-            is None
-        ):
-            raise NotFoundError("Channel member not found.")
-        self._channels.remove_channel_member(channel_id, user_id)
-        self._access.record(
-            org_id, actor_id, "channel.member_remove", "chat",
-            user_id, "allowed",
-        )

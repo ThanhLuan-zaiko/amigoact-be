@@ -30,10 +30,6 @@ class MarkReadRequest(BaseModel):
     message_id: UUID
 
 
-class PinRequest(BaseModel):
-    message_id: UUID
-
-
 class ReactionRequest(BaseModel):
     """Toggle one emoji from the fixed reaction palette."""
 
@@ -90,8 +86,9 @@ class ChatPageResponse(BaseModel):
     unread: int = 0
     last_read_message_id: UUID | None = None
     peer_last_read_message_id: UUID | None = None
-    # Phase 3: pinned bar payload (same shape as a message) + mute flag.
-    pinned: ChatMessageResponse | None = None
+    # Pinned bar: every pinned message (message shape), oldest first,
+    # plus the caller's mute flag.
+    pinned: list[ChatMessageResponse] = []
     muted: bool = False
 
 
@@ -195,6 +192,9 @@ class InboxRoomResponse(BaseModel):
     # Channel rows only: composer gate + display label.
     post_policy: str | None = None
     channel_kind: str | None = None
+    # Sub-thread rows only: parent room + optional linked activity.
+    parent_room_id: UUID | None = None
+    activity_id: UUID | None = None
 
 
 class ChatInboxResponse(BaseModel):
@@ -202,7 +202,11 @@ class ChatInboxResponse(BaseModel):
 
 
 class ChannelResponse(BaseModel):
-    """One named channel of an org."""
+    """One named channel of an org.
+
+    parent_room_id set means the row is a sub-thread of that room;
+    activity_id/activity_title carry the optional linked activity.
+    """
 
     channel_id: UUID
     org_id: UUID
@@ -214,10 +218,27 @@ class ChannelResponse(BaseModel):
     created_by: UUID
     created_at: datetime | None = None
     archived_at: datetime | None = None
+    parent_room_id: UUID | None = None
+    activity_id: UUID | None = None
+    activity_title: str | None = None
 
 
 class ChannelListResponse(BaseModel):
     items: list[ChannelResponse]
+
+
+class ThreadCreateRequest(BaseModel):
+    """Sub-thread payload: audience derives from the parent room."""
+
+    name: str = Field(min_length=1, max_length=80)
+    topic: str = Field(default="", max_length=200)
+    kind: str = Field(default="text", pattern="^(text|report|task)$")
+    post_policy: str = Field(
+        default="everyone", pattern="^(everyone|managers)$"
+    )
+    activity_id: UUID | None = None
+
+    _name = field_validator("name", mode="before")(_trim)  # noqa: SLF001
 
 
 class ChannelCreateRequest(BaseModel):

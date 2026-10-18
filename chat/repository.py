@@ -23,7 +23,7 @@ from chat.model import (
     OrgRoomMediaByAuthor,
     OrgRoomMessage,
     OrgRoomMute,
-    OrgRoomPin,
+    OrgRoomPinV2,
     OrgRoomReaction,
     OrgRoomRead,
 )
@@ -249,18 +249,12 @@ class CqlChatStore(ChatStore):
         return list(OrgRoomRead.objects(room_id=room_id).all())
 
     def set_reaction(
-        self,
-        room_id: UUID,
-        message_id: UUID,
-        user_id: UUID,
-        emoji: str,
-        now: datetime,
+        self, room_id: UUID, message_id: UUID,
+        user_id: UUID, emoji: str, now: datetime,
     ) -> bool:
         key = dict(
-            room_id=room_id,
-            message_id=message_id,
-            emoji=emoji,
-            user_id=user_id,
+            room_id=room_id, message_id=message_id,
+            emoji=emoji, user_id=user_id,
         )
         existing = OrgRoomReaction.objects(**key).first()
         if existing is not None:
@@ -274,26 +268,29 @@ class CqlChatStore(ChatStore):
     ) -> list[OrgRoomReaction]:
         return list(
             OrgRoomReaction.objects(
-                room_id=room_id, message_id=message_id
-            ).all()
+                room_id=room_id, message_id=message_id).all()
         )
 
     def set_pin(
-        self,
-        room_id: UUID,
-        message_id: UUID,
-        pinned_by: UUID,
-        now: datetime,
+        self, room_id: UUID, message_id: UUID,
+        pinned_by: UUID, now: datetime,
     ) -> None:
-        OrgRoomPin.objects(room_id=room_id).update(
-            message_id=message_id, pinned_by=pinned_by, pinned_at=now
-        )
+        OrgRoomPinV2.objects(
+            room_id=room_id, message_id=message_id
+        ).update(pinned_by=pinned_by, pinned_at=now)
 
-    def clear_pin(self, room_id: UUID) -> None:
-        OrgRoomPin.objects(room_id=room_id).delete()
+    def clear_pin(self, room_id: UUID, message_id: UUID) -> None:
+        OrgRoomPinV2.objects(
+            room_id=room_id, message_id=message_id).delete()
 
-    def get_pin(self, room_id: UUID) -> OrgRoomPin | None:
-        return OrgRoomPin.objects(room_id=room_id).first()
+    def get_pin(
+        self, room_id: UUID, message_id: UUID
+    ) -> OrgRoomPinV2 | None:
+        return OrgRoomPinV2.objects(
+            room_id=room_id, message_id=message_id).first()
+
+    def list_pins(self, room_id: UUID) -> list[OrgRoomPinV2]:
+        return list(OrgRoomPinV2.objects(room_id=room_id).all())
 
     def set_mute(self, user_id: UUID, room_id: UUID, now: datetime) -> None:
         OrgRoomMute.objects(user_id=user_id, room_id=room_id).update(

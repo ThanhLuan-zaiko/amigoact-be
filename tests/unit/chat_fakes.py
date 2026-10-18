@@ -197,16 +197,22 @@ class FakeChatStore(ChatStore):
 
     def set_pin(self, room_id, message_id, pinned_by, now):  # noqa: ANN001, ANN202
         self.pins = getattr(self, "pins", None) or {}
-        self.pins[room_id] = SimpleNamespace(
+        self.pins[(room_id, message_id)] = SimpleNamespace(
             room_id=room_id, message_id=message_id,
             pinned_by=pinned_by, pinned_at=now,
         )
 
-    def clear_pin(self, room_id):  # noqa: ANN001, ANN202
-        getattr(self, "pins", {}).pop(room_id, None)
+    def clear_pin(self, room_id, message_id):  # noqa: ANN001, ANN202
+        getattr(self, "pins", {}).pop((room_id, message_id), None)
 
-    def get_pin(self, room_id):  # noqa: ANN001, ANN202
-        return getattr(self, "pins", {}).get(room_id)
+    def get_pin(self, room_id, message_id):  # noqa: ANN001, ANN202
+        return getattr(self, "pins", {}).get((room_id, message_id))
+
+    def list_pins(self, room_id):  # noqa: ANN001, ANN202
+        return [
+            p for p in getattr(self, "pins", {}).values()
+            if p.room_id == room_id
+        ]
 
     def set_mute(self, user_id, room_id, now):  # noqa: ANN001, ANN202
         self.mutes = getattr(self, "mutes", None) or {}

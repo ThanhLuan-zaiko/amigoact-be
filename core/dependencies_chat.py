@@ -19,10 +19,12 @@ from core.dependencies import (
 )
 
 if TYPE_CHECKING:
+    from chat.channel_roster import ChannelRosterService
     from chat.channel_service import ChannelService
     from chat.inbox_service import ChatInboxService
     from chat.media_service import ChatMediaService
     from chat.service import ChatService
+    from chat.thread_service import ThreadService
     from notifications.service import NotificationService
     from rbac.interfaces import AccessControl
 
@@ -115,6 +117,7 @@ def get_channel_service(
     access: AccessControl = Depends(get_access_control),
 ) -> ChannelService:
     """Build one ChannelService per request over the channel tables."""
+    from activities.repository import CqlActivityStore
     from chat.channel_repository import CqlChannelStore
     from chat.channel_service import ChannelService
     from chat.events import WsChatEvents
@@ -132,6 +135,53 @@ def get_channel_service(
             getattr(request.app.state, "ws_manager", None)
         ),
         media=CqlMediaRepository(),
+        activities=CqlActivityStore(settings.scylla_keyspace),
+    )
+
+
+def get_channel_roster_service(
+    settings: Settings = Depends(get_settings),
+    access: AccessControl = Depends(get_access_control),
+) -> ChannelRosterService:
+    """Build one ChannelRosterService per request (restricted seats)."""
+    from chat.channel_repository import CqlChannelStore
+    from chat.channel_roster import ChannelRosterService
+    from orgs.media_repository import CqlMediaRepository
+    from orgs.member_repository import CqlMemberRepository
+    from orgs.repository import CqlOrgRepository
+
+    return ChannelRosterService(
+        channels=CqlChannelStore(settings.scylla_keyspace),
+        orgs=CqlOrgRepository(settings.scylla_keyspace),
+        members=CqlMemberRepository(),
+        users=user_directory(settings),
+        access=access,
+        media=CqlMediaRepository(),
+    )
+
+
+def get_thread_service(
+    request: Request,
+    settings: Settings = Depends(get_settings),
+    access: AccessControl = Depends(get_access_control),
+) -> ThreadService:
+    """Build one ThreadService per request over the channel tables."""
+    from activities.repository import CqlActivityStore
+    from chat.channel_repository import CqlChannelStore
+    from chat.events import WsChatEvents
+    from chat.thread_service import ThreadService
+    from orgs.member_repository import CqlMemberRepository
+    from orgs.repository import CqlOrgRepository
+
+    return ThreadService(
+        channels=CqlChannelStore(settings.scylla_keyspace),
+        orgs=CqlOrgRepository(settings.scylla_keyspace),
+        members=CqlMemberRepository(),
+        access=access,
+        events=WsChatEvents(
+            getattr(request.app.state, "ws_manager", None)
+        ),
+        activities=CqlActivityStore(settings.scylla_keyspace),
     )
 
 

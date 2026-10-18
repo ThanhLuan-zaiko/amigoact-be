@@ -305,3 +305,37 @@ def message_snapshot(
         reactions=tuple(reactions),
         mentions=decode_mentions(getattr(row, "mentions_json", None)),
     )
+
+
+def pinned_snapshots(
+    chat,  # noqa: ANN001
+    users,  # noqa: ANN001
+    room_id: UUID,
+    viewer_id: UUID,
+    cipher=None,  # noqa: ANN001
+    media=None,  # noqa: ANN001
+) -> list[ChatMessageSnapshot]:
+    """Every pinned message of a room as a snapshot, oldest pin first.
+
+    Pins whose target vanished without cleanup are skipped rather than
+    breaking the page.
+    """
+    out: list[ChatMessageSnapshot] = []
+    for pin in sorted(
+        chat.list_pins(room_id), key=lambda p: p.pinned_at
+    ):
+        row = chat.get(
+            room_id, bucket_of_uuid(pin.message_id), pin.message_id
+        )
+        if row is None:
+            continue
+        reactions = tally_reactions(
+            chat.list_reactions(row.room_id, row.message_id), viewer_id
+        )
+        out.append(
+            message_snapshot(
+                users, row, cipher=cipher,
+                reactions=reactions, media=media,
+            )
+        )
+    return out

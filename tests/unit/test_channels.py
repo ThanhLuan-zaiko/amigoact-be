@@ -6,10 +6,12 @@ from uuid import UUID
 
 import pytest
 
+from chat.channel_roster import ChannelRosterService
 from chat.channel_service import ChannelService
 from chat.composer import ChatComposer
 from chat.inbox_service import ChatInboxService
 from chat.service import ChatService
+from chat.thread_service import ThreadService
 from core.exceptions import (
     ChannelArchivedError,
     ChannelNameTakenError,
@@ -49,7 +51,13 @@ def _world():
     org_id = add_org(orgs, members, users, owner)
     service = ChannelService(
         channels, orgs, members, users, access, events,
-        media=FakeMedia(),
+        media=FakeMedia(), activities=activities,
+    )
+    roster = ChannelRosterService(
+        channels, orgs, members, users, access, media=FakeMedia(),
+    )
+    threads = ThreadService(
+        channels, orgs, members, access, events, activities,
     )
     composer = ChatComposer(
         chat, orgs, members, users, access, events,
@@ -60,8 +68,8 @@ def _world():
         media=FakeMedia(), composer=composer, channels=channels,
     )
     return (
-        service, rooms, chat, channels, orgs, members, users,
-        access, org_id, owner,
+        service, roster, threads, rooms, chat, channels, orgs, members,
+        users, access, org_id, owner,
     )
 
 
@@ -88,7 +96,7 @@ def _create(svc, org_id, actor, **kw):  # noqa: ANN001, ANN201, ANN202
 
 
 def test_create_requires_manager() -> None:
-    svc, _, _, _, _, members, users, _, org_id, _ = _world()
+    svc, _, _, _, _, _, _, members, users, _, org_id, _ = _world()
     member = _member(members, users, org_id)
     with pytest.raises(ForbiddenError):
         _create(svc, org_id, member)
@@ -133,9 +141,10 @@ def test_rename_conflict_and_release() -> None:
 
 
 def test_restricted_acl() -> None:
-    svc, rooms, _, channels, _, members, users, access, org_id, owner = (
-        _world()
-    )
+    (
+        svc, roster, _, rooms, _, _channels, _orgs,
+        members, users, access, org_id, owner,
+    ) = _world()
     member = _member(members, users, org_id)
     snap = _create(svc, org_id, owner, visibility="restricted")
     with pytest.raises(ForbiddenError):
@@ -143,12 +152,15 @@ def test_restricted_acl() -> None:
     assert rooms.list_messages(snap.channel_id, owner).items == []
     mgr = _manager(access, members, users, org_id)
     assert rooms.list_messages(snap.channel_id, mgr).items == []
-    svc.add_channel_member(org_id, snap.channel_id, owner, member)
+    roster.add_channel_member(org_id, snap.channel_id, owner, member)
     assert rooms.list_messages(snap.channel_id, member).items == []
 
 
 def test_post_policy_managers() -> None:
-    svc, rooms, _, _, _, members, users, access, org_id, owner = _world()
+    (
+        svc, _roster, _threads, rooms, _chat, _ch, _o,
+        members, users, access, org_id, owner,
+    ) = _world()
     snap = _create(svc, org_id, owner, post_policy="managers")
     member = _member(members, users, org_id)
     with pytest.raises(ForbiddenError):
@@ -159,7 +171,10 @@ def test_post_policy_managers() -> None:
 
 
 def test_archived_gates_writes() -> None:
-    svc, rooms, _, _, _, members, users, _, org_id, owner = _world()
+    (
+        svc, _r, _t, rooms, _c, _ch, _o,
+        members, users, _a, org_id, owner,
+    ) = _world()
     snap = _create(svc, org_id, owner)
     sent = rooms.send_message(snap.channel_id, owner, "before")
     svc.update_channel(org_id, snap.channel_id, owner, archived=True)
@@ -175,26 +190,38 @@ def test_archived_gates_writes() -> None:
 
 
 def test_seat_management_rules() -> None:
-    svc, _, _, _, _, members, users, _, org_id, owner = _world()
+    (
+        svc, roster_svc, _t, _r, _c, _ch, _o,
+        members, users, _a, org_id, owner,
+    ) = _world()
     member = _member(members, users, org_id)
     open_row = _create(svc, org_id, owner, name="open")
     with pytest.raises(InvalidChannelStateError):
-        svc.add_channel_member(org_id, open_row.channel_id, owner, member)
+        roster_svc.add_channel_member(
+            org_id, open_row.channel_id, owner, member
+        )
     row = _create(svc, org_id, owner, name="locked", visibility="restricted")
     outsider = _uid()
     with pytest.raises(MemberNotFoundError):
-        svc.add_channel_member(org_id, row.channel_id, owner, outsider)
-    seat = svc.add_channel_member(org_id, row.channel_id, owner, member)
+        roster_svc.add_channel_member(org_id, row.channel_id, owner, outsider)
+    seat = roster_svc.add_channel_member(
+        org_id, row.channel_id, owner, member
+    )
     assert seat.full_name.startswith("Name")
     with pytest.raises(NotFoundError):
-        svc.remove_channel_member(org_id, row.channel_id, owner, _uid())
-    svc.remove_channel_member(org_id, row.channel_id, owner, member)
-    roster = svc.list_channel_members(org_id, row.channel_id, owner)
+        roster_svc.remove_channel_member(
+            org_id, row.channel_id, owner, _uid()
+        )
+    roster_svc.remove_channel_member(org_id, row.channel_id, owner, member)
+    roster = roster_svc.list_channel_members(org_id, row.channel_id, owner)
     assert {item.user_id for item in roster} == {owner}
 
 
 def test_list_channels_visibility() -> None:
-    svc, _, _, _, _, members, users, access, org_id, owner = _world()
+    (
+        svc, roster_svc, _t, _r, _c, _ch, _o,
+        members, users, access, org_id, owner,
+    ) = _world()
     member = _member(members, users, org_id)
     mgr = _manager(access, members, users, org_id)
     _create(svc, org_id, owner, name="public")
@@ -210,15 +237,18 @@ def test_list_channels_visibility() -> None:
     # Managers also see archived rows so they can restore them.
     names = {c.name for c in svc.list_channels(org_id, mgr)}
     assert names == {"public", "secret", "gone"}
-    svc.add_channel_member(org_id, locked.channel_id, owner, member)
+    roster_svc.add_channel_member(
+        org_id, locked.channel_id, owner, member
+    )
     names = {c.name for c in svc.list_channels(org_id, member)}
     assert names == {"public", "secret"}
 
 
 def test_inbox_enumerates_visible_channels() -> None:
-    svc, _, chat, channels, orgs, members, users, access, org_id, owner = (
-        _world()
-    )
+    (
+        svc, _roster, _threads, _rooms, chat, channels, orgs,
+        members, users, access, org_id, owner,
+    ) = _world()
     member = _member(members, users, org_id)
     svc.create_channel(
         org_id, owner, "reports", "", "report", "managers",

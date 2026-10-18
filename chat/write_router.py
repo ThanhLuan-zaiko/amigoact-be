@@ -15,7 +15,6 @@ from chat.schemas import (
     AttachmentResponse,
     ChatMessageResponse,
     EditMessageRequest,
-    PinRequest,
     ReactionRequest,
 )
 from chat.service import ChatService
@@ -79,28 +78,29 @@ def toggle_reaction(
     )
 
 
-@router.put("/chat/rooms/{room_id}/pin", status_code=204,
+@router.put("/chat/rooms/{room_id}/pins/{message_id}", status_code=204,
             response_class=Response, response_model=None)
 def pin_message(
     room_id: UUID,
-    body: PinRequest,
+    message_id: UUID,
     current_user: CurrentUser = Depends(get_current_user),
     service: ChatService = Depends(get_chat_service),
 ) -> Response:
-    """Managers pin one message; the slot holds only the latest pin."""
-    service.pin_message(room_id, current_user.id, body.message_id)
+    """Managers pin one message; a room holds up to 20 pins."""
+    service.pin_message(room_id, current_user.id, message_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@router.delete("/chat/rooms/{room_id}/pin", status_code=204,
+@router.delete("/chat/rooms/{room_id}/pins/{message_id}", status_code=204,
                response_class=Response, response_model=None)
 def unpin_message(
     room_id: UUID,
+    message_id: UUID,
     current_user: CurrentUser = Depends(get_current_user),
     service: ChatService = Depends(get_chat_service),
 ) -> Response:
-    """Managers clear the room's pinned slot."""
-    service.unpin_message(room_id, current_user.id)
+    """Managers drop one pinned message."""
+    service.unpin_message(room_id, current_user.id, message_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 

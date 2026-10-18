@@ -21,11 +21,12 @@ from chat.model import (
     OrgChatChannelMember,
     OrgChatChannelMembership,
     OrgChatChannelName,
+    OrgChatRoomThread,
 )
 
 
-def _mirror(row: OrgChatChannel) -> OrgChatChannelById:
-    """Project an org-partition row into the by-id row shape."""
+def _mirror(row) -> OrgChatChannelById:  # noqa: ANN001
+    """Project an org/thread-partition row into the by-id row shape."""
     return OrgChatChannelById(
         channel_id=row.channel_id,
         org_id=row.org_id,
@@ -35,6 +36,8 @@ def _mirror(row: OrgChatChannel) -> OrgChatChannelById:
         kind=row.kind,
         post_policy=row.post_policy,
         visibility=row.visibility,
+        parent_room_id=getattr(row, "parent_room_id", None),
+        activity_id=getattr(row, "activity_id", None),
         created_by=row.created_by,
         created_at=row.created_at,
         archived_at=row.archived_at,
@@ -49,25 +52,26 @@ class CqlChannelStore(ChannelStore):
         self._keyspace = keyspace
 
     def _claim_once(
-        self, org_id: UUID, name_folded: str, channel_id: UUID, now: datetime
+        self, scope_id: UUID, name_folded: str, channel_id: UUID,
+        now: datetime,
     ) -> None:
         get_session().execute(
             f"INSERT INTO {self._keyspace}.org_chat_channel_names"
             " (org_id, name_folded, channel_id, created_at)"
             " VALUES (%s, %s, %s, %s) IF NOT EXISTS",
-            [org_id, name_folded, channel_id, now],
+            [scope_id, name_folded, channel_id, now],
         )
 
     def claim_name(
         self,
-        org_id: UUID,
+        scope_id: UUID,
         name_folded: str,
         channel_id: UUID,
         now: datetime,
     ) -> bool:
-        self._claim_once(org_id, name_folded, channel_id, now)
+        self._claim_once(scope_id, name_folded, channel_id, now)
         claim = OrgChatChannelName.objects(
-            org_id=org_id, name_folded=name_folded
+            org_id=scope_id, name_folded=name_folded
         ).first()
         if claim is None:
             raise RuntimeError("channel name claim did not persist")
@@ -78,16 +82,16 @@ class CqlChannelStore(ChannelStore):
             return False
         # Stale claim (holder deleted mid-flight or already archived):
         # release and retry once, as documented on the port.
-        self.release_name(org_id, name_folded)
-        self._claim_once(org_id, name_folded, channel_id, now)
+        self.release_name(scope_id, name_folded)
+        self._claim_once(scope_id, name_folded, channel_id, now)
         claim = OrgChatChannelName.objects(
-            org_id=org_id, name_folded=name_folded
+            org_id=scope_id, name_folded=name_folded
         ).first()
         return claim is not None and claim.channel_id == channel_id
 
-    def release_name(self, org_id: UUID, name_folded: str) -> None:
+    def release_name(self, scope_id: UUID, name_folded: str) -> None:
         OrgChatChannelName.objects(
-            org_id=org_id, name_folded=name_folded
+            org_id=scope_id, name_folded=name_folded
         ).delete()
 
     def create_channel(
@@ -100,10 +104,13 @@ class CqlChannelStore(ChannelStore):
         visibility: str,
         created_by: UUID,
         now: datetime,
+        parent_room_id: UUID | None = None,
+        activity_id: UUID | None = None,
     ) -> OrgChatChannelById | None:
         channel_id = uuid7()
         name_folded = name.casefold()
-        if not self.claim_name(org_id, name_folded, channel_id, now):
+        scope_id = parent_room_id or org_id
+        if not self.claim_name(scope_id, name_folded, channel_id, now):
             return None
         row = OrgChatChannelById(
             channel_id=channel_id,
@@ -114,6 +121,8 @@ class CqlChannelStore(ChannelStore):
             kind=kind,
             post_policy=post_policy,
             visibility=visibility,
+            parent_room_id=parent_room_id,
+            activity_id=activity_id,
             created_by=created_by,
             created_at=now,
         )
@@ -128,6 +137,8 @@ class CqlChannelStore(ChannelStore):
             kind=row.kind,
             post_policy=row.post_policy,
             visibility=row.visibility,
+            parent_room_id=row.parent_room_id,
+            activity_id=row.activity_id,
             created_by=row.created_by,
             created_at=row.created_at,
             archived_at=row.archived_at,
@@ -139,6 +150,17 @@ class CqlChannelStore(ChannelStore):
         OrgChatChannelById.objects(channel_id=row.channel_id).update(
             org_id=row.org_id, **fields
         )
+        if row.parent_room_id is not None:
+            # Thread mirror keeps the parent-room partition in sync;
+            # its key never changes (threads never re-parent).
+            thread_fields = {
+                key: fields[key] for key in fields
+                if key != "parent_room_id"
+            }
+            OrgChatRoomThread.objects(
+                parent_room_id=row.parent_room_id,
+                channel_id=row.channel_id,
+            ).update(org_id=row.org_id, **thread_fields)
 
     def update_channel(self, channel: OrgChatChannelById) -> None:
         self._write(channel)
@@ -154,6 +176,14 @@ class CqlChannelStore(ChannelStore):
 
     def list_channels(self, org_id: UUID) -> list[OrgChatChannelById]:
         rows = OrgChatChannel.objects(org_id=org_id).all()
+        return [_mirror(row) for row in rows]
+
+    def list_room_threads(
+        self, parent_room_id: UUID
+    ) -> list[OrgChatChannelById]:
+        rows = OrgChatRoomThread.objects(
+            parent_room_id=parent_room_id
+        ).all()
         return [_mirror(row) for row in rows]
 
     def add_channel_member(

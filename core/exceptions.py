@@ -269,6 +269,11 @@ class ChannelArchivedError(DomainError):
     status = 409
 
 
+class PinLimitReachedError(DomainError):
+    code = "PIN_LIMIT_REACHED"
+    status = 409
+
+
 class InvalidChannelStateError(DomainError):
     code = "INVALID_CHANNEL_STATE"
     status = 400

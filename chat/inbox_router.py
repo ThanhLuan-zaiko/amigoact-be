@@ -42,6 +42,8 @@ def list_inbox(
                 muted=item.muted,
                 post_policy=item.post_policy,
                 channel_kind=item.channel_kind,
+                parent_room_id=item.parent_room_id,
+                activity_id=item.activity_id,
             )
             for item in service.list_inbox(current_user.id)
         ]

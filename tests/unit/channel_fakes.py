@@ -15,21 +15,25 @@ class FakeChannelStore(ChannelStore):
 
     def __init__(self) -> None:
         self.channels: dict[UUID, Any] = {}
+        # Claims key on the scope id: org for channels, parent room for
+        # threads - mirroring org_chat_channel_names partitioning.
         self.names: dict[tuple[UUID, str], UUID] = {}
         self.seats: dict[tuple[UUID, UUID], Any] = {}
 
     def create_channel(  # noqa: ANN201
         self, org_id, name, topic, kind, post_policy, visibility,
-        created_by, now,
+        created_by, now, parent_room_id=None, activity_id=None,
     ):
         channel_id = _uid()
         folded = name.casefold()
-        if not self.claim_name(org_id, folded, channel_id, now):
+        scope = parent_room_id or org_id
+        if not self.claim_name(scope, folded, channel_id, now):
             return None
         row = SimpleNamespace(
             channel_id=channel_id, org_id=org_id, name=name,
             name_folded=folded, topic=topic, kind=kind,
             post_policy=post_policy, visibility=visibility,
+            parent_room_id=parent_room_id, activity_id=activity_id,
             created_by=created_by, created_at=now,
             archived_at=None, archived_by=None,
         )
@@ -48,22 +52,29 @@ class FakeChannelStore(ChannelStore):
             row for row in self.channels.values() if row.org_id == org_id
         ]
 
+    def list_room_threads(self, parent_room_id):  # noqa: ANN001, ANN202
+        return [
+            row
+            for row in self.channels.values()
+            if row.parent_room_id == parent_room_id
+        ]
+
     def update_channel(self, channel):  # noqa: ANN001, ANN202
         self.channels[channel.channel_id] = channel
 
-    def claim_name(self, org_id, name_folded, channel_id, now):  # noqa: ANN001, ANN202
-        holder = self.names.get((org_id, name_folded))
+    def claim_name(self, scope_id, name_folded, channel_id, now):  # noqa: ANN001, ANN202
+        holder = self.names.get((scope_id, name_folded))
         if holder is None or holder == channel_id:
-            self.names[(org_id, name_folded)] = channel_id
+            self.names[(scope_id, name_folded)] = channel_id
             return True
         held = self.channels.get(holder)
         if held is not None and held.archived_at is None:
             return False
-        self.names[(org_id, name_folded)] = channel_id
+        self.names[(scope_id, name_folded)] = channel_id
         return True
 
-    def release_name(self, org_id, name_folded):  # noqa: ANN001, ANN202
-        self.names.pop((org_id, name_folded), None)
+    def release_name(self, scope_id, name_folded):  # noqa: ANN001, ANN202
+        self.names.pop((scope_id, name_folded), None)
 
     def add_channel_member(  # noqa: ANN201
         self, channel_id, org_id, user_id, added_by, now,

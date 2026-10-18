@@ -29,6 +29,7 @@ from core.exceptions import (
     ForbiddenError,
     InvalidMemberStateError,
     NotFoundError,
+    PinLimitReachedError,
 )
 from core.security import utc_aware, utcnow
 from orgs.interfaces import (
@@ -39,6 +40,8 @@ from orgs.interfaces import (
 )
 from orgs.member_helpers import is_active_member
 from rbac.interfaces import AccessControl
+
+MAX_PINS = 20
 
 
 class ChatRoomAdmin:
@@ -133,9 +136,7 @@ class ChatRoomAdmin:
                 raise ForbiddenError("Only org managers can do this.")
         self._chat.delete(row)
         self._chat.delete_media_index(room_id, row.bucket, message_id)
-        pin = self._chat.get_pin(room_id)
-        if pin is not None and pin.message_id == message_id:
-            self._chat.clear_pin(room_id)
+        self._chat.clear_pin(room_id, message_id)
         self._access.record(
             org.id, actor_id, "chat.delete", "chat", message_id, "allowed"
         )
@@ -224,7 +225,7 @@ class ChatRoomAdmin:
     def pin_message(
         self, room_id: UUID, actor_id: UUID, message_id: UUID
     ) -> None:
-        """Managers pin one message; the slot holds only the latest pin."""
+        """Managers pin one message; a room holds up to MAX_PINS pins."""
         org, _floor, _dm = self._require_manager(
             room_id, actor_id, "chat.pin"
         )
@@ -233,30 +234,38 @@ class ChatRoomAdmin:
         )
         if row is None:
             raise NotFoundError("Message not found.")
+        if (
+            self._chat.get_pin(room_id, message_id) is None
+            and len(self._chat.list_pins(room_id)) >= MAX_PINS
+        ):
+            raise PinLimitReachedError("Pin limit reached.")
         self._chat.set_pin(room_id, message_id, actor_id, utcnow())
         self._access.record(
             org.id, actor_id, "chat.pin", "chat", message_id, "allowed"
         )
         emit(self._events, room_id, "message.pinned", message_id, actor_id)
 
-    def unpin_message(self, room_id: UUID, actor_id: UUID) -> None:
-        """Managers clear the pinned slot."""
+    def unpin_message(
+        self, room_id: UUID, actor_id: UUID, message_id: UUID
+    ) -> None:
+        """Managers drop one pinned message."""
         org, _floor, _dm = self._require_manager(
             room_id, actor_id, "chat.unpin"
         )
-        pin = self._chat.get_pin(room_id)
-        self._chat.clear_pin(room_id)
+        pin = self._chat.get_pin(room_id, message_id)
+        if pin is None:
+            raise NotFoundError("Message is not pinned.")
+        self._chat.clear_pin(room_id, message_id)
         self._access.record(
-            org.id, actor_id, "chat.unpin", "chat", None, "allowed"
+            org.id, actor_id, "chat.unpin", "chat", message_id, "allowed"
         )
-        if pin is not None:
-            emit(
-                self._events,
-                room_id,
-                "message.unpinned",
-                pin.message_id,
-                actor_id,
-            )
+        emit(
+            self._events,
+            room_id,
+            "message.unpinned",
+            message_id,
+            actor_id,
+        )
 
     def set_mute(self, room_id: UUID, user_id: UUID, muted: bool) -> None:
         """Per-user mute flag; muted rooms still list, clients dim them."""

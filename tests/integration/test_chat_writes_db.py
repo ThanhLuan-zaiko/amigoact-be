@@ -174,33 +174,46 @@ async def test_pin_and_mute_roundtrip(
         headers=owner_h,
     )
     message_id = sent.json()["message_id"]
+    sent2 = await client.post(
+        f"/chat/rooms/{org_id}/messages",
+        json={"body": "pin me too"},
+        headers=owner_h,
+    )
+    message_id2 = sent2.json()["message_id"]
 
     denied = await client.put(
-        f"/chat/rooms/{org_id}/pin",
-        json={"message_id": message_id},
+        f"/chat/rooms/{org_id}/pins/{message_id}",
         headers=member_h,
     )
     assert denied.status_code in (403, 404)
 
     pinned = await client.put(
-        f"/chat/rooms/{org_id}/pin",
-        json={"message_id": message_id},
+        f"/chat/rooms/{org_id}/pins/{message_id}",
         headers=owner_h,
     )
     assert pinned.status_code == 204
+    pinned2 = await client.put(
+        f"/chat/rooms/{org_id}/pins/{message_id2}",
+        headers=owner_h,
+    )
+    assert pinned2.status_code == 204
     page = await client.get(
         f"/chat/rooms/{org_id}/messages", headers=member_h
     )
-    assert page.json()["pinned"]["message_id"] == message_id
+    assert [p["message_id"] for p in page.json()["pinned"]] == [
+        message_id, message_id2
+    ]
 
     unpinned = await client.delete(
-        f"/chat/rooms/{org_id}/pin", headers=owner_h
+        f"/chat/rooms/{org_id}/pins/{message_id}", headers=owner_h
     )
     assert unpinned.status_code == 204
     page2 = await client.get(
         f"/chat/rooms/{org_id}/messages", headers=member_h
     )
-    assert page2.json()["pinned"] is None
+    assert [p["message_id"] for p in page2.json()["pinned"]] == [
+        message_id2
+    ]
 
     muted = await client.put(
         f"/chat/rooms/{org_id}/mute", headers=member_h

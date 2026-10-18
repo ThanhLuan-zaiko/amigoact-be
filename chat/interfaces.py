@@ -14,7 +14,7 @@ from chat.model import (
     OrgRoomMedia,
     OrgRoomMessage,
     OrgRoomMute,
-    OrgRoomPin,
+    OrgRoomPinV2,
     OrgRoomReaction,
     OrgRoomRead,
 )
@@ -178,15 +178,21 @@ class ChatStore(ABC):
         pinned_by: UUID,
         now: datetime,
     ) -> None:
-        """Replace the room's pinned slot (one pin per room)."""
+        """Pin one message into the room's pin set (upsert)."""
 
     @abstractmethod
-    def clear_pin(self, room_id: UUID) -> None:
-        """Drop the pinned slot."""
+    def clear_pin(self, room_id: UUID, message_id: UUID) -> None:
+        """Drop one pinned message."""
 
     @abstractmethod
-    def get_pin(self, room_id: UUID) -> OrgRoomPin | None:
-        """Current pinned row or None."""
+    def get_pin(
+        self, room_id: UUID, message_id: UUID
+    ) -> OrgRoomPinV2 | None:
+        """The pin row of one message, or None."""
+
+    @abstractmethod
+    def list_pins(self, room_id: UUID) -> list:  # noqa: ANN001
+        """Every pin row of a room (unordered; services sort)."""
 
     @abstractmethod
     def set_mute(self, user_id: UUID, room_id: UUID, now: datetime) -> None:

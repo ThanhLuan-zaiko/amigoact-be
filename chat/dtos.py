@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from uuid import UUID
 
@@ -69,9 +69,9 @@ class ChatPage:
     unread: int
     last_read_message_id: UUID | None
     peer_last_read_message_id: UUID | None = None
-    # Phase 3: the room's pinned bar (None when nothing is pinned) and
-    # the caller's own mute flag for the composer/header affordance.
-    pinned: "ChatMessageSnapshot | None" = None
+    # Pinned bar: every pinned message, oldest pin first; plus the
+    # caller's own mute flag for the composer/header affordance.
+    pinned: list[ChatMessageSnapshot] = field(default_factory=list)
     muted: bool = False
 
 
@@ -184,13 +184,21 @@ class InboxRoomSnapshot:
     # Channel rows only (None elsewhere): post gate + display label.
     post_policy: str | None = None
     channel_kind: str | None = None
+    # Sub-thread rows only: the room the thread hangs under and the
+    # activity it was opened for (display link).
+    parent_room_id: UUID | None = None
+    activity_id: UUID | None = None
     # Public /orgs/{slug} path for the room panel's share-link card.
     org_slug: str = ""
 
 
 @dataclass(frozen=True)
 class ChannelSnapshot:
-    """One named channel projected for API output."""
+    """One named channel projected for API output.
+
+    parent_room_id set means the row is a sub-thread of that room;
+    activity_id/activity_title carry the optional linked activity.
+    """
 
     channel_id: UUID
     org_id: UUID
@@ -202,6 +210,9 @@ class ChannelSnapshot:
     created_by: UUID
     created_at: datetime | None
     archived_at: datetime | None = None
+    parent_room_id: UUID | None = None
+    activity_id: UUID | None = None
+    activity_title: str | None = None
 
 
 @dataclass(frozen=True)

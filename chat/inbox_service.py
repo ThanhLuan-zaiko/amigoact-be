@@ -47,6 +47,9 @@ class _RoomRef:
     # Channel rows only: post gate + display label for the rail.
     post_policy: str | None = None
     channel_kind: str | None = None
+    # Sub-thread rows only: parent room + optional linked activity.
+    parent_room_id: UUID | None = None
+    activity_id: UUID | None = None
 
 
 class ChatInboxService:
@@ -187,13 +190,21 @@ class ChatInboxService:
                 )
             )
             org_logo = self._media_url(getattr(org, "logo_media_id", None))
-            for row in self._channels.list_channels(org.id):
+            rows = self._channels.list_channels(org.id)
+            by_id = {row.channel_id: row for row in rows}
+            for row in rows:
                 if row.archived_at is not None:
                     continue
+                # A sub-thread gates through its parent channel's
+                # roster (seats live there, never on the thread).
+                gate = by_id.get(
+                    getattr(row, "parent_room_id", None) or row.channel_id,
+                    row,
+                )
                 if (
-                    row.visibility == "restricted"
+                    gate.visibility == "restricted"
                     and not manager
-                    and row.channel_id not in seats
+                    and gate.channel_id not in seats
                 ):
                     continue
                 refs.append(
@@ -209,6 +220,10 @@ class ChatInboxService:
                         created_at=getattr(row, "created_at", None),
                         post_policy=row.post_policy,
                         channel_kind=row.kind,
+                        parent_room_id=getattr(
+                            row, "parent_room_id", None
+                        ),
+                        activity_id=getattr(row, "activity_id", None),
                     )
                 )
         return refs
@@ -259,6 +274,8 @@ class ChatInboxService:
                     muted=ref.room_id in mutes,
                     post_policy=ref.post_policy,
                     channel_kind=ref.channel_kind,
+                    parent_room_id=ref.parent_room_id,
+                    activity_id=ref.activity_id,
                 )
             )
         out.sort(key=lambda item: item.sort_at, reverse=True)

@@ -133,14 +133,20 @@ class OrgRoomReaction(models.Model):
     created_at = columns.DateTime(required=True)
 
 
-class OrgRoomPin(models.Model):
-    """The room's pinned message slot (one pin per room, latest wins)."""
+class OrgRoomPinV2(models.Model):
+    """One pinned message row; a room holds many pins, one per message.
 
-    __table_name__ = "org_room_pins"
+    Partition key (room_id) lists every pin of a room; clustering on
+    message_id makes pin/unpin a point write. Rows sort by pinned_at in
+    the service (pin counts stay small). Replaces the legacy
+    org_room_pins single-slot table (chat phase 6).
+    """
+
+    __table_name__ = "org_room_pins_v2"
     __keyspace__ = "amigoact"
 
-    room_id = columns.UUID(primary_key=True)
-    message_id = columns.UUID(required=True)
+    room_id = columns.UUID(primary_key=True, partition_key=True)
+    message_id = columns.UUID(primary_key=True, clustering_order="ASC")
     pinned_by = columns.UUID(required=True)
     pinned_at = columns.DateTime(required=True)
 
@@ -195,7 +201,12 @@ class OrgDmRoom(models.Model):
 
 
 class OrgChatChannel(models.Model):
-    """One named org channel; channel_id doubles as the room id."""
+    """One named org channel; channel_id doubles as the room id.
+
+    parent_room_id set makes the row a sub-thread of that room (the
+    general room or a top-level channel); activity_id optionally links
+    the thread to one org activity.
+    """
 
     __table_name__ = "org_chat_channels"
     __keyspace__ = "amigoact"
@@ -214,6 +225,12 @@ class OrgChatChannel(models.Model):
     post_policy = columns.Text(required=True)
     # "org" (every member) | "restricted" (roster below).
     visibility = columns.Text(required=True)
+    # Sub-threads: the room this channel hangs under (None on top-level
+    # channels). Threads never nest: a thread's parent is never itself
+    # a thread.
+    parent_room_id = columns.UUID(required=False)
+    # Optional activity the thread was opened for (display link only).
+    activity_id = columns.UUID(required=False)
     created_by = columns.UUID(required=True)
     created_at = columns.DateTime(required=True)
     archived_at = columns.DateTime(required=False)
@@ -234,6 +251,37 @@ class OrgChatChannelById(models.Model):
     kind = columns.Text(required=True)
     post_policy = columns.Text(required=True)
     visibility = columns.Text(required=True)
+    parent_room_id = columns.UUID(required=False)
+    activity_id = columns.UUID(required=False)
+    created_by = columns.UUID(required=True)
+    created_at = columns.DateTime(required=True)
+    archived_at = columns.DateTime(required=False)
+    archived_by = columns.UUID(required=False)
+
+
+class OrgChatRoomThread(models.Model):
+    """parent_room_id -> thread mirror for a room's sub-thread list.
+
+    Same payload as the by-id row, partitioned so one room's threads
+    read a single partition. Written/dropped alongside the two base
+    channel rows in _write().
+    """
+
+    __table_name__ = "org_chat_room_threads"
+    __keyspace__ = "amigoact"
+
+    parent_room_id = columns.UUID(primary_key=True, partition_key=True)
+    channel_id = columns.UUID(
+        primary_key=True, clustering_order="ASC"
+    )
+    org_id = columns.UUID(required=True)
+    name = columns.Text(required=True)
+    name_folded = columns.Text(required=True)
+    topic = columns.Text(required=False)
+    kind = columns.Text(required=True)
+    post_policy = columns.Text(required=True)
+    visibility = columns.Text(required=True)
+    activity_id = columns.UUID(required=False)
     created_by = columns.UUID(required=True)
     created_at = columns.DateTime(required=True)
     archived_at = columns.DateTime(required=False)

@@ -56,11 +56,15 @@ INBOX_ROOM_FIELDS = {
     "muted",
     # Channels: post gate + display label on channel rows only.
     "post_policy", "channel_kind",
+    # Phase 5: sub-thread rows name their parent room + linked activity.
+    "parent_room_id", "activity_id",
 }
 INBOX_KINDS = {"general", "activity", "dm", "channel"}
 CHANNEL_FIELDS = {
     "channel_id", "org_id", "name", "topic", "kind", "post_policy",
     "visibility", "created_by", "created_at", "archived_at",
+    # Phase 5: parent room + optional linked activity on thread rows.
+    "parent_room_id", "activity_id", "activity_title",
 }
 CHANNEL_MEMBER_FIELDS = {"user_id", "full_name", "avatar_url", "added_at"}
 MEDIA_PAGE_FIELDS = {"items", "next_cursor"}

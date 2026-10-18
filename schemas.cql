@@ -1457,14 +1457,15 @@ CREATE TABLE IF NOT EXISTS org_room_reads (
     PRIMARY KEY ((room_id), user_id)
 );
 
-// Phase 3: one pinned-message slot per room; the bar reads it on every
-// page load and delete_message clears it when its target is removed.
-CREATE TABLE IF NOT EXISTS org_room_pins (
+// Pinned messages: many pins per room, one row per (room, message).
+// delete_message clears the row when its target is removed. Replaces
+// the legacy single-slot org_room_pins table (chat phase 6).
+CREATE TABLE IF NOT EXISTS org_room_pins_v2 (
     room_id uuid,
     message_id uuid,
     pinned_by uuid,
     pinned_at timestamp,
-    PRIMARY KEY ((room_id))
+    PRIMARY KEY ((room_id), message_id)
 );
 
 // Per-user mute flag; muted rooms still list (clients dim them and the
@@ -1566,6 +1567,14 @@ CREATE TABLE IF NOT EXISTS org_dm_rooms (
 // tables. kind is a display label (text/report/task); post_policy may
 // restrict posting to managers; visibility="restricted" rooms open only
 // for org_chat_channel_members rows.
+// Chat phase 5 (sub-threads): parent_room_id marks a channel row as a
+// thread nested under that room (general room or top-level channel -
+// threads never nest); activity_id links the thread to one org activity.
+// On existing deployments apply once per channel table:
+//   ALTER TABLE org_chat_channels ADD parent_room_id uuid;
+//   ALTER TABLE org_chat_channels ADD activity_id uuid;
+//   ALTER TABLE org_chat_channels_by_id ADD parent_room_id uuid;
+//   ALTER TABLE org_chat_channels_by_id ADD activity_id uuid;
 CREATE TABLE IF NOT EXISTS org_chat_channels (
     org_id uuid,
     channel_id uuid,
@@ -1575,6 +1584,8 @@ CREATE TABLE IF NOT EXISTS org_chat_channels (
     kind text,
     post_policy text,
     visibility text,
+    parent_room_id uuid,
+    activity_id uuid,
     created_by uuid,
     created_at timestamp,
     archived_at timestamp,
@@ -1593,14 +1604,41 @@ CREATE TABLE IF NOT EXISTS org_chat_channels_by_id (
     kind text,
     post_policy text,
     visibility text,
+    parent_room_id uuid,
+    activity_id uuid,
     created_by uuid,
     created_at timestamp,
     archived_at timestamp,
     archived_by uuid
 );
 
-// LWT claim for one live channel name per org (as org_dm_pairs);
-// renaming or archiving releases the name by deleting this row.
+// parent_room_id -> thread mirror: one room's sub-thread list reads a
+// single partition; rows mirror the by-id payload and are written or
+// dropped together with it in the channel repository's _write().
+CREATE TABLE IF NOT EXISTS org_chat_room_threads (
+    parent_room_id uuid,
+    channel_id uuid,
+    org_id uuid,
+    name text,
+    name_folded text,
+    topic text,
+    kind text,
+    post_policy text,
+    visibility text,
+    activity_id uuid,
+    created_by uuid,
+    created_at timestamp,
+    archived_at timestamp,
+    archived_by uuid,
+    PRIMARY KEY ((parent_room_id), channel_id)
+) WITH CLUSTERING ORDER BY (channel_id ASC);
+
+// LWT claim for one live channel name per scope (as org_dm_pairs);
+// renaming or archiving releases the name by deleting this row. The
+// org_id column holds the claim scope: the org id for top-level
+// channels, the parent room id for sub-threads (names unique per
+// parent room; threads under the general room share the org's
+// namespace because parent_room_id == org_id there).
 CREATE TABLE IF NOT EXISTS org_chat_channel_names (
     org_id uuid,
     name_folded text,

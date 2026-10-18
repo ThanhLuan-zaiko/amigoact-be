@@ -24,12 +24,12 @@ from chat.helpers import (
     tally_reactions,
     unread_count,
 )
-from chat.helpers import message_snapshot
+from chat.helpers import message_snapshot, pinned_snapshots
 from chat.channel_interfaces import ChannelStore
 from chat.interfaces import ActivityLookup, ChatEvents, ChatStore
 from chat.model import OrgRoomMessage
 from chat.room_admin import ChatRoomAdmin
-from chat.rooms import emit, emit_inbox, open_room
+from chat.rooms import emit_inbox, open_room
 from core.exceptions import (
     ForbiddenError,
     InvalidMemberStateError,
@@ -91,11 +91,6 @@ class ChatService:
             room_id, user_id, action, channels=self._channels,
         )
         return ctx.org, ctx.floor, ctx.dm
-
-    def _emit(
-        self, room_id: UUID, action: str, message_id: UUID, actor_id: UUID
-    ) -> None:
-        emit(self._events, room_id, action, message_id, actor_id)
 
     def _emit_inbox(
         self,
@@ -186,14 +181,11 @@ class ChatService:
             peer_row = self._chat.get_read(room_id, dm.peer_id)
             if peer_row is not None:
                 peer_last_read = peer_row.last_read_message_id
-        pin = self._chat.get_pin(room_id)
-        pinned = None
-        if pin is not None:
-            pinned_row = self._chat.get(
-                room_id, bucket_of_uuid(pin.message_id), pin.message_id
-            )
-            if pinned_row is not None:
-                pinned = self._snapshot(pinned_row, viewer_id)
+        # Oldest pin first so the bar can rotate toward the newest.
+        pinned = pinned_snapshots(
+            self._chat, self._users, room_id, viewer_id,
+            cipher=self._cipher, media=self._media,
+        )
         muted = any(
             row.room_id == room_id
             for row in self._chat.list_mutes(viewer_id)
@@ -276,8 +268,10 @@ class ChatService:
     ) -> None:
         self._admin.pin_message(room_id, actor_id, message_id)
 
-    def unpin_message(self, room_id: UUID, actor_id: UUID) -> None:
-        self._admin.unpin_message(room_id, actor_id)
+    def unpin_message(
+        self, room_id: UUID, actor_id: UUID, message_id: UUID
+    ) -> None:
+        self._admin.unpin_message(room_id, actor_id, message_id)
 
     def set_mute(self, room_id: UUID, user_id: UUID, muted: bool) -> None:
         self._admin.set_mute(room_id, user_id, muted)
