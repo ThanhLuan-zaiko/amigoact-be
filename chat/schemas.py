@@ -100,6 +100,22 @@ class ReadStateResponse(BaseModel):
     last_read_at: datetime | None = None
 
 
+class RoomReadEntryResponse(BaseModel):
+    """One member's read pointer: who the room has caught up to."""
+
+    user_id: UUID
+    user_name: str
+    avatar_url: str | None = None
+    last_read_message_id: UUID
+    last_read_at: datetime | None = None
+
+
+class RoomReadsResponse(BaseModel):
+    """Every read pointer of a room for the sender's seen-by receipt."""
+
+    items: list[RoomReadEntryResponse]
+
+
 class UnreadResponse(BaseModel):
     unread: int = 0
 

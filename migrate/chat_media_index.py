@@ -1,8 +1,8 @@
 """Migration: org_room_media shared-item index (create + backfill).
 
-Creates the index tables from schemas.cql — the base tab view, the
+Creates the index tables from schemas.cql - the base tab view, the
 per-author mirror behind the sender filter, and the (kind, author)
-presence rows feeding its option list — then backfills one row per
+presence rows feeding its option list - then backfills one row per
 attachment/extracted link already stored in org_room_messages so older
 rooms show their full history in the info panel. Inserts are plain
 PK-upserts, so re-running after a partial pass is always safe; link

@@ -14,6 +14,7 @@ from chat.dtos import (
     ChatPage,
     DmRoomSnapshot,
     ReadSnapshot,
+    RoomReadSnapshot,
 )
 from chat.helpers import (
     MAX_SCAN_BUCKETS,
@@ -256,6 +257,12 @@ class ChatService:
         self, room_id: UUID, user_id: UUID, message_id: UUID
     ) -> ReadSnapshot:
         return self._admin.mark_read(room_id, user_id, message_id)
+
+    def list_read_states(
+        self, room_id: UUID, user_id: UUID
+    ) -> list[RoomReadSnapshot]:
+        """All member read pointers: the group 'seen by' receipt."""
+        return self._admin.list_read_states(room_id, user_id)
 
     def toggle_reaction(
         self, room_id: UUID, user_id: UUID, message_id: UUID, emoji: str

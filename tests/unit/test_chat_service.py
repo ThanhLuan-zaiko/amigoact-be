@@ -162,6 +162,33 @@ def test_mark_read_rejects_ghost_message() -> None:
         svc.mark_read(org_id, owner, _uid())
 
 
+def test_list_read_states_joins_member_briefs() -> None:
+    """The group 'seen by' list exposes every member's pointer."""
+    (svc, _, _, members, users, _, events, _, org_id,
+     owner) = _service()
+    member = _member(members, users, org_id)
+    first = svc.send_message(org_id, owner, "one")
+    second = svc.send_message(org_id, owner, "two")
+    svc.mark_read(org_id, member, first.message_id)
+
+    reads = svc.list_read_states(org_id, owner)
+    by_id = {row.user_id: row for row in reads}
+    # The author's pointer auto-advances on send; the member's stays
+    # at the message they last marked.
+    assert set(by_id) == {owner, member}
+    assert by_id[owner].last_read_message_id == second.message_id
+    assert by_id[member].last_read_message_id == first.message_id
+    assert by_id[member].user_name == "Name mem@x.com"
+    # A group mark fans out so every viewer repaints the receipts.
+    assert any(c[1] == "message.read" for c in events.calls)
+
+
+def test_list_read_states_denies_outsiders() -> None:
+    svc, _, _, _, _, _, _, _, org_id, _ = _service()
+    with pytest.raises(ForbiddenError):
+        svc.list_read_states(org_id, _uid())
+
+
 def test_delete_author_manager_and_denied_member() -> None:
     (svc, _, _, members, users, access, _, _, org_id,
      owner) = _service()

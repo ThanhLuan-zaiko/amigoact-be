@@ -4,9 +4,14 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from chat.dtos import ChatMessageSnapshot, ReadSnapshot
+from chat.dtos import (
+    ChatMessageSnapshot,
+    ReadSnapshot,
+    RoomReadSnapshot,
+)
 from chat.helpers import (
     REACTION_EMOJIS,
+    avatar_url,
     bucket_of_uuid,
     message_snapshot,
     tally_reactions,
@@ -147,7 +152,7 @@ class ChatRoomAdmin:
         self, room_id: UUID, user_id: UUID, message_id: UUID
     ) -> ReadSnapshot:
         """Move the read pointer forward; a stale mark never regresses."""
-        _org, _floor, dm = self._open_room(room_id, user_id, "chat.read")
+        _org, _floor, _dm = self._open_room(room_id, user_id, "chat.read")
         row = self._chat.get(
             room_id, bucket_of_uuid(message_id), message_id
         )
@@ -165,12 +170,35 @@ class ChatRoomAdmin:
             )
         now = utcnow()
         self._chat.mark_read(room_id, user_id, message_id, now)
-        if dm is not None:
-            # Lets the peer's client repaint the double-check receipt.
-            emit(self._events, room_id, "message.read", message_id, user_id)
+        # Lets every viewer's client repaint the read receipts (dm
+        # double-check plus the group "seen by" list).
+        emit(self._events, room_id, "message.read", message_id, user_id)
         return ReadSnapshot(
             last_read_message_id=message_id, last_read_at=now
         )
+
+    def list_read_states(
+        self, room_id: UUID, user_id: UUID
+    ) -> list[RoomReadSnapshot]:
+        """Every member's read pointer: the sender's 'seen by' list."""
+        self._open_room(room_id, user_id, "chat.reads")
+        out: list[RoomReadSnapshot] = []
+        for row in self._chat.list_reads(room_id):
+            if row.last_read_message_id is None:
+                continue
+            brief = self._users.get_brief(row.user_id)
+            out.append(
+                RoomReadSnapshot(
+                    user_id=row.user_id,
+                    user_name=(
+                        brief.full_name if brief else "Unknown user"
+                    ),
+                    avatar_url=avatar_url(self._media, brief),
+                    last_read_message_id=row.last_read_message_id,
+                    last_read_at=utc_aware(row.last_read_at),
+                )
+            )
+        return out
 
     def toggle_reaction(
         self, room_id: UUID, user_id: UUID, message_id: UUID, emoji: str

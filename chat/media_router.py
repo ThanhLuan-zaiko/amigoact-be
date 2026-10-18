@@ -78,7 +78,7 @@ def list_shared_media_authors(
     current_user: CurrentUser = Depends(get_current_user),
     service: ChatMediaService = Depends(get_chat_media_service),
 ) -> SharedMediaAuthorsResponse:
-    """Senders with at least one indexed item — the filter's options."""
+    """Senders with at least one indexed item - the filter's options."""
     return SharedMediaAuthorsResponse(
         items=[
             SharedMediaAuthorResponse(

@@ -87,6 +87,10 @@ class ChatStore(ABC):
         """Upsert the member's read pointer."""
 
     @abstractmethod
+    def list_reads(self, room_id: UUID) -> list[OrgRoomRead]:
+        """Every member's read pointer of one room (one partition)."""
+
+    @abstractmethod
     def get_dm_room(self, user_id: UUID, room_id: UUID) -> OrgDmRoom | None:
         """Participant row proving the user may open this dm room."""
 

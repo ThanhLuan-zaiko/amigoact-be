@@ -131,6 +131,21 @@ class ReadSnapshot:
 
 
 @dataclass(frozen=True)
+class RoomReadSnapshot:
+    """One member's read pointer joined with their display brief.
+
+    Powers the sender's "seen by" receipt; listing is members-only so
+    the pointers never leave the room's audience.
+    """
+
+    user_id: UUID
+    user_name: str
+    avatar_url: str | None
+    last_read_message_id: UUID
+    last_read_at: datetime | None
+
+
+@dataclass(frozen=True)
 class DmRoomSnapshot:
     """One dm inbox entry joined with the peer display name."""
 

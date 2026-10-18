@@ -23,6 +23,8 @@ from chat.schemas import (
     OpenDmRequest,
     ReactionResponse,
     ReadStateResponse,
+    RoomReadEntryResponse,
+    RoomReadsResponse,
     SendMessageRequest,
     UnreadResponse,
 )
@@ -203,6 +205,31 @@ def mark_room_read(
     return ReadStateResponse(
         last_read_message_id=snapshot.last_read_message_id,
         last_read_at=snapshot.last_read_at,
+    )
+
+
+@router.get(
+    "/chat/rooms/{room_id}/reads", response_model=RoomReadsResponse
+)
+def room_reads(
+    room_id: UUID,
+    current_user: CurrentUser = Depends(get_current_user),
+    service: ChatService = Depends(get_chat_service),
+) -> RoomReadsResponse:
+    """Member read pointers of the room: the sender's 'seen by' list."""
+    return RoomReadsResponse(
+        items=[
+            RoomReadEntryResponse(
+                user_id=item.user_id,
+                user_name=item.user_name,
+                avatar_url=item.avatar_url,
+                last_read_message_id=item.last_read_message_id,
+                last_read_at=item.last_read_at,
+            )
+            for item in service.list_read_states(
+                room_id, current_user.id
+            )
+        ]
     )
 
 

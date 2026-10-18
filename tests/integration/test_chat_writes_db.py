@@ -9,6 +9,7 @@ from httpx import AsyncClient
 from tests.integration.test_workspace_db import (
     _headers,
     _org_with_member,
+    _token,
 )
 
 _PNG = base64.b64decode(
@@ -219,6 +220,45 @@ async def test_pin_and_mute_roundtrip(
         f"/chat/rooms/{org_id}/mute", headers=member_h
     )
     assert unmuted.status_code == 204
+
+
+async def test_room_reads_list_member_pointers(
+    client: AsyncClient,
+) -> None:
+    """GET /chat/rooms/{id}/reads: the sender's group seen-by list."""
+    org_id, owner_h, member_h, member_id = await _org_with_member(
+        client, "ws-reads"
+    )
+    sent = await client.post(
+        f"/chat/rooms/{org_id}/messages",
+        json={"body": "seen?"},
+        headers=owner_h,
+    )
+    assert sent.status_code == 201, sent.text
+    message_id = sent.json()["message_id"]
+
+    marked = await client.post(
+        f"/chat/rooms/{org_id}/read",
+        json={"message_id": message_id},
+        headers=member_h,
+    )
+    assert marked.status_code == 200, marked.text
+
+    reads = await client.get(
+        f"/chat/rooms/{org_id}/reads", headers=owner_h
+    )
+    assert reads.status_code == 200, reads.text
+    items = {row["user_id"]: row for row in reads.json()["items"]}
+    assert member_id in items
+    assert items[member_id]["last_read_message_id"] == message_id
+    assert items[member_id]["last_read_at"] is not None
+    assert items[member_id]["user_name"]
+
+    stranger = await _token(client, "ws-reads-out@x.com", "0912347005")
+    denied = await client.get(
+        f"/chat/rooms/{org_id}/reads", headers=_headers(stranger)
+    )
+    assert denied.status_code == 403
 
 
 async def test_message_carries_author_avatar_url(client: AsyncClient) -> None:

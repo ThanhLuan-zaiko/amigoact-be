@@ -1,8 +1,7 @@
 """cqlengine persistence for org chat rooms and read pointers.
 
-The dm pair claim uses raw CQL LWT because cqlengine cannot surface the
-IF NOT EXISTS result needed to converge both callers on one room id
-(same justification as the slug claims elsewhere).
+The dm pair claim uses raw CQL LWT because cqlengine cannot surface IF
+NOT EXISTS results (same justification as the slug claims elsewhere).
 """
 
 from __future__ import annotations
@@ -245,6 +244,9 @@ class CqlChatStore(ChatStore):
         OrgRoomRead.objects(room_id=room_id, user_id=user_id).update(
             last_read_message_id=message_id, last_read_at=now
         )
+
+    def list_reads(self, room_id: UUID) -> list[OrgRoomRead]:
+        return list(OrgRoomRead.objects(room_id=room_id).all())
 
     def set_reaction(
         self,

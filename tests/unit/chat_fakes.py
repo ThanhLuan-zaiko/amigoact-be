@@ -232,6 +232,13 @@ class FakeChatStore(ChatStore):
             last_read_message_id=message_id, last_read_at=now,
         )
 
+    def list_reads(self, room_id):  # noqa: ANN001, ANN202
+        return [
+            row
+            for (rid, _uid), row in self.reads.items()
+            if rid == room_id
+        ]
+
     def get_dm_room(self, user_id, room_id):  # noqa: ANN001, ANN202
         return self.dm_rooms.get((user_id, room_id))
 

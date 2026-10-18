@@ -72,6 +72,10 @@ MEDIA_ITEM_FIELDS = {
 MEDIA_AUTHOR_FIELDS = {
     "author_id", "author_name", "author_avatar_url", "kinds", "last_at",
 }
+READS_ENTRY_FIELDS = {
+    "user_id", "user_name", "avatar_url", "last_read_message_id",
+    "last_read_at",
+}
 
 
 async def test_post_page_contract(client: AsyncClient) -> None:
@@ -133,6 +137,33 @@ async def test_chat_page_contract_and_sender_read(
     assert set(body) == CHAT_PAGE_FIELDS
     assert body["unread"] == 0
     assert body["last_read_message_id"] == sent.json()["message_id"]
+
+
+async def test_room_reads_contract(client: AsyncClient) -> None:
+    """Seen-by list keeps its field names and member-only gate."""
+    org_id, owner_h, member_h, member_id = await _org_with_member(
+        client, "rg-reads"
+    )
+    sent = await client.post(
+        f"/chat/rooms/{org_id}/messages",
+        json={"body": "hi"},
+        headers=owner_h,
+    )
+    await client.post(
+        f"/chat/rooms/{org_id}/read",
+        json={"message_id": sent.json()["message_id"]},
+        headers=member_h,
+    )
+    reads = await client.get(
+        f"/chat/rooms/{org_id}/reads", headers=owner_h
+    )
+    assert reads.status_code == 200
+    assert set(reads.json()) == {"items"}
+    for row in reads.json()["items"]:
+        assert set(row) == READS_ENTRY_FIELDS
+    assert member_id in {
+        row["user_id"] for row in reads.json()["items"]
+    }
 
 
 async def test_chat_inbox_contract(client: AsyncClient) -> None:
@@ -241,7 +272,7 @@ async def test_shared_media_contract(client: AsyncClient) -> None:
     assert body["items"][0]["url"] == "https://rg.example/doc"
 
     # Sender filter: authors list feeds the dropdown, author_id narrows
-    # the tab listing — both contracts frozen.
+    # the tab listing - both contracts frozen.
     authors = await client.get(
         f"/chat/rooms/{org_id}/media/authors", headers=owner_h
     )
