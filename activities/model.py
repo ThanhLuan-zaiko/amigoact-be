@@ -17,10 +17,19 @@ def tag_slug(name: str) -> str:
     valid tag at all (callers filter it out).
     """
     text = unicodedata.normalize("NFKD", name.strip())
-    text = text.replace("đ", "d").replace("Đ", "D")
+    text = text.replace("\u0111", "d").replace("\u0110", "D")
     text = "".join(ch for ch in text if not unicodedata.combining(ch))
     text = re.sub(r"[^a-zA-Z0-9]+", "-", text).strip("-").lower()
     return re.sub(r"-{2,}", "-", text)
+
+
+def tag_fold(value: str) -> str:
+    """Lowercase ASCII fold for substring matching in tag searches."""
+    text = unicodedata.normalize("NFKD", value)
+    text = text.replace("\u0111", "d").replace("\u0110", "D")
+    return "".join(
+        ch for ch in text if not unicodedata.combining(ch)
+    ).lower()
 
 
 class Activity(models.Model):
@@ -135,18 +144,6 @@ class ActivitiesTrashByOrg(models.Model):
     title = columns.Text(required=True)
     status = columns.Text(required=True)
     start_at = columns.DateTime(required=False)
-
-
-class TagBySlug(models.Model):
-    """Global folksonomy catalog; the slug row doubles as the LWT claim."""
-
-    __table_name__ = "tags_by_slug"
-    __keyspace__ = "amigoact"
-
-    slug = columns.Text(primary_key=True)
-    tag_id = columns.UUID(required=True)
-    name = columns.Text(required=True)
-    created_at = columns.DateTime(required=True)
 
 
 class ActivityMedia(models.Model):

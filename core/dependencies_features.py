@@ -15,7 +15,6 @@ if TYPE_CHECKING:  # pragma: no cover - type imports only
     from activities.delete_service import ActivityDeleteService
     from activities.detail_service import ActivityDetailService
     from activities.service import ActivityService
-    from activities.tag_service import TagService
     from admin.service import AdminService
     from hours.rule_service import RuleService
     from hours.service import HourService
@@ -85,7 +84,7 @@ def get_activity_service(
     from activities.events import WsActivityEvents
     from activities.repository import CqlActivityStore
     from activities.service import ActivityService
-    from activities.tag_repository import CqlTagStore
+    from activities.tag_repository import CqlOrgTagStore
     from activities.tag_service import TagService
     from orgs.repository import CqlOrgRepository
 
@@ -95,7 +94,7 @@ def get_activity_service(
         orgs=CqlOrgRepository(settings.scylla_keyspace),
         access=access,
         events=WsActivityEvents(getattr(request.app.state, "ws_manager", None)),
-        tags=TagService(CqlTagStore(settings.scylla_keyspace)),
+        tags=TagService(CqlOrgTagStore(settings.scylla_keyspace)),
     )
 
 
@@ -135,14 +134,8 @@ def get_activity_delete_service(
     )
 
 
-def get_tag_service(
-    settings: Settings = Depends(get_settings),
-) -> TagService:
-    """Global folksonomy catalog for the /tags typeahead surface."""
-    from activities.tag_repository import CqlTagStore
-    from activities.tag_service import TagService
-
-    return TagService(CqlTagStore(settings.scylla_keyspace))
+# Tag services (public directory + org curation) live in
+# core/dependencies_tags.py (split for the 350-line rule).
 
 
 def get_activity_detail_service(

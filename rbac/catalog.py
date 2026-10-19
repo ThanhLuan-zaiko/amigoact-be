@@ -21,6 +21,7 @@ PERMISSIONS: dict[str, str] = {
     "post:announce": "Publish announcements on the org board.",
     "post:manage": "Pin, edit or remove any org post or comment.",
     "chat:manage": "Remove chat messages of other members.",
+    "tag:manage": "Create, rename, merge and delete org activity tags.",
 }
 
 # Permissions a custom org role may carry. media:upload stays out:
@@ -59,6 +60,7 @@ SYSTEM_ROLES: dict[str, dict[str, object]] = {
             "post:announce",
             "post:manage",
             "chat:manage",
+            "tag:manage",
         },
     },
 }

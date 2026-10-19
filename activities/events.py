@@ -36,3 +36,17 @@ class WsActivityEvents(ActivityEvents):
                 "status": status,
             },
         )
+
+    def tags_changed(
+        self, org_id: UUID, action: str, slug: str, actor_id: UUID
+    ) -> None:
+        if self._manager is None:
+            return
+        self._manager.schedule_publish(
+            f"activities:{org_id}",
+            {
+                "action": f"tag.{action}",
+                "slug": slug,
+                "actor_id": str(actor_id),
+            },
+        )

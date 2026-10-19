@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import activities.model as activity_models
+import activities.tag_model as tag_models
 import admin.model as admin_models
 import apikeys.model as apikey_models
 import auth.model as models
@@ -69,7 +70,10 @@ SYNC_MODELS = [
     activity_models.ActivitiesBySlug,
     activity_models.ActivitiesByTag,
     activity_models.ActivitiesTrashByOrg,
-    activity_models.TagBySlug,
+    tag_models.TagByOrg,
+    tag_models.ActivityTagsByOrg,
+    tag_models.PublicTagDirectory,
+    tag_models.TrashedTagEdgesByOrg,
     activity_models.ActivityCategory,
     activity_models.ActivitySkill,
     activity_models.ActivityPartner,

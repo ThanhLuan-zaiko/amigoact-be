@@ -45,7 +45,7 @@ class ActivityBody(BaseModel):
     registration_deadline: datetime | None = None
     person_in_charge_id: UUID | None = None
     # Community tags as display names; the service canonicalizes them
-    # against the global catalog (dedupe by slug, lazy claim).
+    # against the org catalog (dedupe by slug, lazy claim).
     tags: list[str] = Field(default_factory=list, max_length=10)
 
     @field_validator("tags")
@@ -65,14 +65,6 @@ class ActivityBody(BaseModel):
 class TagRef(BaseModel):
     """Tag chip on an activity payload: canonical name plus slug."""
 
-    name: str
-    slug: str
-
-
-class TagItem(BaseModel):
-    """One global catalog row for typeahead pickers."""
-
-    id: UUID
     name: str
     slug: str
 

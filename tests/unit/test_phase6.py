@@ -20,10 +20,10 @@ from stats.service import OrgStatsService
 from tests.unit.activity_fakes import (
     FakeActivities,
     FakeCategories,
-    FakeTags,
     _fields,
     _org_with_owner,
 )
+from tests.unit.tag_fakes import FakeOrgTags
 from tests.unit.hour_fakes import (
     FakeCertificates,
     FakeLeaderboard,
@@ -295,7 +295,7 @@ def test_discovery_curates_sections() -> None:
     orgs = FakeOrgs()
     service = ActivityService(
         activities=activities, categories=categories, orgs=orgs,
-        access=FakeAccess(), tags=TagService(FakeTags()),
+        access=FakeAccess(), tags=TagService(FakeOrgTags(activities)),
     )
     owner = uid()
     org = _org_with_owner(orgs, owner)

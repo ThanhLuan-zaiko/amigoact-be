@@ -137,7 +137,7 @@ class ActivityService:
         """Member with activity:create opens a draft."""
         self._require_manager(org_id, actor_id, "activity:create")
         self._check_category(org_id, fields.category_id)
-        fields.tag_names = self._tags.ensure(fields.tag_names)
+        fields.tag_names = self._tags.ensure(org_id, fields.tag_names)
         row = self._activities.create(org_id, actor_id, fields, utcnow())
         self._access.record(
             org_id, actor_id, "activity.create", "activity", row.id,
@@ -163,7 +163,7 @@ class ActivityService:
                 "Completed or cancelled activities cannot be edited."
             )
         self._check_category(org_id, fields.category_id)
-        fields.tag_names = self._tags.ensure(fields.tag_names)
+        fields.tag_names = self._tags.ensure(org_id, fields.tag_names)
         fields.slug = fields.slug or row.slug
         updated = self._activities.update_details(
             activity_id, fields, utcnow()

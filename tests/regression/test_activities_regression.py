@@ -125,7 +125,7 @@ async def test_tag_contract(client: AsyncClient) -> None:
             "title": "Tagged Run", "location": "Park",
             "is_remote": False, "hours_awarded": 1.0,
             "start_at": "2030-06-03T08:00:00Z",
-            "tags": ["Cộng đồng"],
+            "tags": ["C\u1ed9ng \u0111\u1ed3ng"],
         },
         headers=headers,
     )
@@ -144,14 +144,14 @@ async def test_tag_contract(client: AsyncClient) -> None:
     feed = await client.get("/activities?tag=cong-dong")
     assert feed.status_code == 200
     row = next(r for r in feed.json() if r["id"] == aid)
-    assert row["tags"] == [{"name": "Cộng đồng", "slug": "cong-dong"}]
+    assert row["tags"] == [{"name": "C\u1ed9ng \u0111\u1ed3ng", "slug": "cong-dong"}]
 
     miss = await client.get("/activities?tag=no-such-tag")
     assert miss.status_code == 200
     assert all(r["id"] != aid for r in miss.json())
 
     catalog = await client.get("/tags?q=cong")
-    assert all(set(t.keys()) == {"id", "name", "slug"}
+    assert all(set(t.keys()) == {"name", "slug"}
                for t in catalog.json())
 
     overflow = await client.post(

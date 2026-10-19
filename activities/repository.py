@@ -7,7 +7,14 @@ from uuid import UUID
 
 from cassandra.cqlengine.connection import get_session
 
-from activities.feed_helpers import _clear_feeds, _feeds, _hydrate
+from activities.feed_helpers import (
+    _clear_feeds,
+    _clear_tag_edges,
+    _clear_trash_edges,
+    _feeds,
+    _hydrate,
+    _tag_edges,
+)
 from activities.interfaces import (
     ActivityFields,
     ActivityStore,
@@ -96,6 +103,7 @@ class CqlActivityStore(ActivityStore):
             updated_at=now,
         )
         _feeds(row)
+        _tag_edges(row)
         return row
 
     def get(self, activity_id: UUID) -> Activity | None:
@@ -159,6 +167,8 @@ class CqlActivityStore(ActivityStore):
         new = self.get(activity_id)
         assert new is not None
         self._rewrite(old, new)
+        _clear_tag_edges(old)
+        _tag_edges(new)
         return new
 
     def set_status(
@@ -263,6 +273,8 @@ class CqlActivityStore(ActivityStore):
         if row is None:
             return []
         _clear_feeds(row)
+        _clear_tag_edges(row)
+        _clear_trash_edges(row)
         if row.deleted_at is not None:
             ActivitiesTrashByOrg.objects(
                 org_id=row.org_id,

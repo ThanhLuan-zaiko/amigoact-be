@@ -1,7 +1,9 @@
 """Migration: community tags on activities (folksonomy).
 
-Creates activities_by_tag and tags_by_slug straight from schemas.cql and
-adds activities.tag_names - all additive, IF NOT EXISTS, safe to re-run.
+Creates activities_by_tag straight from schemas.cql and adds
+activities.tag_names - all additive, IF NOT EXISTS, safe to re-run.
+(The legacy tags_by_slug catalog was superseded by tags_by_org; see
+migrate.org_tags for the org-scoped backfill.)
 
     uv run python -m migrate.activity_tags --dry-run
     uv run python -m migrate.activity_tags
@@ -16,7 +18,7 @@ from migrate import common
 
 logger = logging.getLogger("migrate.activity_tags")
 
-TABLES = ("activities_by_tag", "tags_by_slug")
+TABLES = ("activities_by_tag",)
 
 
 def create_tables(session, cfg: common.Config, cql_path) -> dict[str, int]:  # noqa: ANN001, ANN202

@@ -13,6 +13,10 @@ from activities.model import (
     Activity,
     tag_slug,
 )
+from activities.tag_model import (
+    ActivityTagsByOrg,
+    TrashedTagEdgesByOrg,
+)
 
 
 def _feeds(row: Activity) -> None:
@@ -81,6 +85,34 @@ def _clear_feeds(row: Activity, *, keep_slug: bool = False) -> None:
         ).delete()
     if not keep_slug:
         ActivitiesBySlug.objects(org_id=row.org_id, slug=row.slug).delete()
+
+
+def _tag_edges(row: Activity) -> None:
+    """Mirror tag_names into the per-org edge index."""
+    for name in row.tag_names or []:
+        ActivityTagsByOrg.create(
+            org_id=row.org_id,
+            tag_slug=tag_slug(name),
+            activity_id=row.id,
+        )
+
+
+def _clear_tag_edges(row: Activity) -> None:
+    """Drop the edge rows at the coordinates of the passed snapshot."""
+    for name in row.tag_names or []:
+        ActivityTagsByOrg.objects(
+            org_id=row.org_id,
+            tag_slug=tag_slug(name),
+            activity_id=row.id,
+        ).delete()
+
+
+def _clear_trash_edges(row: Activity) -> None:
+    """Purge maintenance: remembered tag-trash edges must only point at
+    existing activities, so a hard delete drops its rows too."""
+    for edge in TrashedTagEdgesByOrg.objects(org_id=row.org_id).all():
+        if edge.activity_id == row.id:
+            edge.delete()
 
 
 def _hydrate(ids: list[UUID]) -> list[Activity]:

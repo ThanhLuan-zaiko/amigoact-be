@@ -595,14 +595,53 @@ CREATE TABLE IF NOT EXISTS activities_by_tag (
     PRIMARY KEY ((tag_slug), start_at, activity_id)
 ) WITH CLUSTERING ORDER BY (start_at DESC, activity_id ASC);
 
-// Global tag catalog; the single slug row doubles as the LWT uniqueness
-// claim (first writer's display name stays canonical).
-CREATE TABLE IF NOT EXISTS tags_by_slug (
-    slug text PRIMARY KEY,
+// Per-org tag catalog; (org_id, slug) doubles as the LWT uniqueness
+// claim. First spelling inside the org stays canonical - catalogs are
+// independent, so the same slug may carry different names per org.
+CREATE TABLE IF NOT EXISTS tags_by_org (
+    org_id uuid,
+    slug text,
     tag_id uuid,
     name text,
-    created_at timestamp
-);
+    created_at timestamp,
+    updated_at timestamp,
+    deleted_at timestamp,
+    PRIMARY KEY ((org_id), slug)
+) WITH CLUSTERING ORDER BY (slug ASC);
+
+// Remembered edges for a soft-deleted tag: which activities carried it.
+// Written on tag trash, consumed by restore, cleared on restore or
+// erase; an activity purge removes its rows here too.
+CREATE TABLE IF NOT EXISTS trashed_tag_edges_by_org (
+    org_id uuid,
+    tag_slug text,
+    activity_id uuid,
+    PRIMARY KEY ((org_id), tag_slug, activity_id)
+) WITH CLUSTERING ORDER BY (tag_slug ASC, activity_id ASC);
+
+// Edge index: org tag slug -> activity ids for live AND trashed rows.
+// Mirrors activities.tag_names exactly; soft delete/restore do not
+// touch it, so tag usage counts and retag sweeps stay complete.
+CREATE TABLE IF NOT EXISTS activity_tags_by_org (
+    org_id uuid,
+    tag_slug text,
+    activity_id uuid,
+    PRIMARY KEY ((org_id), tag_slug, activity_id)
+) WITH CLUSTERING ORDER BY (tag_slug ASC, activity_id ASC);
+
+// Cross-org directory behind the public /tags typeahead: one row per
+// org catalog row under the constant 'all' bucket, so the endpoint
+// reads one partition and groups by slug.
+CREATE TABLE IF NOT EXISTS public_tag_directory (
+    bucket text,
+    slug text,
+    org_id uuid,
+    name text,
+    PRIMARY KEY ((bucket), slug, org_id)
+) WITH CLUSTERING ORDER BY (slug ASC, org_id ASC);
+
+// LEGACY: tags_by_slug (global catalog) is unused since tags went
+// org-scoped; drop it manually after migrate.org_tags has run.
 
 CREATE TABLE IF NOT EXISTS activities_by_org (
     org_id uuid,

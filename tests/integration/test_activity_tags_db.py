@@ -67,15 +67,20 @@ async def test_tag_lifecycle_and_search(client: AsyncClient) -> None:
         f"/orgs/{org_id}/activities",
         json={
             **_BODY,
-            "tags": ["Môi trường", "moi truong", "  Đà Lạt  ", ""],
+            "tags": [
+                "M\u00f4i tr\u01b0\u1eddng",
+                "moi truong",
+                "  \u0110\u00e0 L\u1ea1t  ",
+                "",
+            ],
         },
         headers=owner,
     )
     assert created.status_code == 201, created.text
     tags = created.json()["tags"]
     assert tags == [
-        {"name": "Môi trường", "slug": "moi-truong"},
-        {"name": "Đà Lạt", "slug": "da-lat"},
+        {"name": "M\u00f4i tr\u01b0\u1eddng", "slug": "moi-truong"},
+        {"name": "\u0110\u00e0 L\u1ea1t", "slug": "da-lat"},
     ]
     aid = created.json()["id"]
 
@@ -83,20 +88,21 @@ async def test_tag_lifecycle_and_search(client: AsyncClient) -> None:
     assert catalog.status_code == 200
     rows = catalog.json()
     assert any(
-        r["slug"] == "moi-truong" and r["name"] == "Môi trường"
+        r["slug"] == "moi-truong"
+        and r["name"] == "M\u00f4i tr\u01b0\u1eddng"
         for r in rows
     )
-    assert set(rows[0].keys()) == {"id", "name", "slug"}
+    assert all(set(r.keys()) == {"name", "slug"} for r in rows)
 
     # Update rewrites both the names and the feed projection.
     updated = await client.patch(
         f"/orgs/{org_id}/activities/{aid}",
-        json={**_BODY, "tags": ["Hiến máu"]},
+        json={**_BODY, "tags": ["Hi\u1ebfn m\u00e1u"]},
         headers=owner,
     )
     assert updated.status_code == 200
     assert updated.json()["tags"] == [
-        {"name": "Hiến máu", "slug": "hien-mau"}
+        {"name": "Hi\u1ebfn m\u00e1u", "slug": "hien-mau"}
     ]
 
     await _publish(client, org_id, aid, owner)
@@ -106,7 +112,9 @@ async def test_tag_lifecycle_and_search(client: AsyncClient) -> None:
     assert all(r["id"] != aid for r in stale.json())
 
 
-async def test_tags_shared_across_orgs(client: AsyncClient) -> None:
+async def test_tags_scoped_per_org_but_feed_is_cross_org(
+    client: AsyncClient,
+) -> None:
     owner_a = await _headers(client, "t.a@example.com", "0903000031")
     owner_b = await _headers(client, "t.b@example.com", "0903000032")
     org_a = await _org(client, owner_a, "tag-club-a")
@@ -114,20 +122,20 @@ async def test_tags_shared_across_orgs(client: AsyncClient) -> None:
 
     first = await client.post(
         f"/orgs/{org_a}/activities",
-        json={**_BODY, "tags": ["Trồng rừng"]},
+        json={**_BODY, "tags": ["Tr\u1ed3ng r\u1eebng"]},
         headers=owner_a,
     )
     second = await client.post(
         f"/orgs/{org_b}/activities",
-        json={**_BODY, "title": "Forest Day", "tags": ["trồng RỪNG"]},
+        json={**_BODY, "title": "Forest Day", "tags": ["tr\u1ed3ng R\u1eeaNG"]},
         headers=owner_b,
     )
-    # Same slug, canonical display name comes from the first claim.
+    # Same slug, but each org's catalog keeps its own first spelling.
     assert first.json()["tags"] == [
-        {"name": "Trồng rừng", "slug": "trong-rung"}
+        {"name": "Tr\u1ed3ng r\u1eebng", "slug": "trong-rung"}
     ]
     assert second.json()["tags"] == [
-        {"name": "Trồng rừng", "slug": "trong-rung"}
+        {"name": "tr\u1ed3ng R\u1eeaNG", "slug": "trong-rung"}
     ]
 
     aid_a, aid_b = first.json()["id"], second.json()["id"]
@@ -139,7 +147,7 @@ async def test_tags_shared_across_orgs(client: AsyncClient) -> None:
     assert {aid_a, aid_b} <= ids
 
     # Raw display name resolves through the same normalizer.
-    folded = await client.get("/activities?tag=TRỒNG RỪNG")
+    folded = await client.get("/activities?tag=TR\u1ed2NG R\u1eeaNG")
     assert {r["id"] for r in folded.json()} >= {aid_a, aid_b}
 
 
@@ -152,12 +160,12 @@ async def test_tag_and_category_intersection(client: AsyncClient) -> None:
 
     with_cat = await client.post(
         f"/orgs/{org_id}/activities",
-        json={**_BODY, "tags": ["Bãi biển"], "category_id": env["id"]},
+        json={**_BODY, "tags": ["B\u00e3i bi\u1ec3n"], "category_id": env["id"]},
         headers=owner,
     )
     without_cat = await client.post(
         f"/orgs/{org_id}/activities",
-        json={**_BODY, "title": "No Cat", "tags": ["Bãi biển"]},
+        json={**_BODY, "title": "No Cat", "tags": ["B\u00e3i bi\u1ec3n"]},
         headers=owner,
     )
     aid_yes = with_cat.json()["id"]

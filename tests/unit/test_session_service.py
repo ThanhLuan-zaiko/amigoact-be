@@ -14,7 +14,7 @@ from core.exceptions import (
     NotFoundError,
 )
 from registrations.session_service import SessionService
-from tests.unit.activity_fakes import FakeSchedules, FakeSlots
+from tests.unit.edge_fakes import FakeSchedules, FakeSlots
 from tests.unit.member_fakes import FakeAccess, FakeUsers
 from tests.unit.org_fakes import FakeOrgs
 from tests.unit.registration_fakes import (

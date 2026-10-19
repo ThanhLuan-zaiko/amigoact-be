@@ -73,8 +73,8 @@ def test_lifecycle_publishes_activity_events() -> None:
         FakeActivities,
         FakeActivityEvents,
         FakeCategories,
-        FakeTags,
     )
+    from tests.unit.tag_fakes import FakeOrgTags
     from tests.unit.member_fakes import FakeAccess
     from tests.unit.org_fakes import FakeOrgs
 
@@ -82,7 +82,7 @@ def test_lifecycle_publishes_activity_events() -> None:
     activities, orgs = FakeActivities(), FakeOrgs()
     service = ActivityService(
         activities=activities, categories=FakeCategories(),
-        orgs=orgs, access=FakeAccess(), tags=TagService(FakeTags()),
+        orgs=orgs, access=FakeAccess(), tags=TagService(FakeOrgTags(activities)),
         events=events,
     )
     owner = uuid_utils.uuid7()
@@ -109,8 +109,8 @@ def test_failed_lifecycle_publishes_nothing() -> None:
         FakeActivities,
         FakeActivityEvents,
         FakeCategories,
-        FakeTags,
     )
+    from tests.unit.tag_fakes import FakeOrgTags
     from tests.unit.member_fakes import FakeAccess
     from tests.unit.org_fakes import FakeOrgs
 
@@ -118,7 +118,7 @@ def test_failed_lifecycle_publishes_nothing() -> None:
     activities, orgs = FakeActivities(), FakeOrgs()
     service = ActivityService(
         activities=activities, categories=FakeCategories(),
-        orgs=orgs, access=FakeAccess(), tags=TagService(FakeTags()),
+        orgs=orgs, access=FakeAccess(), tags=TagService(FakeOrgTags(activities)),
         events=events,
     )
     owner, outsider = uuid_utils.uuid7(), uuid_utils.uuid7()

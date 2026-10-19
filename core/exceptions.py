@@ -284,6 +284,26 @@ class InvalidChannelStateError(DomainError):
     status = 400
 
 
+class TagExistsError(DomainError):
+    code = "TAG_EXISTS"
+    status = 409
+
+
+class TagNotFoundError(DomainError):
+    code = "TAG_NOT_FOUND"
+    status = 404
+
+
+class InvalidTagMergeError(DomainError):
+    code = "INVALID_TAG_MERGE"
+    status = 400
+
+
+class TagDeletedError(DomainError):
+    code = "TAG_DELETED"
+    status = 410
+
+
 async def domain_error_handler(_: Request, exc: DomainError) -> JSONResponse:
     """Render every domain failure as {"code": ..., "message": ...}."""
     return JSONResponse(

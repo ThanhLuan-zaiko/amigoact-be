@@ -15,7 +15,6 @@ from activities.schemas import (
     ActivitySummary,
     DiscoveryBucket,
     DiscoveryResponse,
-    TagItem,
     TagRef,
     slugify,
 )
@@ -27,7 +26,6 @@ from core.dependencies import (
 from core.dependencies_features import (
     get_activity_delete_service,
     get_activity_service,
-    get_tag_service,
 )
 
 if TYPE_CHECKING:
@@ -35,7 +33,6 @@ if TYPE_CHECKING:
     from activities.interfaces import ActivityFields
     from activities.model import Activity
     from activities.service import ActivityService
-    from activities.tag_service import TagService
 
 router = APIRouter(tags=["activities"])
 
@@ -138,19 +135,6 @@ def discovery_feed(
         for row in service.list_public(
             status, category_id, limit, tag_slug=tag
         )
-    ]
-
-
-@router.get("/tags", response_model=list[TagItem])
-def search_tags(
-    q: str = Query(default="", max_length=60),
-    limit: int = Query(default=20, ge=1, le=100),
-    service: TagService = Depends(get_tag_service),
-) -> list[TagItem]:
-    """Global folksonomy catalog for typeahead pickers."""
-    return [
-        TagItem(id=row.id, name=row.name, slug=row.slug)
-        for row in service.search(q, limit)
     ]
 
 
