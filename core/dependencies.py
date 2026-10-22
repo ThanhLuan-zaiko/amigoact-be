@@ -95,9 +95,10 @@ def get_api_key_service() -> "ApiKeyService":
     from apikeys.service import ApiKeyService
     from orgs.repository import CqlOrgRepository
 
+    settings = get_settings()
     return ApiKeyService(
         store=CqlApiKeyStore(),
-        orgs=CqlOrgRepository(),
+        orgs=CqlOrgRepository(settings.scylla_keyspace),
         access=get_access_control(),
     )
 

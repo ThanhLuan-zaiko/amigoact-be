@@ -20,13 +20,14 @@ def get_report_service() -> "ReportService":
     from reports.service import ReportService
     from stats.repository import CqlMonthlyStatsStore
 
+    settings = get_settings()
     return ReportService(
         snapshots=CqlReportStore(),
         jobs=CqlExportJobStore(),
         monthly=CqlMonthlyStatsStore(),
-        registrations=CqlRegistrationStore(),
-        orgs=CqlOrgRepository(),
+        registrations=CqlRegistrationStore(settings.scylla_keyspace),
+        orgs=CqlOrgRepository(settings.scylla_keyspace),
         access=get_access_control(),
-        users=user_directory(get_settings()),
-        leases=CqlJobLeaseStore(get_settings().scylla_keyspace),
+        users=user_directory(settings),
+        leases=CqlJobLeaseStore(settings.scylla_keyspace),
     )
