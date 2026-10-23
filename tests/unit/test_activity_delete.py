@@ -87,6 +87,29 @@ def test_restore_returns_visibility() -> None:
         deletes.restore(org.id, row.id, owner)
 
 
+def test_hard_delete_unbinds_the_author_book() -> None:
+    service, _, activities, orgs, access = _svc()
+    owner = uuid_utils.uuid7()
+    org = _org_with_owner(orgs, owner)
+    row = _published(service, orgs, owner, org)
+    bound: list[tuple[object, object, object]] = []
+
+    class Book:
+        def ensure(self, user_id, names):  # noqa: ANN001, ANN202
+            return list(names or [])
+
+        def bind_activity(self, user_id, org_id, activity_id, names) -> None:  # noqa: ANN001
+            bound.append((user_id, activity_id, names))
+
+    deletes = ActivityDeleteService(
+        activities=activities, orgs=orgs, access=access, user_tags=Book()
+    )
+    deletes.soft_delete(org.id, row.id, owner)
+    assert bound == []
+    deletes.hard_delete(org.id, row.id, owner)
+    assert bound == [(owner, row.id, None)]
+
+
 def test_hard_delete_purges_row() -> None:
     service, deletes, activities, orgs, _ = _svc()
     owner, member = uuid_utils.uuid7(), uuid_utils.uuid7()

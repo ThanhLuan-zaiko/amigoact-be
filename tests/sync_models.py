@@ -79,6 +79,8 @@ SYNC_MODELS = [
     user_tag_models.UserTag,
     user_tag_models.UserPostTag,
     user_tag_models.UserPostTagSet,
+    user_tag_models.UserActivityTag,
+    user_tag_models.UserActivityTagSet,
     activity_models.ActivityCategory,
     activity_models.ActivitySkill,
     activity_models.ActivityPartner,

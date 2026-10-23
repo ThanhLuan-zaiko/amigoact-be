@@ -41,3 +41,27 @@ class UserPostTagSet(models.Model):
     post_id = columns.UUID(primary_key=True, clustering_order="ASC")
     org_id = columns.UUID(required=True)
     slugs = columns.List(columns.Text, required=True)
+
+
+class UserActivityTag(models.Model):
+    """Activities that carry one of the user's tags."""
+
+    __table_name__ = "activity_tags_by_user"
+    __keyspace__ = "amigoact"
+
+    user_id = columns.UUID(primary_key=True, partition_key=True)
+    tag_slug = columns.Text(primary_key=True, clustering_order="ASC")
+    activity_id = columns.UUID(primary_key=True, clustering_order="DESC")
+    org_id = columns.UUID(required=True)
+
+
+class UserActivityTagSet(models.Model):
+    """Slugs last written onto one activity by this user."""
+
+    __table_name__ = "user_activity_tag_sets"
+    __keyspace__ = "amigoact"
+
+    user_id = columns.UUID(primary_key=True, partition_key=True)
+    activity_id = columns.UUID(primary_key=True, clustering_order="ASC")
+    org_id = columns.UUID(required=True)
+    slugs = columns.List(columns.Text, required=True)

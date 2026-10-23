@@ -1479,6 +1479,25 @@ CREATE TABLE IF NOT EXISTS user_post_tag_sets (
     PRIMARY KEY ((user_id), post_id)
 ) WITH CLUSTERING ORDER BY (post_id ASC);
 
+// Activities carrying one personal tag. An activity save binds the
+// author the same way a board save binds a post.
+CREATE TABLE IF NOT EXISTS activity_tags_by_user (
+    user_id uuid,
+    tag_slug text,
+    activity_id uuid,
+    org_id uuid,
+    PRIMARY KEY ((user_id), tag_slug, activity_id)
+) WITH CLUSTERING ORDER BY (tag_slug ASC, activity_id DESC);
+
+// Slugs last written onto one activity. A later save drops the ones it omits.
+CREATE TABLE IF NOT EXISTS user_activity_tag_sets (
+    user_id uuid,
+    activity_id uuid,
+    org_id uuid,
+    slugs list<text>,
+    PRIMARY KEY ((user_id), activity_id)
+) WITH CLUSTERING ORDER BY (activity_id ASC);
+
 // One author's unpublished drafts inside one org, newest first. Drafts
 // never touch org_posts_feed, so the board and its realtime fan-out stay
 // silent until publish.

@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 from fastapi import Depends, Request
 
+from activities.interfaces import ActivityEvents
 from core.config import Settings, get_settings
 from core.dependencies import get_access_control
 
@@ -17,10 +18,11 @@ if TYPE_CHECKING:  # pragma: no cover - type imports only
     from rbac.interfaces import AccessControl
 
 
-def get_user_tag_service(
-    settings: Settings = Depends(get_settings),
+def _build_user_tag_service(
+    settings: Settings, events: ActivityEvents | None
 ) -> UserTagService:
-    """Personal tag catalog and the posts that carry each tag."""
+    from activities.repository import CqlActivityStore
+    from activities.tag_repository import CqlOrgTagStore
     from activities.user_tag_service import UserTagService
     from activities.user_tag_store import CqlUserTagStore
     from orgs.media_repository import CqlMediaRepository
@@ -35,6 +37,29 @@ def get_user_tag_service(
         posts,
         CqlPostTagIndex(),
         CqlPostCovers(posts, CqlMediaRepository()),
+        CqlActivityStore(keyspace),
+        CqlOrgTagStore(keyspace),
+        events=events,
+    )
+
+
+def get_user_tag_service(
+    settings: Settings = Depends(get_settings),
+) -> UserTagService:
+    """Personal tag catalog and the posts that carry each tag."""
+    return _build_user_tag_service(settings, None)
+
+
+def get_user_tag_http(
+    request: Request,
+    settings: Settings = Depends(get_settings),
+) -> UserTagService:
+    """Same catalog, plus a tag.* hint when a personal edit rewrites rows."""
+    from activities.events import WsActivityEvents
+
+    return _build_user_tag_service(
+        settings,
+        WsActivityEvents(getattr(request.app.state, "ws_manager", None)),
     )
 
 

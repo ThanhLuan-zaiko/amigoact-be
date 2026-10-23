@@ -78,11 +78,22 @@ class UserTagPostItem(BaseModel):
     cover_url: str | None = None
 
 
+class UserTagActivityItem(BaseModel):
+    """An activity that carries one of the caller's tags."""
+
+    activity_id: UUID
+    org_id: UUID
+    title: str
+    draft: bool = False
+
+
 class UserTagItem(BaseModel):
     """One tag in the signed-in user's catalog."""
 
     name: str
     slug: str
     post_count: int = 0
+    activity_count: int = 0
     created_at: datetime
     posts: list[UserTagPostItem] = []
+    activities: list[UserTagActivityItem] = []

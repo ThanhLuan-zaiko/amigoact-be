@@ -7,7 +7,13 @@ from uuid import UUID
 
 from cassandra.cqlengine.connection import get_session
 
-from activities.user_tag_model import UserPostTag, UserPostTagSet, UserTag
+from activities.user_tag_model import (
+    UserActivityTag,
+    UserActivityTagSet,
+    UserPostTag,
+    UserPostTagSet,
+    UserTag,
+)
 
 
 class CqlUserTagStore:
@@ -98,3 +104,67 @@ class CqlUserTagStore:
 
     def sets_for(self, user_id: UUID) -> list[UserPostTagSet]:
         return list(UserPostTagSet.objects(user_id=user_id).all())
+
+    def activities_for(
+        self, user_id: UUID, slug: str
+    ) -> list[UserActivityTag]:
+        return list(
+            UserActivityTag.objects(user_id=user_id, tag_slug=slug).all()
+        )
+
+    def activity_slugs_of(
+        self, user_id: UUID, activity_id: UUID
+    ) -> list[str]:
+        row = UserActivityTagSet.objects(
+            user_id=user_id, activity_id=activity_id
+        ).first()
+        if row is None:
+            return []
+        return list(row.slugs or [])
+
+    def add_activity_edge(
+        self, user_id: UUID, slug: str, activity_id: UUID, org_id: UUID
+    ) -> None:
+        UserActivityTag.create(
+            user_id=user_id,
+            tag_slug=slug,
+            activity_id=activity_id,
+            org_id=org_id,
+        )
+
+    def remove_activity_edge(
+        self, user_id: UUID, slug: str, activity_id: UUID
+    ) -> None:
+        UserActivityTag.objects(
+            user_id=user_id, tag_slug=slug, activity_id=activity_id
+        ).delete()
+
+    def write_activity_set(
+        self,
+        user_id: UUID,
+        activity_id: UUID,
+        org_id: UUID,
+        slugs: list[str],
+    ) -> None:
+        if not slugs:
+            UserActivityTagSet.objects(
+                user_id=user_id, activity_id=activity_id
+            ).delete()
+            return
+        current = UserActivityTagSet.objects(
+            user_id=user_id, activity_id=activity_id
+        ).first()
+        if current is None:
+            UserActivityTagSet.create(
+                user_id=user_id,
+                activity_id=activity_id,
+                org_id=org_id,
+                slugs=slugs,
+            )
+            return
+        UserActivityTagSet.objects(
+            user_id=user_id, activity_id=activity_id
+        ).update(org_id=org_id, slugs=slugs)
+
+    def activity_sets_for(self, user_id: UUID) -> list[UserActivityTagSet]:
+        return list(UserActivityTagSet.objects(user_id=user_id).all())

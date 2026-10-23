@@ -16,6 +16,8 @@ class Store:
         self.tags: dict[tuple[UUID, str], SimpleNamespace] = {}
         self.edges: list[SimpleNamespace] = []
         self.sets: dict[tuple[UUID, UUID], SimpleNamespace] = {}
+        self.activity_edges: list[SimpleNamespace] = []
+        self.activity_sets: dict[tuple[UUID, UUID], SimpleNamespace] = {}
 
     def list_tags(self, user_id: UUID) -> list[SimpleNamespace]:
         return [row for (owner, _slug), row in self.tags.items() if owner == user_id]
@@ -76,6 +78,54 @@ class Store:
 
     def sets_for(self, user_id: UUID) -> list[SimpleNamespace]:
         return [row for (owner, _post), row in self.sets.items() if owner == user_id]
+
+    def activities_for(self, user_id: UUID, slug: str) -> list[SimpleNamespace]:
+        return [
+            edge for edge in getattr(self, "activity_edges", [])
+            if edge.user_id == user_id and edge.tag_slug == slug
+        ]
+
+    def activity_slugs_of(self, user_id: UUID, activity_id: UUID) -> list[str]:
+        row = getattr(self, "activity_sets", {}).get((user_id, activity_id))
+        return list(row.slugs) if row is not None else []
+
+    def add_activity_edge(
+        self, user_id: UUID, slug: str, activity_id: UUID, org_id: UUID
+    ) -> None:
+        self.activity_edges.append(SimpleNamespace(
+            user_id=user_id, tag_slug=slug, activity_id=activity_id, org_id=org_id
+        ))
+
+    def remove_activity_edge(
+        self, user_id: UUID, slug: str, activity_id: UUID
+    ) -> None:
+        self.activity_edges = [
+            edge for edge in self.activity_edges
+            if not (
+                edge.user_id == user_id
+                and edge.tag_slug == slug
+                and edge.activity_id == activity_id
+            )
+        ]
+
+    def write_activity_set(
+        self, user_id, activity_id, org_id, slugs
+    ) -> None:  # noqa: ANN001
+        if not hasattr(self, "activity_sets"):
+            self.activity_sets = {}
+        if not slugs:
+            self.activity_sets.pop((user_id, activity_id), None)
+            return
+        self.activity_sets[(user_id, activity_id)] = SimpleNamespace(
+            activity_id=activity_id, org_id=org_id, slugs=list(slugs)
+        )
+
+    def activity_sets_for(self, user_id: UUID) -> list[SimpleNamespace]:
+        return [
+            row for (owner, _activity), row
+            in getattr(self, "activity_sets", {}).items()
+            if owner == user_id
+        ]
 
 
 class Posts:

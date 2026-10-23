@@ -6,6 +6,7 @@ from uuid import UUID
 
 from activities.interfaces import ActivityEvents, ActivityStore
 from activities.model import Activity
+from activities.tag_claim import PersonalTagBook
 from core.exceptions import (
     ActivityDeletedError,
     ForbiddenError,
@@ -28,12 +29,14 @@ class ActivityDeleteService:
         access: AccessControl,
         events: ActivityEvents | None = None,
         store: MediaStore | None = None,
+        user_tags: PersonalTagBook | None = None,
     ) -> None:
         self._activities = activities
         self._orgs = orgs
         self._access = access
         self._events = events
         self._store = store
+        self._user_tags = user_tags
 
     def _emit(
         self,
@@ -106,6 +109,9 @@ class ActivityDeleteService:
         """Permanent purge: rows, feeds, edges, media rows and bytes."""
         self._manager(org_id, actor_id)
         row = self._activity(org_id, activity_id)
+        owner = getattr(row, "created_by", None)
+        if self._user_tags is not None and owner is not None:
+            self._user_tags.bind_activity(owner, org_id, activity_id, None)
         paths = self._activities.delete_everything(activity_id)
         self._emit(org_id, "deleted", activity_id, actor_id, row.status)
         if self._store is not None:

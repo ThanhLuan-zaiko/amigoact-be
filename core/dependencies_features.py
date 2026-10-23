@@ -9,6 +9,8 @@ from fastapi import Depends, Request
 from core.config import Settings, get_settings
 from core.dependencies import get_access_control, get_media_store
 from core.dependencies import get_notification_service, user_directory
+from activities.user_tag_service import UserTagService
+from core.dependencies_tags import get_user_tag_service
 
 if TYPE_CHECKING:  # pragma: no cover - type imports only
     from activities.category_service import CategoryService
@@ -78,6 +80,7 @@ def get_activity_service(
     request: Request,
     settings: Settings = Depends(get_settings),
     access: AccessControl = Depends(get_access_control),
+    user_tags: UserTagService = Depends(get_user_tag_service),
 ) -> ActivityService:
     """Build one ActivityService per request over activity feeds."""
     from activities.category_repository import CqlCategoryStore
@@ -95,6 +98,7 @@ def get_activity_service(
         access=access,
         events=WsActivityEvents(getattr(request.app.state, "ws_manager", None)),
         tags=TagService(CqlOrgTagStore(settings.scylla_keyspace)),
+        user_tags=user_tags,
     )
 
 
@@ -123,6 +127,7 @@ def get_activity_delete_service(
     from activities.delete_service import ActivityDeleteService
     from activities.events import WsActivityEvents
     from activities.repository import CqlActivityStore
+    from core.dependencies_tags import get_user_tag_service
     from orgs.repository import CqlOrgRepository
 
     return ActivityDeleteService(
@@ -131,6 +136,7 @@ def get_activity_delete_service(
         access=access,
         events=WsActivityEvents(getattr(request.app.state, "ws_manager", None)),
         store=get_media_store(settings),
+        user_tags=get_user_tag_service(settings),
     )
 
 

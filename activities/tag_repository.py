@@ -20,6 +20,7 @@ from activities.tag_model import (
     TagByOrg,
     TrashedTagEdgesByOrg,
 )
+from core.exceptions import TagDeletedError
 
 DIRECTORY_BUCKET = "all"
 _MAX_ACTIVITY_TAGS = 10
@@ -227,18 +228,48 @@ class CqlOrgTagStore(OrgTagStore):
             counts[edge.tag_slug] = counts.get(edge.tag_slug, 0) + 1
         return counts
 
+    def guard_replacement(self, org_id: UUID, replacement: str) -> None:
+        """Refuse a personal rename onto a slug reserved in the trash."""
+        row = self.get(org_id, tag_slug(replacement.strip()))
+        if row is not None and row.deleted_at is not None:
+            raise TagDeletedError("Tag is in the trash.")
+
+    def _owned_name(
+        self, org_id: UUID, replacement: str, now: datetime
+    ) -> str:
+        """Org-canonical spelling, claiming a slug the catalog lacks."""
+        cleaned = replacement.strip()
+        new_slug = tag_slug(cleaned)
+        row = self.get(org_id, new_slug)
+        if row is None:
+            from core.ids import uuid7
+
+            row, _created = self.claim(
+                org_id, uuid7(), new_slug, cleaned, now
+            )
+        if row.deleted_at is not None:
+            raise TagDeletedError("Tag is in the trash.")
+        return row.name
+
     def retag(
         self,
         org_id: UUID,
         slug: str,
         replacement: str | None,
         now: datetime,
+        only: set[UUID] | None = None,
     ) -> list[UUID]:
+        # A personal rename must not overwrite the catalog's spelling
+        # with the user's, and must not touch anyone else's activities.
+        if only is not None and replacement is not None:
+            replacement = self._owned_name(org_id, replacement, now)
         touched: list[UUID] = []
         edges = list(
             ActivityTagsByOrg.objects(org_id=org_id, tag_slug=slug).all()
         )
         for edge in edges:
+            if only is not None and edge.activity_id not in only:
+                continue
             row = Activity.objects(id=edge.activity_id).first()
             names = list(row.tag_names or []) if row is not None else []
             hit = next(
@@ -285,6 +316,15 @@ class CqlOrgTagStore(OrgTagStore):
                     activity_id=row.id,
                 )
             touched.append(row.id)
+            if only is None and replacement:
+                new_slug = tag_slug(replacement)
+                if new_slug != slug:
+                    from activities.user_tag_activities import follow_author
+
+                    follow_author(
+                        self._keyspace, row, org_id, slug, new_slug,
+                        replacement, now,
+                    )
         return touched
 
     def usage(self, org_id: UUID) -> dict[str, int]:

@@ -13,6 +13,11 @@ from activities.interfaces import (
 )
 from activities.model import Activity
 from activities.model import tag_slug as _tag_key
+from activities.tag_claim import (
+    PersonalTagBook,
+    bind_activity_tags,
+    claim_activity_tags,
+)
 from activities.tag_service import TagService
 from core.exceptions import (
     ActivityDeletedError,
@@ -63,6 +68,7 @@ class ActivityService:
         access: AccessControl,
         tags: TagService,
         events: ActivityEvents | None = None,
+        user_tags: PersonalTagBook | None = None,
     ) -> None:
         self._activities = activities
         self._categories = categories
@@ -70,6 +76,7 @@ class ActivityService:
         self._access = access
         self._events = events
         self._tags = tags
+        self._user_tags = user_tags
 
     def _emit(
         self,
@@ -137,8 +144,13 @@ class ActivityService:
         """Member with activity:create opens a draft."""
         self._require_manager(org_id, actor_id, "activity:create")
         self._check_category(org_id, fields.category_id)
-        fields.tag_names = self._tags.ensure(org_id, fields.tag_names)
+        fields.tag_names = claim_activity_tags(
+            self._tags, self._user_tags, org_id, actor_id, fields.tag_names
+        )
         row = self._activities.create(org_id, actor_id, fields, utcnow())
+        bind_activity_tags(
+            self._user_tags, actor_id, org_id, row.id, fields.tag_names
+        )
         self._access.record(
             org_id, actor_id, "activity.create", "activity", row.id,
             "allowed",
@@ -163,12 +175,18 @@ class ActivityService:
                 "Completed or cancelled activities cannot be edited."
             )
         self._check_category(org_id, fields.category_id)
-        fields.tag_names = self._tags.ensure(org_id, fields.tag_names)
+        owner_id = row.created_by
+        fields.tag_names = claim_activity_tags(
+            self._tags, self._user_tags, org_id, owner_id, fields.tag_names
+        )
         fields.slug = fields.slug or row.slug
         updated = self._activities.update_details(
             activity_id, fields, utcnow()
         )
         assert updated is not None
+        bind_activity_tags(
+            self._user_tags, owner_id, org_id, activity_id, fields.tag_names
+        )
         self._access.record(
             org_id, actor_id, "activity.update", "activity", activity_id,
             "allowed",

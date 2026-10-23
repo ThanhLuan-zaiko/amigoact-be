@@ -255,12 +255,15 @@ class OrgTagStore(ABC):
         slug: str,
         replacement: str | None,
         now: datetime,
+        only: set[UUID] | None = None,
     ) -> list[UUID]:
-        """Rewrite tag_names on every edged activity: the name whose
+        """Rewrite tag_names on edged activities: the name whose
         tag_slug() matches `slug` becomes `replacement` in place (None
         drops it), dedupe by slug keeps the first occurrence. Live
         activities also rewrite their activities_by_tag rows; edges
-        mirror the result. Returns the touched activity ids."""
+        mirror the result. `only` restricts the write to those
+        activity ids; None rewrites every edge (catalog curation).
+        Returns the touched activity ids."""
 
     @abstractmethod
     def usage(self, org_id: UUID) -> dict[str, int]:

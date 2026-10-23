@@ -1,4 +1,4 @@
-"""Personal tags: create a name, attach it later from the board."""
+"""Personal tags: create a name, attach it from the board or an activity."""
 
 from __future__ import annotations
 
@@ -7,6 +7,17 @@ from datetime import datetime
 from typing import Protocol
 from uuid import UUID
 
+from activities.interfaces import ActivityEvents
+from activities.user_tag_activities import (
+    ActivityHeads,
+    ActivityRetag,
+    UserTagActivity,
+    bind as bind_activity_edges,
+    collect as collect_activities,
+    drop as drop_activity_edges,
+    move as move_activity_edges,
+    rewrite_owned,
+)
 from activities.user_tag_store import CqlUserTagStore
 from core.exceptions import TagExistsError, TagNotFoundError
 from core.security import utcnow
@@ -52,6 +63,8 @@ class UserTagView:
     post_count: int
     created_at: datetime
     posts: tuple[UserTagPost, ...] = ()
+    activity_count: int = 0
+    activities: tuple[UserTagActivity, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -87,7 +100,7 @@ def _visible(row: object | None, slug: str) -> bool:
 
 
 class UserTagService:
-    """The signed-in user's tag list and the posts that use each tag."""
+    """The signed-in user's tag list and the posts and activities on it."""
 
     def __init__(
         self,
@@ -95,11 +108,17 @@ class UserTagService:
         posts: PostHeads,
         post_tags: PostRetag | None = None,
         covers: PostCovers | None = None,
+        activity_heads: ActivityHeads | None = None,
+        activity_tags: ActivityRetag | None = None,
+        events: ActivityEvents | None = None,
     ) -> None:
         self._store = store
         self._posts = posts
         self._post_tags = post_tags
         self._covers = covers
+        self._activity_heads = activity_heads
+        self._activity_tags = activity_tags
+        self._events = events
 
     def list_tags(self, user_id: UUID) -> list[UserTagView]:
         rows = self._store.list_tags(user_id)
@@ -108,12 +127,8 @@ class UserTagService:
         for row in rows:
             total, posts = self._collect(user_id, row.slug)
             views.append(
-                UserTagView(
-                    name=row.name,
-                    slug=row.slug,
-                    post_count=total,
-                    created_at=row.created_at,
-                    posts=tuple(posts),
+                self._view(
+                    user_id, row.name, row.slug, total, row.created_at, posts
                 )
             )
         return views
@@ -152,8 +167,8 @@ class UserTagService:
             self._store.update_name(user_id, slug, clean, now)
             self._retag(user_id, slug, clean, now)
         total, posts = self._collect(user_id, slug)
-        return UserTagView(
-            clean, slug, total, current.created_at, tuple(posts)
+        return self._view(
+            user_id, clean, slug, total, current.created_at, posts
         )
 
     def delete(self, user_id: UUID, slug: str) -> None:
@@ -171,6 +186,7 @@ class UserTagService:
                 bundle.org_id,
                 [item for item in bundle.slugs if item != slug],
             )
+        drop_activity_edges(self._store, user_id, slug)
         self._store.delete_tag(user_id, slug)
 
     def list_posts(self, user_id: UUID, slug: str) -> list[UserTagPost]:
@@ -208,6 +224,45 @@ class UserTagService:
             self._store.add_edge(user_id, slug, post_id, org_id)
         self._store.write_set(user_id, post_id, org_id, wanted)
 
+    def bind_activity(
+        self,
+        user_id: UUID,
+        org_id: UUID,
+        activity_id: UUID,
+        names: list[str] | None,
+    ) -> None:
+        """Point this activity at the slugs it carries now."""
+        bind_activity_edges(self._store, user_id, org_id, activity_id, names)
+
+    def _view(
+        self,
+        user_id: UUID,
+        name: str,
+        slug: str,
+        post_count: int,
+        created_at: datetime,
+        posts: list[UserTagPost],
+    ) -> UserTagView:
+        activity_count, activities = self._activity_slice(user_id, slug)
+        return UserTagView(
+            name,
+            slug,
+            post_count,
+            created_at,
+            tuple(posts),
+            activity_count,
+            tuple(activities),
+        )
+
+    def _activity_slice(
+        self, user_id: UUID, slug: str
+    ) -> tuple[int, list[UserTagActivity]]:
+        if self._activity_heads is None:
+            return 0, []
+        return collect_activities(
+            self._store, self._activity_heads, user_id, slug
+        )
+
     def _collect(
         self, user_id: UUID, slug: str
     ) -> tuple[int, list[UserTagPost]]:
@@ -240,10 +295,18 @@ class UserTagService:
     def _retag(
         self, user_id: UUID, slug: str, replacement: str | None, now: datetime
     ) -> None:
-        if self._post_tags is None:
-            return
-        for org_id in self._store.orgs_for(user_id, slug):
-            self._post_tags.retag(org_id, slug, replacement, now)
+        if self._post_tags is not None:
+            for org_id in self._store.orgs_for(user_id, slug):
+                self._post_tags.retag(org_id, slug, replacement, now)
+        rewrite_owned(
+            self._store,
+            self._activity_tags,
+            self._events,
+            user_id,
+            slug,
+            replacement,
+            now,
+        )
 
     def _move_edges(self, user_id: UUID, old: str, new: str) -> None:
         for edge in list(self._store.posts_for(user_id, old)):
@@ -258,3 +321,4 @@ class UserTagService:
                 bundle.org_id,
                 [new if item == old else item for item in bundle.slugs],
             )
+        move_activity_edges(self._store, user_id, old, new)

@@ -115,10 +115,12 @@ class FakeOrgTags(OrgTagStore):
             )
         return counts
 
-    def retag(self, org_id, slug, replacement, now):  # noqa: ANN001, ANN202
+    def retag(self, org_id, slug, replacement, now, only=None):  # noqa: ANN001, ANN202
         touched = []
         for row in self.activities.rows.values():
             if row.org_id != org_id:
+                continue
+            if only is not None and row.id not in only:
                 continue
             names = list(row.tag_names or [])
             hit = next(
