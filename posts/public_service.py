@@ -165,6 +165,7 @@ class PublicPostService(PostDirectory):
             comment_count=snapshot.comment_count,
             media=media[:6],
             media_count=len(media),
+            tags=list(snapshot.tags),
             org=TimelineOrg(
                 id=org.id,
                 name=org.name,

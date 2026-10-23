@@ -6,12 +6,15 @@ delete) live in posts/lifecycle_service.py.
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 from uuid import UUID
 
 from core.exceptions import InvalidPostStateError
 from core.ids import uuid7
 from core.security import utcnow
+from core.tags import tag_slug
+from posts.tag_rules import take_post_tags
 from posts.blocks import blocks_to_text, compact_blocks, dump_blocks
 from posts.dtos import PostPage, PostSnapshot
 from posts.helpers import (
@@ -49,11 +52,16 @@ class PostService(BoardServiceBase):
         limit: int = 20,
         page: int = 1,
         kind: str | None = None,
+        tag: str | None = None,
     ) -> PostPage:
-        """Numbered newest-first page; kind totals come off the denormalized
-        feed kind, so no canonical-row loads just to count."""
+        """Numbered newest-first page. A tag reads the post edge index."""
         org = self._guard.require_member(org_id, viewer_id, "post.list")
-        if kind is None:
+        slug = tag_slug(tag) if tag and tag.strip() else ""
+        filtering = bool(tag and tag.strip())
+        if filtering:
+            ids = self._tagged_ids(org_id, slug, kind) if slug else []
+            total = len(ids)
+        elif kind is None:
             rows = self._posts.list_feed(
                 org_id, min(page * limit, WINDOW_LIMIT)
             )
@@ -67,6 +75,7 @@ class PostService(BoardServiceBase):
                 if (row.kind or "discussion") == kind
             ]
             total = len(ids)
+        allowed = set(ids) if filtering else None
         items = self._window(
             ids, page, limit,
             lambda row: _published(row)
@@ -75,6 +84,8 @@ class PostService(BoardServiceBase):
         pinned: list[PostSnapshot] = []
         if page == 1:
             for post_id in self._posts.list_pinned(org_id):
+                if allowed is not None and post_id not in allowed:
+                    continue
                 row = self._posts.get(post_id)
                 if row is not None and _published(row):
                     pinned.append(self._snapshots.build(row))
@@ -86,6 +97,49 @@ class PostService(BoardServiceBase):
             viewer_role=role,
             viewer_permissions=permissions,
         )
+
+    def _tagged_ids(
+        self, org_id: UUID, slug: str, kind: str | None
+    ) -> list[UUID]:
+        """Published posts edged to the slug, optionally one kind."""
+        if self._post_tags is None or not slug:
+            return []
+        ids: list[UUID] = []
+        for post_id in self._post_tags.list_ids(org_id, slug):
+            row = self._posts.get(post_id)
+            if row is None or not _published(row):
+                continue
+            if kind is not None and (row.kind or "discussion") != kind:
+                continue
+            ids.append(row.post_id)
+        return ids
+
+    def _canonical_tags(
+        self, org_id: UUID, user_id: UUID, names: list[str] | None
+    ) -> list[str] | None:
+        """Claim names before the post write. None means tags stay put."""
+        if names is None:
+            return None
+        sliced = take_post_tags(names)
+        if self._user_tags is not None:
+            sliced = self._user_tags.ensure(user_id, sliced)
+        if self._tag_claims is None:
+            return sliced if self._user_tags is not None else None
+        return self._tag_claims.ensure(org_id, sliced)
+
+    def _write_tags(
+        self,
+        org_id: UUID,
+        post_id: UUID,
+        user_id: UUID,
+        names: list[str] | None,
+        now: datetime,
+    ) -> None:
+        if names is None:
+            return
+        if self._post_tags is not None:
+            self._post_tags.replace(org_id, post_id, names, now)
+        self._bind_user_tags(user_id, org_id, post_id, names)
 
     def get_post(
         self, org_id: UUID, post_id: UUID, viewer_id: UUID
@@ -111,6 +165,7 @@ class PostService(BoardServiceBase):
         cover_media_id: UUID | None = None,
         status: str = "published",
         visibility: str | None = None,
+        tags: list[str] | None = None,
     ) -> PostSnapshot:
         """Members post discussions; announcements need post:announce.
 
@@ -140,6 +195,7 @@ class PostService(BoardServiceBase):
         draft = status == "draft"
         if not draft:
             check_publishable(kind, title, text, article)
+        canonical = self._canonical_tags(org_id, actor_id, tags)
         now = utcnow()
         post_id = uuid7()
         created = self._posts.create(
@@ -149,6 +205,7 @@ class PostService(BoardServiceBase):
             cover_media_id=cover_media_id,
             visibility=audience,
         )
+        self._write_tags(org_id, post_id, actor_id, canonical, now)
         self._guard.record(org_id, actor_id, "post.create", post_id)
         if not draft:
             self._emit(org_id, "post.created", post_id, actor_id, detail=kind)
@@ -173,6 +230,8 @@ class PostService(BoardServiceBase):
         touch_cover: bool = False,
         kind: str | None = None,
         visibility: str | None = None,
+        tags: list[str] | None = None,
+        touch_tags: bool = False,
     ) -> PostSnapshot:
         """Only the author edits (drafts too); managers moderate by delete.
 
@@ -208,6 +267,11 @@ class PostService(BoardServiceBase):
                 self._guard.require_announce(
                     org_id, org.owner_id, actor_id, "post.update", post_id
                 )
+        canonical = (
+            self._canonical_tags(org_id, actor_id, tags or [])
+            if touch_tags
+            else None
+        )
         now = utcnow()
         if blocks is None:
             if not is_draft(row):
@@ -226,6 +290,8 @@ class PostService(BoardServiceBase):
             self._posts.replace_media(post_id, media)
         if visibility_changed:
             self._posts.set_visibility(row, next_visibility, now)
+        if touch_tags:
+            self._write_tags(org_id, post_id, actor_id, canonical, now)
         self._guard.record(org_id, actor_id, "post.update", post_id)
         if not is_draft(row):
             self._emit(org_id, "post.updated", post_id, actor_id)

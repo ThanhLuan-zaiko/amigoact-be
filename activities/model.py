@@ -2,34 +2,10 @@
 
 from __future__ import annotations
 
-import re
-import unicodedata
-
 import core.database  # noqa: F401  (reactor compat shim must run first)
 from core.ids import uuid7
+from core.tags import tag_fold, tag_slug  # noqa: F401  (re-export)
 from cassandra.cqlengine import columns, models
-
-
-def tag_slug(name: str) -> str:
-    """Canonical tag key: ASCII slug like schemas.slugify minus fallback.
-
-    Empty result means the name carries no usable characters and is not a
-    valid tag at all (callers filter it out).
-    """
-    text = unicodedata.normalize("NFKD", name.strip())
-    text = text.replace("\u0111", "d").replace("\u0110", "D")
-    text = "".join(ch for ch in text if not unicodedata.combining(ch))
-    text = re.sub(r"[^a-zA-Z0-9]+", "-", text).strip("-").lower()
-    return re.sub(r"-{2,}", "-", text)
-
-
-def tag_fold(value: str) -> str:
-    """Lowercase ASCII fold for substring matching in tag searches."""
-    text = unicodedata.normalize("NFKD", value)
-    text = text.replace("\u0111", "d").replace("\u0110", "D")
-    return "".join(
-        ch for ch in text if not unicodedata.combining(ch)
-    ).lower()
 
 
 class Activity(models.Model):

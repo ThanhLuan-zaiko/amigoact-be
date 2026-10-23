@@ -26,8 +26,8 @@ async def test_org_tag_page_and_item_shape(client: AsyncClient) -> None:
     assert set(body.keys()) == {"items", "can_manage", "trash_count"}
     item = next(i for i in body["items"] if i["slug"] == "alpha")
     assert set(item.keys()) == {
-        "id", "name", "slug", "activity_count", "created_at",
-        "deleted_at",
+        "id", "name", "slug", "activity_count", "post_count",
+        "created_at", "deleted_at",
     }
 
 

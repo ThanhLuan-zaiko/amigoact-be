@@ -10,6 +10,7 @@ from uuid import UUID
 from activities.interfaces import ActivityEvents, OrgTagStore
 from activities.model import tag_fold, tag_slug
 from activities.tag_model import TagByOrg
+from activities.tag_posts import PostTagBridge, PostTagMirror
 from core.exceptions import (
     ForbiddenError,
     InvalidOrgStateError,
@@ -35,6 +36,7 @@ class OrgTagSnapshot:
     slug: str
     activity_count: int
     created_at: datetime
+    post_count: int = 0
     deleted_at: datetime | None = None
 
 
@@ -56,11 +58,13 @@ class TagAdminService:
         orgs: OrgRepository,
         access: AccessControl,
         events: ActivityEvents | None = None,
+        post_tags: PostTagMirror | None = None,
     ) -> None:
         self._tags = tags
         self._orgs = orgs
         self._access = access
         self._events = events
+        self._posts = PostTagBridge(post_tags)
 
     def _org(self, org_id: UUID) -> object:
         org = self._orgs.get_by_id(org_id)
@@ -84,13 +88,17 @@ class TagAdminService:
         return org
 
     def _snapshot(
-        self, row: TagByOrg, counts: dict[str, int]
+        self,
+        row: TagByOrg,
+        counts: dict[str, int],
+        post_counts: dict[str, int],
     ) -> OrgTagSnapshot:
         return OrgTagSnapshot(
             id=row.tag_id,
             name=row.name,
             slug=row.slug,
             activity_count=counts.get(row.slug, 0),
+            post_count=post_counts.get(row.slug, 0),
             created_at=row.created_at,
             deleted_at=row.deleted_at,
         )
@@ -133,8 +141,7 @@ class TagAdminService:
         limit: int = 500,
         trash: bool = False,
     ) -> OrgTagListing:
-        """Member-readable catalog page; the trash view is manager-only
-        and counts remembered edges, not live tag_names."""
+        """Member-readable catalog; trash is manager-only."""
         org = self._org(org_id)
         if (
             getattr(org, "owner_id", None) != viewer_id
@@ -161,6 +168,7 @@ class TagAdminService:
                 (r for r in all_rows if r.deleted_at is None),
                 key=lambda row: row.name.casefold(),
             )
+        post_counts = self._posts.counts(org_id, trash)
         rows = [
             row
             for row in rows
@@ -170,7 +178,8 @@ class TagAdminService:
         ]
         return OrgTagListing(
             items=[
-                self._snapshot(row, counts) for row in rows[:limit]
+                self._snapshot(row, counts, post_counts)
+                for row in rows[:limit]
             ],
             can_manage=can_manage,
             trash_count=len(trashed) if can_manage else 0,
@@ -195,7 +204,7 @@ class TagAdminService:
             raise TagExistsError("Tag already exists.")
         self._audit(org_id, actor_id, "tag.create", row.tag_id, None, row.name)
         self._emit(org_id, "created", row.slug, actor_id)
-        return self._snapshot(row, {})
+        return self._snapshot(row, {}, {})
 
     def rename_tag(
         self, org_id: UUID, actor_id: UUID, slug: str, name: str
@@ -211,7 +220,9 @@ class TagAdminService:
             )
         new_name = name.strip()
         if new_name == row.name:
-            return self._snapshot(row, self._tags.usage(org_id))
+            return self._snapshot(
+                row, self._tags.usage(org_id), self._posts.counts(org_id, False)
+            )
         new_slug = tag_slug(new_name)
         if new_slug != slug:
             target = self._tags.get(org_id, new_slug)
@@ -226,6 +237,7 @@ class TagAdminService:
         if updated is None:
             raise TagExistsError("Tag already exists.")
         self._tags.retag(org_id, slug, new_name, now)
+        self._posts.retag(org_id, slug, new_name, now)
         if new_slug != slug:
             # Old row outlives retag: a failed sweep leaves the catalog
             # pointing at the tag some activities still carry.
@@ -234,7 +246,9 @@ class TagAdminService:
             org_id, actor_id, "tag.rename", row.tag_id, row.name, new_name
         )
         self._emit(org_id, "renamed", updated.slug, actor_id)
-        return self._snapshot(updated, self._tags.usage(org_id))
+        return self._snapshot(
+            updated, self._tags.usage(org_id), self._posts.counts(org_id, False)
+        )
 
     def merge_tags(
         self, org_id: UUID, actor_id: UUID, slug: str, into: str
@@ -247,27 +261,25 @@ class TagAdminService:
         target = self._tags.get(org_id, into)
         if source is None or target is None:
             raise TagNotFoundError("Tag not found.")
-        if (
-            source.deleted_at is not None
-            or target.deleted_at is not None
-        ):
-            raise TagDeletedError(
-                "Tag is in the trash; restore it first."
-            )
-        self._tags.retag(org_id, slug, target.name, utcnow())
+        if source.deleted_at is not None or target.deleted_at is not None:
+            raise TagDeletedError("Tag is in the trash; restore it first.")
+        now = utcnow()
+        self._tags.retag(org_id, slug, target.name, now)
+        self._posts.retag(org_id, slug, target.name, now)
         self._tags.remove(org_id, slug)
         self._audit(
             org_id, actor_id, "tag.merge", source.tag_id,
             source.name, target.name,
         )
         self._emit(org_id, "merged", slug, actor_id)
-        return self._snapshot(target, self._tags.usage(org_id))
+        return self._snapshot(
+            target, self._tags.usage(org_id), self._posts.counts(org_id, False)
+        )
 
     def trash_tag(
         self, org_id: UUID, actor_id: UUID, slug: str
     ) -> OrgTagSnapshot:
-        """Soft delete: remember the edges, detach everywhere, then
-        mark the row so the slug stays reserved in the org trash."""
+        """Soft delete: remember edges, detach, reserve the slug."""
         self._require_manager(org_id, actor_id)
         row = self._tags.get(org_id, slug)
         if row is None:
@@ -276,14 +288,20 @@ class TagAdminService:
             raise TagDeletedError("Tag is already in the trash.")
         now = utcnow()
         self._tags.snapshot_trash_edges(org_id, slug)
+        self._posts.snapshot(org_id, slug)
         self._tags.retag(org_id, slug, None, now)
+        self._posts.retag(org_id, slug, None, now)
         self._tags.mark_trashed(org_id, slug, now)
         self._audit(
             org_id, actor_id, "tag.trash", row.tag_id, row.name, None
         )
         self._emit(org_id, "trashed", slug, actor_id)
         trashed = self._tags.get(org_id, slug) or row
-        return self._snapshot(trashed, self._tags.trashed_usage(org_id))
+        return self._snapshot(
+            trashed,
+            self._tags.trashed_usage(org_id),
+            self._posts.counts(org_id, True),
+        )
 
     def restore_tag(
         self, org_id: UUID, actor_id: UUID, slug: str
@@ -297,13 +315,17 @@ class TagAdminService:
             raise InvalidOrgStateError("Tag is not in the trash.")
         now = utcnow()
         self._tags.restore_edges(org_id, slug, row.name, now)
+        self._posts.restore(org_id, slug, row.name, now)
         self._tags.mark_restored(org_id, slug, row.name, now)
+        self._posts.forget(org_id, slug)
         self._audit(
             org_id, actor_id, "tag.restore", row.tag_id, None, row.name
         )
         self._emit(org_id, "restored", slug, actor_id)
         restored = self._tags.get(org_id, slug) or row
-        return self._snapshot(restored, self._tags.usage(org_id))
+        return self._snapshot(
+            restored, self._tags.usage(org_id), self._posts.counts(org_id, False)
+        )
 
     def erase_tag(self, org_id: UUID, actor_id: UUID, slug: str) -> None:
         """Hard delete: live rows are stripped off activities first;
@@ -314,7 +336,10 @@ class TagAdminService:
         if row is None:
             raise TagNotFoundError("Tag not found.")
         if row.deleted_at is None:
-            self._tags.retag(org_id, slug, None, utcnow())
+            now = utcnow()
+            self._tags.retag(org_id, slug, None, now)
+            self._posts.retag(org_id, slug, None, now)
+        self._posts.forget(org_id, slug)
         self._tags.remove(org_id, slug)
         self._audit(
             org_id, actor_id, "tag.erase", row.tag_id, row.name, None

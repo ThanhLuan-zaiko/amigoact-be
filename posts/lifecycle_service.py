@@ -1,15 +1,8 @@
 """Article lifecycle: drafts, publish/unpublish, trash, restore, purge.
 
-Mirrors the org CRUD contract: DELETE moves a post to the trash (soft,
-restorable, comments kept), restore puts it back where it was (feed or
-drafts), hard delete erases the row, comments, media links and the
-post's own attachment uploads. Authors manage their posts; owners and
-post:manage holders manage every post in the org trash.
-
-Parallel drafts: a published post keeps a private revision draft
-(revision_of = post_id) so edits never go live mid-typing; publishing
-the revision folds it back onto the live post instead of adding a
-second board entry.
+DELETE moves a post to the trash. Hard delete erases the row, comments,
+media links and the post's own uploads. A published post keeps a private
+revision draft; publishing that draft folds it onto the live post.
 """
 
 from __future__ import annotations
@@ -31,6 +24,7 @@ from posts.helpers import (
     visible_post_or_404,
 )
 from posts.model import OrgPost
+from posts.revision_flow import copy_tags, fold_revision, forget_tags
 from posts.service_base import (
     SCAN_LIMIT,
     WINDOW_LIMIT,
@@ -148,6 +142,9 @@ class PostLifecycleService(BoardServiceBase):
             revision_of=post_id,
             visibility=post_visibility(row),
         )
+        names = getattr(row, "tag_names", None)
+        copy_tags(self._post_tags, org_id, names, revision_id, utcnow())
+        self._bind_user_tags(actor_id, org_id, revision_id, names)
         self._guard.record(org_id, actor_id, "post.revise", post_id)
         return self._snapshots.fresh(revision_id)
 
@@ -193,28 +190,14 @@ class PostLifecycleService(BoardServiceBase):
         self, org: Any, rev: OrgPost, actor_id: UUID
     ) -> PostSnapshot:
         """Fold a revision draft into its live post, then drop the draft."""
-        parent = self._posts.get(rev.revision_of)
-        if (
-            parent is None
-            or parent.org_id != rev.org_id
-            or is_draft(parent)
-            or is_trashed(parent)
-        ):
-            raise InvalidPostStateError("The original post is unavailable.")
-        self._posts.update_content(
-            parent,
-            parent.kind or "discussion",
-            rev.title or "",
-            rev.body or "",
-            getattr(rev, "blocks_json", "") or "",
-            getattr(rev, "cover_media_id", None),
-            utcnow(),
+        parent = fold_revision(
+            self._posts, self._post_tags, rev, utcnow()
         )
-        self._posts.replace_media(
-            parent.post_id,
-            [link.asset_id for link in self._posts.list_media(rev.post_id)],
+        self._bind_user_tags(
+            parent.author_id, parent.org_id, parent.post_id,
+            getattr(parent, "tag_names", None),
         )
-        self._posts.delete(rev)
+        self._bind_user_tags(rev.author_id, rev.org_id, rev.post_id, [])
         self._guard.record(rev.org_id, actor_id, "post.publish", parent.post_id)
         self._emit(rev.org_id, "post.updated", parent.post_id, actor_id)
         self._emit_public(rev.org_id, "updated", parent)
@@ -252,7 +235,12 @@ class PostLifecycleService(BoardServiceBase):
                 row.post_id,
                 [l.asset_id for l in self._posts.list_media(newest.post_id)],
             )
+            adopted = getattr(newest, "tag_names", None)
+            copy_tags(self._post_tags, org_id, adopted, row.post_id, now)
+            self._bind_user_tags(row.author_id, org_id, row.post_id, adopted)
             for rev in revisions:
+                forget_tags(self._post_tags, org_id, rev.post_id)
+                self._bind_user_tags(rev.author_id, org_id, rev.post_id, [])
                 self._posts.delete(rev)
         self._posts.set_status(row, "draft", now)
         self._guard.record(org_id, actor_id, "post.unpublish", post_id)
@@ -338,8 +326,12 @@ class PostLifecycleService(BoardServiceBase):
                     for link in self._posts.list_media(rev.post_id)
                 )
                 self._comments.remove_all(rev.post_id)
+                forget_tags(self._post_tags, org_id, rev.post_id)
+                self._bind_user_tags(rev.author_id, org_id, rev.post_id, [])
                 self._posts.delete(rev)
         self._comments.remove_all(post_id)
+        forget_tags(self._post_tags, org_id, post_id)
+        self._bind_user_tags(row.author_id, org_id, post_id, [])
         self._posts.delete(row)
         self._media_rules.purge_attachments(org_id, asset_ids)
         self._guard.record(org_id, actor_id, "post.purge", post_id)

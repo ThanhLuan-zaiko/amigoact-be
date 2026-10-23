@@ -73,6 +73,7 @@ class PostSnapshots:
             pinned_at=utc_aware(row.pinned_at),
             edited_at=utc_aware(row.edited_at),
             media=self.media_briefs(row.post_id),
+            tags=list(getattr(row, "tag_names", None) or []),
             comment_count=self._comments.count(row.post_id),
             created_at=utc_aware(row.created_at),
             status=status,

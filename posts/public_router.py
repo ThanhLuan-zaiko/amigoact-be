@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends, Query
 
 from core.dependencies_workspace import get_public_post_service
 from core.media import media_kind
+from core.tags import tag_slug
 from orgs.schemas import (
     PublicOrgMediaItem,
     PublicOrgMediaPage,
@@ -23,6 +24,7 @@ from posts.helpers import parse_cursor
 from posts.mappers import to_post
 from posts.schemas import (
     PostResponse,
+    PostTagRef,
     PublicAnnouncementPage,
     PublicTimelineItem,
     PublicTimelineOrg,
@@ -70,6 +72,11 @@ def _item(item: TimelineItem) -> PublicTimelineItem:
             for media in item.media
         ],
         media_count=item.media_count,
+        tags=[
+            PostTagRef(name=name, slug=tag_slug(name))
+            for name in item.tags
+            if tag_slug(name)
+        ],
         org=PublicTimelineOrg(
             id=item.org.id,
             name=item.org.name,

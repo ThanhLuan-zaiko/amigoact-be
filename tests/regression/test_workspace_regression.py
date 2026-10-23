@@ -21,7 +21,7 @@ POST_FIELDS = {
     "created_at",
     # Article fields (block editor, drafts, trash, revisions).
     "status", "blocks", "cover_media_id", "published_at", "deleted_at",
-    "updated_at", "revision_of", "visibility",
+    "updated_at", "revision_of", "visibility", "tags",
 }
 PAGE_FIELDS = {
     "items", "pinned", "total", "viewer_role", "viewer_permissions",

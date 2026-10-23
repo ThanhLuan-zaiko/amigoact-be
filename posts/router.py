@@ -42,13 +42,14 @@ def list_posts(
     limit: int = Query(20, ge=1, le=50),
     page: int = Query(1, ge=1),
     kind: str | None = Query(None, max_length=20),
+    tag: str | None = Query(None, max_length=80),
 ) -> PostPageResponse:
     """Newest-first numbered page; page 1 carries the pinned rail."""
     post_kind = kind if kind in ("announcement", "discussion") else None
     return to_page(
         service.list_posts(
             org_id, current_user.id, limit=limit, page=page,
-            kind=post_kind,
+            kind=post_kind, tag=tag,
         )
     )
 
@@ -119,6 +120,7 @@ def create_post(
             cover_media_id=body.cover_media_id,
             status=body.status,
             visibility=body.visibility,
+            tags=body.tags,
         )
     )
 
@@ -163,6 +165,8 @@ def update_post(
             touch_cover=body.touches_cover,
             kind=body.kind,
             visibility=body.visibility,
+            tags=body.tags,
+            touch_tags=body.touches_tags,
         )
     )
 

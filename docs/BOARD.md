@@ -60,7 +60,7 @@ vẫn phân trang cursor `next_cursor`.
 
 | Thao tác | Endpoint | Quyền / trạng thái |
 |---|---|---|
-| Feed đã đăng | `GET /orgs/{id}/posts?kind=&page=` | member |
+| Feed đã đăng | `GET /orgs/{id}/posts?kind=&tag=&page=` | member; `tag` đọc `post_tags_by_org` |
 | Nháp của tôi | `GET /orgs/{id}/posts/drafts` | member (chỉ bài mình) |
 | Thùng rác | `GET /orgs/{id}/posts/trash` | member thấy bài mình; manager thấy hết |
 | Chi tiết | `GET /orgs/{id}/posts/{post}` | member; nháp chỉ tác giả đọc |
@@ -74,6 +74,8 @@ vẫn phân trang cursor `next_cursor`.
 | Khôi phục | `POST .../restore` | tác giả hoặc manager |
 | Xóa cứng | `DELETE .../posts/{post}?hard=true` | tác giả hoặc manager → `204`, xóa luôn comment + media link |
 | Comment | `GET/POST/DELETE .../comments` | member; xóa bởi tác giả comment hoặc manager |
+
+Bài viết dùng chung danh mục `tags_by_org` với hoạt động. `tags` trên create/update là tối đa 3 tên (tên dài hơn 40 ký tự hoặc danh sách dài hơn 3 phần tử trả `422`). Tên mới được claim lúc lưu dưới quyền bài viết, không cần `tag:manage`. Ô thẻ trên bài lấy từ danh mục cá nhân `GET /me/tags` (thẻ không thuộc tổ chức). Tạo thẻ ở `/manage/tags` chỉ lưu cái tên; gắn thẻ xảy ra khi lưu bài, tối đa 3. Gõ tên mới trên ô thẻ cũng được nhận vào danh mục đó. Rail phải của `/manage/tags` liệt kê bài đang dùng thẻ đang chọn. `GET /me/tags` đã kèm `posts` (mỗi bài có `cover_url` là ảnh bìa hoặc ảnh đầu tiên) để đổi thẻ không phải chờ thêm một truy vấn; `GET /me/tags/{slug}/posts` vẫn trả cùng danh sách đó. Bỏ `tags` khi `PATCH` giữ nguyên thẻ cũ. Slug đang ở thùng rác trả `TAG_DELETED` (`410`) và không ghi bài. `post_count` trên catalog chỉ đếm bài đã đăng, không nháp, không revision, không nằm trong thùng rác. Đổi tên, gộp, xóa mềm, khôi phục và xóa cứng cập nhật cả hoạt động lẫn bài viết. Migration cộng: `uv run python -m migrate.post_tags` và `uv run python -m migrate.user_tags` (chạy `--dry-run` trước). `user_tags` chép thẻ đang sống của từng tổ chức sang chủ sở hữu và ghi bài còn dùng thẻ đó; dòng `tags_by_org` giữ nguyên.
 
 ## 3.1. Cổng public
 
@@ -99,9 +101,11 @@ và mọi nội dung khác ở lại board nội bộ.
   mặc định 9, `page` ≥ 1 mặc định 1). Trang vượt tổng trả `items` rỗng.
 - Timeline toàn cục: `GET /announcements?limit&cursor` →
   `PublicTimelinePage` (`items` teaser kèm `author_avatar_url` (avatar người
-  đăng, resolve từ `avatar_media_id` qua media), `org{id,name,slug,logo_url}`
-  và preview `media[]`/`media_count` — tối đa 6 attachment `{url,kind,mime}`
-  cover-dẫn-đầu để card feed render mosaic như card tổ chức +
+  đăng, resolve từ `avatar_media_id` qua media), `org{id,name,slug,logo_url}`,
+  preview `media[]`/`media_count` — tối đa 6 attachment `{url,kind,mime}`
+  cover-dẫn-đầu để card feed render mosaic như card tổ chức,
+  `tags[{name,slug}]` hydrate từ `org_posts.tag_names` (không lưu trên
+  projection) +
   `next_cursor`; `limit` 1–30 mặc định 12; `cursor` là `post_id` cuối trang
   trước, cursor rác bị bỏ qua). Đọc từ projection `announcements_feed`
   (partition `bucket='all'`, cluster `post_id` DESC) — một read bounded phục

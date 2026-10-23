@@ -47,6 +47,7 @@ class PostSnapshot:
     pinned_at: datetime | None
     edited_at: datetime | None
     media: list[PostMediaBrief] = field(default_factory=list)
+    tags: list[str] = field(default_factory=list)
     comment_count: int = 0
     created_at: datetime | None = None
     status: str = "published"
@@ -109,6 +110,7 @@ class TimelineItem:
     author_avatar_url: str | None = None
     media: list[PostMediaBrief] = field(default_factory=list)
     media_count: int = 0
+    tags: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)

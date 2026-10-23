@@ -141,7 +141,7 @@ async def test_public_announcement_contract_locked(client: AsyncClient) -> None:
         "body", "pinned_at", "edited_at", "media", "comment_count",
         "status", "blocks", "cover_media_id", "published_at",
         "deleted_at", "updated_at", "created_at", "revision_of",
-        "visibility",
+        "visibility", "tags",
     }
     assert article.json()["kind"] == "announcement"
     assert article.json()["status"] == "published"

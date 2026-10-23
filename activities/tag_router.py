@@ -11,18 +11,24 @@ from activities.tag_schemas import (
     TAG_SLUG,
     OrgTagItem,
     OrgTagPage,
+    OwnedTagItem,
     PublicTagItem,
     TagMergeBody,
     TagNameBody,
 )
 from core.dependencies import CurrentUser, get_current_user
-from core.dependencies_tags import get_tag_admin_service, get_tag_service
+from core.dependencies_tags import (
+    get_owned_tag_service,
+    get_tag_admin_service,
+    get_tag_service,
+)
 
 if TYPE_CHECKING:
     from activities.tag_admin_service import (
         OrgTagSnapshot,
         TagAdminService,
     )
+    from activities.owned_tag_service import OwnedTagService
     from activities.tag_service import TagService
 
 router = APIRouter(tags=["tags"])
@@ -34,6 +40,7 @@ def _item(row: OrgTagSnapshot) -> OrgTagItem:
         name=row.name,
         slug=row.slug,
         activity_count=row.activity_count,
+        post_count=row.post_count,
         created_at=row.created_at,
         deleted_at=row.deleted_at,
     )
@@ -68,6 +75,26 @@ def list_org_tags(
         can_manage=page.can_manage,
         trash_count=page.trash_count,
     )
+
+
+@router.get(
+    "/orgs/{org_id}/tags/owned", response_model=list[OwnedTagItem]
+)
+def list_owned_tags(
+    org_id: UUID,
+    current: CurrentUser = Depends(get_current_user),
+    service: OwnedTagService = Depends(get_owned_tag_service),
+) -> list[OwnedTagItem]:
+    """Live tags from other orgs this caller owns, for a one-time copy."""
+    return [
+        OwnedTagItem(
+            name=row.name,
+            slug=row.slug,
+            org_id=row.org_id,
+            org_name=row.org_name,
+        )
+        for row in service.list_owned(org_id, current.id)
+    ]
 
 
 @router.post(

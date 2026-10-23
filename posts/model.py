@@ -34,6 +34,9 @@ class OrgPost(models.Model):
     # audience is orthogonal to kind; NULL on pre-visibility rows derives
     # from kind (announcement -> public, anything else -> members).
     visibility = columns.Text(required=False)
+    # Canonical names from the org catalog, at most 3. post_tags_by_org
+    # mirrors this list for live and trashed rows.
+    tag_names = columns.List(columns.Text, required=False)
     revision_of = columns.UUID(required=False)
     pinned_at = columns.DateTime(required=False)
     edited_at = columns.DateTime(required=False)

@@ -6,12 +6,14 @@ import logging
 
 from core.config import Settings
 from core.exceptions import TooManyRequestsError
+from core.tags import tag_slug
 from posts.dtos import CommentSnapshot, PostPage, PostSnapshot
 from posts.schemas import (
     CommentResponse,
     PostMediaResponse,
     PostPageResponse,
     PostResponse,
+    PostTagRef,
 )
 
 logger = logging.getLogger("amigoact.posts")
@@ -40,6 +42,11 @@ def to_post(snapshot: PostSnapshot) -> PostResponse:
                 asset_id=m.asset_id, file_url=m.file_url, mime=m.mime
             )
             for m in snapshot.media
+        ],
+        tags=[
+            PostTagRef(name=name, slug=tag_slug(name))
+            for name in snapshot.tags
+            if tag_slug(name)
         ],
         comment_count=snapshot.comment_count,
         created_at=snapshot.created_at,

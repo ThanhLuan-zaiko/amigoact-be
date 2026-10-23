@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import activities.model as activity_models
 import activities.tag_model as tag_models
+import activities.user_tag_model as user_tag_models
 import admin.model as admin_models
 import apikeys.model as apikey_models
 import auth.model as models
@@ -13,6 +14,7 @@ import hours.model as hour_models
 import notifications.model as notification_models
 import orgs.model as org_models
 import posts.model as post_models
+import posts.tag_model as post_tag_models
 import profiles.model as profile_models
 import stats.model as stats_models
 import rbac.model as rbac_models
@@ -74,6 +76,9 @@ SYNC_MODELS = [
     tag_models.ActivityTagsByOrg,
     tag_models.PublicTagDirectory,
     tag_models.TrashedTagEdgesByOrg,
+    user_tag_models.UserTag,
+    user_tag_models.UserPostTag,
+    user_tag_models.UserPostTagSet,
     activity_models.ActivityCategory,
     activity_models.ActivitySkill,
     activity_models.ActivityPartner,
@@ -137,6 +142,8 @@ SYNC_MODELS = [
     post_models.OrgPostTrash,
     post_models.OrgPostMedia,
     post_models.OrgPostComment,
+    post_tag_models.PostTagsByOrg,
+    post_tag_models.TrashedPostTagEdgesByOrg,
     chat_models.OrgRoomMessage,
     chat_models.OrgRoomRead,
     chat_models.OrgDmPair,

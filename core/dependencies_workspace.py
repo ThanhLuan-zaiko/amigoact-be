@@ -59,9 +59,13 @@ def get_post_service(
     from orgs.media_repository import CqlMediaRepository
     from orgs.member_repository import CqlMemberRepository
     from orgs.repository import CqlOrgRepository
+    from activities.tag_repository import CqlOrgTagStore
+    from activities.tag_service import TagService
     from posts.events import WsAnnouncementFeedEvents, WsPostEvents
     from posts.repository import CqlCommentStore, CqlPostStore
     from posts.service import PostService
+    from posts.tag_index import CqlPostTagIndex
+    from core.dependencies_tags import get_user_tag_service
 
     manager = getattr(request.app.state, "ws_manager", None)
     return PostService(
@@ -75,6 +79,9 @@ def get_post_service(
         events=WsPostEvents(manager),
         notifications=notifications,
         announcements=WsAnnouncementFeedEvents(manager),
+        post_tags=CqlPostTagIndex(),
+        tag_claims=TagService(CqlOrgTagStore(settings.scylla_keyspace)),
+        user_tags=get_user_tag_service(settings),
     )
 
 
@@ -115,6 +122,8 @@ def get_post_lifecycle_service(
     from posts.events import WsAnnouncementFeedEvents, WsPostEvents
     from posts.lifecycle_service import PostLifecycleService
     from posts.repository import CqlCommentStore, CqlPostStore
+    from posts.tag_index import CqlPostTagIndex
+    from core.dependencies_tags import get_user_tag_service
 
     manager = getattr(request.app.state, "ws_manager", None)
     return PostLifecycleService(
@@ -129,6 +138,8 @@ def get_post_lifecycle_service(
         notifications=notifications,
         files=LocalMediaStore(settings.media_root),
         announcements=WsAnnouncementFeedEvents(manager),
+        post_tags=CqlPostTagIndex(),
+        user_tags=get_user_tag_service(settings),
     )
 
 

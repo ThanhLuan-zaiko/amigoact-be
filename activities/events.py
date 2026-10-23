@@ -42,11 +42,12 @@ class WsActivityEvents(ActivityEvents):
     ) -> None:
         if self._manager is None:
             return
-        self._manager.schedule_publish(
-            f"activities:{org_id}",
-            {
-                "action": f"tag.{action}",
-                "slug": slug,
-                "actor_id": str(actor_id),
-            },
-        )
+        payload = {
+            "action": f"tag.{action}",
+            "slug": slug,
+            "actor_id": str(actor_id),
+        }
+        self._manager.schedule_publish(f"activities:{org_id}", payload)
+        # Board readers treat this as a refetch hint. Unknown actions
+        # invalidate the post cache and do not raise a toast.
+        self._manager.schedule_publish(f"posts:{org_id}", payload)

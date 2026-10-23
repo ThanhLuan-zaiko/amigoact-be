@@ -53,6 +53,20 @@ class CreatePostRequest(BaseModel):
     blocks: list[Block] = Field(default_factory=list, max_length=MAX_BLOCKS)
     cover_media_id: UUID | None = None
     media_ids: list[UUID] = Field(default_factory=list, max_length=4)
+    tags: list[str] = Field(default_factory=list, max_length=3)
+
+    @field_validator("tags")
+    @classmethod
+    def _tags(cls, value: list[str]) -> list[str]:
+        cleaned: list[str] = []
+        for raw in value:
+            text = raw.strip()
+            if not text:
+                continue
+            if len(text) > 40:
+                raise ValueError("Tag name must be at most 40 characters.")
+            cleaned.append(text)
+        return cleaned
 
     _body = field_validator("body", mode="before")(_trim)  # noqa: SLF001
     _title = field_validator("title", mode="before")(_trim)  # noqa: SLF001
@@ -86,6 +100,22 @@ class UpdatePostRequest(BaseModel):
     cover_media_id: UUID | None = None
     kind: PostKind | None = None
     visibility: PostVisibility | None = None
+    tags: list[str] | None = Field(default=None, max_length=3)
+
+    @field_validator("tags")
+    @classmethod
+    def _tags(cls, value: list[str] | None) -> list[str] | None:
+        if value is None:
+            return None
+        cleaned: list[str] = []
+        for raw in value:
+            text = raw.strip()
+            if not text:
+                continue
+            if len(text) > 40:
+                raise ValueError("Tag name must be at most 40 characters.")
+            cleaned.append(text)
+        return cleaned
 
     _body = field_validator("body", mode="before")(_trim)  # noqa: SLF001
     _title = field_validator("title", mode="before")(_trim)  # noqa: SLF001
@@ -100,6 +130,10 @@ class UpdatePostRequest(BaseModel):
     def touches_cover(self) -> bool:
         return "cover_media_id" in self.model_fields_set
 
+    @property
+    def touches_tags(self) -> bool:
+        return "tags" in self.model_fields_set
+
 
 class CreateCommentRequest(BaseModel):
     body: str = Field(min_length=1, max_length=2000)
@@ -111,6 +145,13 @@ class PostMediaResponse(BaseModel):
     asset_id: UUID
     file_url: str
     mime: str
+
+
+class PostTagRef(BaseModel):
+    """Tag chip on a post: org-canonical name plus slug."""
+
+    name: str
+    slug: str
 
 
 class PostResponse(BaseModel):
@@ -131,6 +172,7 @@ class PostResponse(BaseModel):
     published_at: datetime | None = None
     deleted_at: datetime | None = None
     media: list[PostMediaResponse] = []
+    tags: list[PostTagRef] = []
     comment_count: int = 0
     created_at: datetime | None = None
     updated_at: datetime | None = None
@@ -180,6 +222,7 @@ class PublicTimelineItem(BaseModel):
     org: PublicTimelineOrg
     media: list[PublicOrgMediaItem] = []
     media_count: int = 0
+    tags: list[PostTagRef] = []
 
 
 class PublicTimelinePage(BaseModel):

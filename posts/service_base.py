@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any
+from typing import Any, Protocol
 from uuid import UUID
 
 from core.exceptions import PostContentRequiredError, PostTitleRequiredError
@@ -28,6 +28,8 @@ from posts.interfaces import (
 from posts.media_rules import PostMediaRules
 from posts.model import OrgPost
 from posts.snapshots import PostSnapshots
+from posts.tag_index import PostTagIndex
+from posts.tag_rules import TagClaims
 from rbac.interfaces import AccessControl
 
 
@@ -47,6 +49,22 @@ def check_publishable(
         raise PostTitleRequiredError("Announcements require a title.")
 
 
+class UserTagBook(Protocol):
+    """Personal catalog used when a post save attaches tags."""
+
+    def ensure(self, user_id: UUID, names: list[str] | None) -> list[str]:
+        """Claim missing names and return the user's spelling."""
+
+    def bind(
+        self,
+        user_id: UUID,
+        org_id: UUID,
+        post_id: UUID,
+        names: list[str] | None,
+    ) -> None:
+        """Remember which of the user's tags this post carries."""
+
+
 class BoardServiceBase:
     """Constructor + helpers reused by PostService and lifecycle rules."""
 
@@ -63,6 +81,9 @@ class BoardServiceBase:
         notifications: NotificationPort | None = None,
         files: MediaStore | None = None,
         announcements: AnnouncementFeedEvents | None = None,
+        post_tags: PostTagIndex | None = None,
+        tag_claims: TagClaims | None = None,
+        user_tags: UserTagBook | None = None,
     ) -> None:
         self._posts = posts
         self._comments = comments
@@ -70,9 +91,24 @@ class BoardServiceBase:
         self._events = events
         self._notifications = notifications
         self._announcements = announcements
+        self._post_tags = post_tags
+        self._tag_claims = tag_claims
+        self._user_tags = user_tags
         self._guard = BoardGuard(orgs, members, access)
         self._snapshots = PostSnapshots(posts, comments, users, media)
         self._media_rules = PostMediaRules(media, files)
+
+    def _bind_user_tags(
+        self,
+        user_id: UUID,
+        org_id: UUID,
+        post_id: UUID,
+        names: list[str] | None,
+    ) -> None:
+        """Record the post on the author's personal tags. No-op without a book."""
+        if self._user_tags is None:
+            return
+        self._user_tags.bind(user_id, org_id, post_id, names)
 
     def _emit(
         self, org_id: UUID, action: str, post_id: UUID, actor_id: UUID,

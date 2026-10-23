@@ -39,6 +39,7 @@ class OrgTagItem(BaseModel):
     name: str
     slug: str
     activity_count: int
+    post_count: int = 0
     created_at: datetime
     deleted_at: datetime | None = None
 
@@ -56,3 +57,32 @@ class PublicTagItem(BaseModel):
 
     name: str
     slug: str
+
+
+class OwnedTagItem(BaseModel):
+    """A tag from another org the caller owns, offered as a copy."""
+
+    name: str
+    slug: str
+    org_id: UUID
+    org_name: str
+
+
+class UserTagPostItem(BaseModel):
+    """A post that carries one of the caller's tags."""
+
+    post_id: UUID
+    org_id: UUID
+    title: str
+    draft: bool = False
+    cover_url: str | None = None
+
+
+class UserTagItem(BaseModel):
+    """One tag in the signed-in user's catalog."""
+
+    name: str
+    slug: str
+    post_count: int = 0
+    created_at: datetime
+    posts: list[UserTagPostItem] = []

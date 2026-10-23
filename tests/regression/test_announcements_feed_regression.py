@@ -66,9 +66,28 @@ async def test_announcements_contract_shape(client: AsyncClient) -> None:
     assert set(mine.keys()) == {
         "id", "title", "excerpt", "cover_url", "author_name",
         "author_avatar_url", "published_at", "comment_count", "org",
-        "media", "media_count",
+        "media", "media_count", "tags",
     }
     assert mine["media"] == [] and mine["media_count"] == 0
+    assert mine["tags"] == []
+    tagged = await client.post(
+        f"/orgs/{org_id}/posts",
+        json={
+            "kind": "announcement",
+            "title": "Tagged",
+            "body": "world",
+            "tags": ["Hoc bong"],
+        },
+        headers=headers,
+    )
+    assert tagged.status_code == 201, tagged.text
+    again = await client.get("/announcements")
+    chip = next(
+        item
+        for item in again.json()["items"]
+        if item["id"] == tagged.json()["post_id"]
+    )
+    assert chip["tags"] == [{"name": "Hoc bong", "slug": "hoc-bong"}]
     assert set(mine["org"].keys()) == {"id", "name", "slug", "logo_url"}
     assert mine["org"]["slug"] == "reg-feed"
 

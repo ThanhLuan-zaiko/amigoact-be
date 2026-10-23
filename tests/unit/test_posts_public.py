@@ -196,6 +196,15 @@ def test_list_timeline_returns_org_attributed_teasers() -> None:
     assert item.org.logo_url is None
 
 
+def test_list_timeline_carries_post_tags() -> None:
+    env = Env()
+    post = env.post(title="News", body="Announcement content.")
+    post.tag_names = ["Hoc bong", "Y te"]
+    item = env.service.list_timeline(None, 10).items[0]
+    assert item.id == post.post_id
+    assert item.tags == ["Hoc bong", "Y te"]
+
+
 def test_list_timeline_media_is_cover_first() -> None:
     """The teaser mosaic leads with the cover asset, then position order."""
     env = Env()

@@ -1408,7 +1408,8 @@ CREATE TABLE IF NOT EXISTS ws_tickets (
 // the author stages edits).
 // (deployed keyspaces: ALTER TABLE org_posts ADD blocks_json text,
 //  ADD cover_media_id uuid, ADD published_at timestamp,
-//  ADD deleted_at timestamp, ADD revision_of uuid, ADD visibility text)
+//  ADD deleted_at timestamp, ADD revision_of uuid, ADD visibility text,
+//  ADD tag_names list<text>)
 CREATE TABLE IF NOT EXISTS org_posts (
     post_id uuid PRIMARY KEY,
     org_id uuid,
@@ -1420,6 +1421,7 @@ CREATE TABLE IF NOT EXISTS org_posts (
     cover_media_id uuid,
     status text, // active (published) | draft
     visibility text, // public | members; NULL derives from kind
+    tag_names list<text>, // org-canonical names, at most 3
     revision_of uuid, // draft staging edits for a live post
     pinned_at timestamp,
     edited_at timestamp,
@@ -1428,6 +1430,54 @@ CREATE TABLE IF NOT EXISTS org_posts (
     created_at timestamp,
     updated_at timestamp
 );
+
+// Edge index: org tag slug -> post ids for live AND trashed rows.
+// Mirrors org_posts.tag_names. A tag soft-delete snapshots these rows
+// into trashed_post_tag_edges_by_org and then strips them.
+CREATE TABLE IF NOT EXISTS post_tags_by_org (
+    org_id uuid,
+    tag_slug text,
+    post_id uuid,
+    PRIMARY KEY ((org_id), tag_slug, post_id)
+) WITH CLUSTERING ORDER BY (tag_slug ASC, post_id ASC);
+
+// Remembered post edges of a soft-deleted tag. Restore re-attaches
+// them (skipping a post already at the 3-tag cap); erase drops them.
+CREATE TABLE IF NOT EXISTS trashed_post_tag_edges_by_org (
+    org_id uuid,
+    tag_slug text,
+    post_id uuid,
+    PRIMARY KEY ((org_id), tag_slug, post_id)
+) WITH CLUSTERING ORDER BY (tag_slug ASC, post_id ASC);
+
+// Personal catalog. A tag is a name the user owns, not an org row and
+// not a post, until a board save binds it.
+CREATE TABLE IF NOT EXISTS tags_by_user (
+    user_id uuid,
+    slug text,
+    name text,
+    created_at timestamp,
+    updated_at timestamp,
+    PRIMARY KEY ((user_id), slug)
+) WITH CLUSTERING ORDER BY (slug ASC);
+
+// Posts carrying one personal tag, so the tags rail can list them.
+CREATE TABLE IF NOT EXISTS post_tags_by_user (
+    user_id uuid,
+    tag_slug text,
+    post_id uuid,
+    org_id uuid,
+    PRIMARY KEY ((user_id), tag_slug, post_id)
+) WITH CLUSTERING ORDER BY (tag_slug ASC, post_id DESC);
+
+// Slugs last written onto one post. A later save drops the ones it omits.
+CREATE TABLE IF NOT EXISTS user_post_tag_sets (
+    user_id uuid,
+    post_id uuid,
+    org_id uuid,
+    slugs list<text>,
+    PRIMARY KEY ((user_id), post_id)
+) WITH CLUSTERING ORDER BY (post_id ASC);
 
 // One author's unpublished drafts inside one org, newest first. Drafts
 // never touch org_posts_feed, so the board and its realtime fan-out stay
