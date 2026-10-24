@@ -15,7 +15,7 @@ from chat.helpers import bucket_of
 from chat.channel_helpers import can_open_channel
 from chat.channel_interfaces import ChannelStore
 from chat.interfaces import ActivityLookup, ChatStore
-from core.exceptions import ForbiddenError
+from core.exceptions import ActivityDeletedError, ForbiddenError
 from orgs.interfaces import MemberRepository, OrgRepository
 from orgs.member_helpers import is_active_member, live_org
 
@@ -34,6 +34,25 @@ class RoomCtx:
     floor: str
     dm: "OrgDmRoom | None"
     channel: "OrgChatChannelById | None" = None
+    # The room's linked event sits in the trash or was purged: history
+    # stays readable, every write answers ACTIVITY_DELETED.
+    activity_deleted: bool = False
+
+
+def linked_activity_deleted(
+    activities: ActivityLookup | None, activity_id: UUID | None
+) -> bool:
+    """True when a linked event is trashed or no longer exists."""
+    if activity_id is None or activities is None:
+        return False
+    activity = activities.get(activity_id)
+    return activity is None or getattr(activity, "deleted_at", None) is not None
+
+
+def require_live_activity(ctx: RoomCtx) -> None:
+    """Freeze writes in rooms whose linked event is deleted."""
+    if ctx.activity_deleted:
+        raise ActivityDeletedError("The linked event is deleted.")
 
 
 def open_room(
@@ -57,6 +76,7 @@ def open_room(
     its parent channel's gate.
     """
     dm = chat.get_dm_room(user_id, room_id)
+    activity_deleted = False
     channel = (
         channels.get_channel(room_id) if channels is not None else None
     )
@@ -66,6 +86,9 @@ def open_room(
     elif channel is not None:
         org = live_org(orgs, channel.org_id)
         floor = bucket_of(channel.created_at)
+        activity_deleted = linked_activity_deleted(
+            activities, getattr(channel, "activity_id", None)
+        )
     else:
         activity = (
             activities.get(room_id) if activities is not None else None
@@ -73,6 +96,9 @@ def open_room(
         if activity is not None:
             org = live_org(orgs, activity.org_id)
             floor = bucket_of(activity.created_at)
+            activity_deleted = (
+                getattr(activity, "deleted_at", None) is not None
+            )
         else:
             org = live_org(orgs, room_id)
             floor = bucket_of(org.created_at)
@@ -88,7 +114,10 @@ def open_room(
     ):
         access.record(org.id, user_id, action, "chat", room_id, "denied")
         raise ForbiddenError("Only channel members can do this.")
-    return RoomCtx(org=org, floor=floor, dm=dm, channel=channel)
+    return RoomCtx(
+        org=org, floor=floor, dm=dm, channel=channel,
+        activity_deleted=activity_deleted,
+    )
 
 
 def emit(

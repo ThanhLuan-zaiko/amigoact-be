@@ -29,7 +29,7 @@ from chat.interfaces import (
     ChatEvents,
     ChatStore,
 )
-from chat.rooms import emit, emit_inbox, open_room
+from chat.rooms import emit, emit_inbox, open_room, require_live_activity
 from core.exceptions import (
     ChannelArchivedError,
     ChatContentRequiredError,
@@ -125,7 +125,9 @@ class ChatComposer:
 
     def _check_post(self, ctx, actor_id: UUID) -> None:  # noqa: ANN001
         """Channel gates: archived rooms freeze; managers-only rooms
-        reject posts from regular members."""
+        reject posts from regular members; a deleted linked event
+        freezes the room like an archive."""
+        require_live_activity(ctx)
         channel = ctx.channel
         if channel is None:
             return
@@ -221,6 +223,7 @@ class ChatComposer:
     ) -> ChatMessageSnapshot:
         """Only the author rewrites their own text."""
         ctx = self._room(room_id, actor_id, "chat.edit")
+        require_live_activity(ctx)
         channel = ctx.channel
         if channel is not None and channel.archived_at is not None:
             raise ChannelArchivedError("This channel is archived.")

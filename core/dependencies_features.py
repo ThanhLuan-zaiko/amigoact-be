@@ -127,6 +127,7 @@ def get_activity_delete_service(
     from activities.delete_service import ActivityDeleteService
     from activities.events import WsActivityEvents
     from activities.repository import CqlActivityStore
+    from core.dependencies_chat import build_activity_chat_link
     from core.dependencies_tags import get_user_tag_service
     from orgs.repository import CqlOrgRepository
 
@@ -137,11 +138,11 @@ def get_activity_delete_service(
         events=WsActivityEvents(getattr(request.app.state, "ws_manager", None)),
         store=get_media_store(settings),
         user_tags=get_user_tag_service(settings),
+        chat=build_activity_chat_link(request, settings),
     )
 
 
-# Tag services (public directory + org curation) live in
-# core/dependencies_tags.py (split for the 350-line rule).
+# Tag services live in core/dependencies_tags.py (350-line split).
 
 
 def get_activity_detail_service(

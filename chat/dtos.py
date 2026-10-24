@@ -188,6 +188,7 @@ class InboxRoomSnapshot:
     # activity it was opened for (display link).
     parent_room_id: UUID | None = None
     activity_id: UUID | None = None
+    activity_deleted: bool = False
     # Public /orgs/{slug} path for the room panel's share-link card.
     org_slug: str = ""
 
@@ -213,6 +214,8 @@ class ChannelSnapshot:
     parent_room_id: UUID | None = None
     activity_id: UUID | None = None
     activity_title: str | None = None
+    # Linked event trashed or purged: the thread is read-only.
+    activity_deleted: bool = False
 
 
 @dataclass(frozen=True)

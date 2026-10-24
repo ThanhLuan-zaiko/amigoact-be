@@ -293,3 +293,21 @@ class ActivityEvents(ABC):
         self, org_id: UUID, action: str, slug: str, actor_id: UUID
     ) -> None:
         """Publish one tag.* refetch hint onto activities:{org_id}."""
+
+
+class ActivityChatLink(ABC):
+    """Chat side of the trash lifecycle (event room + linked threads)."""
+
+    @abstractmethod
+    def activity_changed(self, org_id: UUID, activity_id: UUID) -> None:
+        """Trash/restore hint so open inboxes refetch the frozen state."""
+
+    @abstractmethod
+    def activity_purged(
+        self,
+        org_id: UUID,
+        activity_id: UUID,
+        created_at: datetime | None,
+        actor_id: UUID,
+    ) -> None:
+        """Hard delete: wipe the event room, archive linked threads."""

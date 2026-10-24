@@ -176,3 +176,58 @@ def test_cross_org_delete_is_404() -> None:
 
     with pytest.raises(NotFoundError):
         deletes.soft_delete(other.id, row.id, owner)
+
+
+class _ChatSpy:
+    """ActivityChatLink stand-in recording calls and the row state."""
+
+    def __init__(self, activities) -> None:  # noqa: ANN001
+        self.activities = activities
+        self.calls: list[tuple] = []
+
+    def activity_changed(self, org_id, activity_id) -> None:  # noqa: ANN001
+        self.calls.append(("changed", activity_id))
+
+    def activity_purged(self, org_id, activity_id, created_at, actor_id) -> None:  # noqa: ANN001
+        alive = self.activities.get(activity_id) is not None
+        self.calls.append(("purged", activity_id, alive))
+
+
+def test_trash_lifecycle_drives_chat_link() -> None:
+    service, _, activities, orgs, access, *_ = make_services()
+    chat = _ChatSpy(activities)
+    deletes = ActivityDeleteService(
+        activities=activities, orgs=orgs, access=access, chat=chat
+    )
+    owner = uuid_utils.uuid7()
+    org = _org_with_owner(orgs, owner)
+    row = _published(service, orgs, owner, org)
+
+    deletes.soft_delete(org.id, row.id, owner)
+    deletes.restore(org.id, row.id, owner)
+    deletes.hard_delete(org.id, row.id, owner)
+
+    # The chat purge runs while the activity row still exists.
+    assert chat.calls == [
+        ("changed", row.id), ("changed", row.id), ("purged", row.id, True)
+    ]
+    assert activities.get(row.id) is None
+
+
+def test_chat_purge_failure_keeps_activity() -> None:
+    service, _, activities, orgs, access, *_ = make_services()
+
+    class _Broken(_ChatSpy):
+        def activity_purged(self, *args) -> None:  # noqa: ANN002
+            raise RuntimeError("chat down")
+
+    deletes = ActivityDeleteService(
+        activities=activities, orgs=orgs, access=access,
+        chat=_Broken(activities),
+    )
+    owner = uuid_utils.uuid7()
+    org = _org_with_owner(orgs, owner)
+    row = _published(service, orgs, owner, org)
+    with pytest.raises(RuntimeError):
+        deletes.hard_delete(org.id, row.id, owner)
+    assert activities.get(row.id) is not None

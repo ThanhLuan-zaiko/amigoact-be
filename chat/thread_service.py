@@ -27,6 +27,7 @@ from chat.dtos import ChannelSnapshot
 from chat.interfaces import ActivityLookup, ChatEvents
 from chat.rooms import emit_inbox
 from core.exceptions import (
+    ActivityDeletedError,
     ChannelArchivedError,
     ChannelNameTakenError,
     ForbiddenError,
@@ -61,10 +62,14 @@ class ThreadService:
     def _snap(self, row) -> ChannelSnapshot:  # noqa: ANN001
         activity_id = getattr(row, "activity_id", None)
         activity_title = None
+        activity_deleted = False
         if activity_id is not None and self._activities is not None:
             activity = self._activities.get(activity_id)
             activity_title = (
                 getattr(activity, "title", None) if activity else None
+            )
+            activity_deleted = activity is None or (
+                getattr(activity, "deleted_at", None) is not None
             )
         return ChannelSnapshot(
             channel_id=row.channel_id,
@@ -80,6 +85,7 @@ class ThreadService:
             parent_room_id=getattr(row, "parent_room_id", None),
             activity_id=activity_id,
             activity_title=activity_title,
+            activity_deleted=activity_deleted,
         )
 
     def _parent(self, org_id: UUID, parent_room_id: UUID, user_id: UUID):
@@ -132,6 +138,8 @@ class ThreadService:
             )
             if activity is None or activity.org_id != org_id:
                 raise NotFoundError("Activity not found.")
+            if getattr(activity, "deleted_at", None) is not None:
+                raise ActivityDeletedError("Activity is deleted.")
         name = (name or "").strip()
         if not name or len(name) > CHANNEL_NAME_MAX:
             raise InvalidChannelStateError(

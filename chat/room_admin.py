@@ -25,7 +25,7 @@ from chat.interfaces import (
     ChatStore,
 )
 from chat.model import OrgRoomMessage
-from chat.rooms import emit, emit_inbox, open_room
+from chat.rooms import emit, emit_inbox, open_room, require_live_activity
 from core.exceptions import (
     ChannelArchivedError,
     ForbiddenError,
@@ -223,6 +223,7 @@ class ChatRoomAdmin:
     ) -> ChatMessageSnapshot:
         """Toggle one palette emoji and return the message with tallies."""
         ctx = self._ctx(room_id, user_id, "chat.react")
+        require_live_activity(ctx)
         channel = ctx.channel
         if channel is not None and channel.archived_at is not None:
             raise ChannelArchivedError("This channel is archived.")

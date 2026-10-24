@@ -4,7 +4,11 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from activities.interfaces import ActivityEvents, ActivityStore
+from activities.interfaces import (
+    ActivityChatLink,
+    ActivityEvents,
+    ActivityStore,
+)
 from activities.model import Activity
 from activities.tag_claim import PersonalTagBook
 from core.exceptions import (
@@ -30,6 +34,7 @@ class ActivityDeleteService:
         events: ActivityEvents | None = None,
         store: MediaStore | None = None,
         user_tags: PersonalTagBook | None = None,
+        chat: ActivityChatLink | None = None,
     ) -> None:
         self._activities = activities
         self._orgs = orgs
@@ -37,6 +42,7 @@ class ActivityDeleteService:
         self._events = events
         self._store = store
         self._user_tags = user_tags
+        self._chat = chat
 
     def _emit(
         self,
@@ -53,6 +59,15 @@ class ActivityDeleteService:
             self._events.activity_changed(
                 org_id, action, activity_id, actor_id, status
             )
+        except Exception:  # noqa: BLE001 - live fan-out is advisory
+            pass
+
+    def _hint_chat(self, org_id: UUID, activity_id: UUID) -> None:
+        """Chat freezes at read time; this only refreshes inboxes."""
+        if self._chat is None:
+            return
+        try:
+            self._chat.activity_changed(org_id, activity_id)
         except Exception:  # noqa: BLE001 - live fan-out is advisory
             pass
 
@@ -86,6 +101,7 @@ class ActivityDeleteService:
         self._emit(
             org_id, "deleted", activity_id, actor_id, updated.status
         )
+        self._hint_chat(org_id, activity_id)
         return updated
 
     def restore(
@@ -101,6 +117,7 @@ class ActivityDeleteService:
         self._emit(
             org_id, "restored", activity_id, actor_id, updated.status
         )
+        self._hint_chat(org_id, activity_id)
         return updated
 
     def hard_delete(
@@ -112,6 +129,13 @@ class ActivityDeleteService:
         owner = getattr(row, "created_by", None)
         if self._user_tags is not None and owner is not None:
             self._user_tags.bind_activity(owner, org_id, activity_id, None)
+        if self._chat is not None:
+            # Before the row purge: a chat failure leaves the event in
+            # place so the manager can retry instead of orphaning rows.
+            self._chat.activity_purged(
+                org_id, activity_id, getattr(row, "created_at", None),
+                actor_id,
+            )
         paths = self._activities.delete_everything(activity_id)
         self._emit(org_id, "deleted", activity_id, actor_id, row.status)
         if self._store is not None:

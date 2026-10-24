@@ -291,3 +291,20 @@ class ChatEvents(ABC):
         publish to notifications:{user_id} of each participant instead,
         keeping the room's existence off the shared org channel.
         """
+
+
+class RoomPurgeStore(ABC):
+    """Destructive port: wipe one room's message tables for good.
+
+    Used when the room's owner (an activity) is hard-deleted; ordinary
+    message deletes stay on ChatStore.
+    """
+
+    @abstractmethod
+    def purge_room(self, room_id: UUID, buckets: Iterable[str]) -> list[str]:
+        """Drop messages, reactions, pins, reads and the media index.
+
+        buckets lists every 'YYYYMM' month the room may hold. Returns
+        the attachments_json blobs of the dropped messages so the
+        caller can release files and claims.
+        """

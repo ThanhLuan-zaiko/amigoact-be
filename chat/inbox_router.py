@@ -44,6 +44,7 @@ def list_inbox(
                 channel_kind=item.channel_kind,
                 parent_room_id=item.parent_room_id,
                 activity_id=item.activity_id,
+                activity_deleted=item.activity_deleted,
             )
             for item in service.list_inbox(current_user.id)
         ]

@@ -78,10 +78,14 @@ class ChannelService:
     def _snap(self, row) -> ChannelSnapshot:  # noqa: ANN001
         activity_id = getattr(row, "activity_id", None)
         activity_title = None
+        activity_deleted = False
         if activity_id is not None and self._activities is not None:
             activity = self._activities.get(activity_id)
             activity_title = (
                 getattr(activity, "title", None) if activity else None
+            )
+            activity_deleted = activity is None or (
+                getattr(activity, "deleted_at", None) is not None
             )
         return ChannelSnapshot(
             channel_id=row.channel_id,
@@ -97,6 +101,7 @@ class ChannelService:
             parent_room_id=getattr(row, "parent_room_id", None),
             activity_id=activity_id,
             activity_title=activity_title,
+            activity_deleted=activity_deleted,
         )
 
     def _fan(self, action: str, channel_id: UUID, org_id: UUID) -> None:

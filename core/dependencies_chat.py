@@ -19,6 +19,7 @@ from core.dependencies import (
 )
 
 if TYPE_CHECKING:
+    from chat.activity_link import ChatActivityLink
     from chat.channel_roster import ChannelRosterService
     from chat.channel_service import ChannelService
     from chat.inbox_service import ChatInboxService
@@ -221,4 +222,30 @@ def get_chat_inbox_service(
         cipher=chat_cipher(settings),
         channels=CqlChannelStore(settings.scylla_keyspace),
         access=access,
+    )
+
+
+def build_activity_chat_link(
+    request: Request, settings: Settings
+) -> ChatActivityLink:
+    """Chat side of the activity trash lifecycle (purge + inbox hints)."""
+    from admin.repository import CqlModerationStore
+    from chat.activity_link import ChatActivityLink
+    from chat.attachments import ChatAttachments
+    from chat.channel_repository import CqlChannelStore
+    from chat.claim_repository import CqlClaimStore
+    from chat.events import WsChatEvents
+    from chat.purge_repository import CqlRoomPurgeStore
+    from orgs.media_repository import CqlMediaRepository
+
+    return ChatActivityLink(
+        purge=CqlRoomPurgeStore(),
+        channels=CqlChannelStore(settings.scylla_keyspace),
+        events=WsChatEvents(getattr(request.app.state, "ws_manager", None)),
+        attachments=ChatAttachments(
+            CqlMediaRepository(),
+            get_media_store(settings),
+            CqlClaimStore(settings.scylla_keyspace),
+            moderation=CqlModerationStore(),
+        ),
     )

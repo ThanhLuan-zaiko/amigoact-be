@@ -15,6 +15,7 @@ from chat.dtos import InboxRoomSnapshot
 from chat.helpers import bucket_of, peek_last_message, unread_count
 from chat.channel_interfaces import ChannelStore
 from chat.interfaces import ActivityLookup, ChatStore
+from chat.rooms import linked_activity_deleted
 from core.security import utc_aware, utcnow
 from orgs.interfaces import (
     MediaRepository,
@@ -50,6 +51,7 @@ class _RoomRef:
     # Sub-thread rows only: parent room + optional linked activity.
     parent_room_id: UUID | None = None
     activity_id: UUID | None = None
+    activity_deleted: bool = False
 
 
 class ChatInboxService:
@@ -224,6 +226,10 @@ class ChatInboxService:
                             row, "parent_room_id", None
                         ),
                         activity_id=getattr(row, "activity_id", None),
+                        activity_deleted=linked_activity_deleted(
+                            self._activities,
+                            getattr(row, "activity_id", None),
+                        ),
                     )
                 )
         return refs
@@ -276,6 +282,7 @@ class ChatInboxService:
                     channel_kind=ref.channel_kind,
                     parent_room_id=ref.parent_room_id,
                     activity_id=ref.activity_id,
+                    activity_deleted=ref.activity_deleted,
                 )
             )
         out.sort(key=lambda item: item.sort_at, reverse=True)

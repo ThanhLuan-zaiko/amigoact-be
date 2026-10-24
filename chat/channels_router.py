@@ -49,6 +49,7 @@ def _to_channel(snapshot) -> ChannelResponse:  # noqa: ANN001
         parent_room_id=snapshot.parent_room_id,
         activity_id=snapshot.activity_id,
         activity_title=snapshot.activity_title,
+        activity_deleted=snapshot.activity_deleted,
     )
 
 

@@ -195,6 +195,8 @@ class InboxRoomResponse(BaseModel):
     # Sub-thread rows only: parent room + optional linked activity.
     parent_room_id: UUID | None = None
     activity_id: UUID | None = None
+    # Linked event trashed or purged: the composer is frozen.
+    activity_deleted: bool = False
 
 
 class ChatInboxResponse(BaseModel):
@@ -221,6 +223,7 @@ class ChannelResponse(BaseModel):
     parent_room_id: UUID | None = None
     activity_id: UUID | None = None
     activity_title: str | None = None
+    activity_deleted: bool = False
 
 
 class ChannelListResponse(BaseModel):
