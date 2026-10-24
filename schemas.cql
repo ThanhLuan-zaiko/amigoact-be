@@ -14,7 +14,7 @@
 // - The Student <-> Activity N-M relationship is modeled explicitly through
 //   `registrations` plus both directional query tables.
 // - Raw CQL here is the migration/reference source. Runtime access goes through
-//   `cassandra.cqlengine` Models in each feature's repository.py (AGENTS.md #5).
+//   `cassandra.cqlengine` Models in each feature's repository.py (see AGENTS.md, Data and security).
 // - PERSISTENCE POLICY (no RAM state): ScyllaDB is the single source of truth.
 //   Process restarts must lose nothing. Forbidden: in-memory session stores,
 //   token caches, rate-limit buckets, request-dedup sets, locks, QR/slot
@@ -1377,7 +1377,7 @@ CREATE TABLE IF NOT EXISTS job_leases (
 
 // -----------------------------------------------------------------------------
 // 15. REALTIME — WEBSOCKET HANDSHAKE TICKETS (1 table)
-// One-time tickets bridge REST auth and the WS handshake (AGENTS.md §16):
+// One-time tickets bridge REST auth and the WS handshake (see docs/REALTIME.md):
 // browsers cannot set Authorization on the WS upgrade, so clients call
 // POST /ws/tickets then open /ws?ticket=<token>. Only the SHA-256 hash is
 // stored; rows self-expire via TTL and are consumed with DELETE IF EXISTS.

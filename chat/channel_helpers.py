@@ -40,6 +40,26 @@ def require_channel_manager(
         raise ForbiddenError("Only chat managers can do this.")
 
 
+def event_creator(
+    access: "AccessControl", org: "Organization", actor_id: UUID
+) -> bool:
+    """True for org owner or an activity:create holder (same rule as drafts)."""
+    return org.owner_id == actor_id or access.has_permission(
+        org.id, actor_id, "activity:create"
+    )
+
+
+def require_event_creator(
+    access: "AccessControl", org: "Organization", actor_id: UUID
+) -> None:
+    """Gate for chat threads that link an activity."""
+    if not event_creator(access, org, actor_id):
+        access.record(
+            org.id, actor_id, "thread.event", "chat", None, "denied"
+        )
+        raise ForbiddenError("Only event creators can open an event thread.")
+
+
 def require_org_member(
     members: MemberRepository, org: "Organization", user_id: UUID
 ) -> None:

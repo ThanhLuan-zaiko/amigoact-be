@@ -118,6 +118,9 @@ def _summary(row: Activity) -> ActivitySummary:
         category_id=row.category_id,
         tags=_tags(row),
         deleted_at=row.deleted_at,
+        location=row.location,
+        is_remote=bool(row.is_remote),
+        hours_awarded=float(row.hours_awarded or 0.0),
     )
 
 

@@ -1,8 +1,8 @@
 """Shared WebSocket plumbing: envelopes, channels, socket registry.
 
-AGENTS.md 16.6: shared handshake/ticket code lives here (heartbeat sits
+Shared handshake/ticket code lives here (heartbeat sits
 in core/realtime_heartbeat.py). The registry is ephemeral transport
-state (16.5); business facts always replay from ScyllaDB on reconnect.
+state; business facts always replay from ScyllaDB on reconnect.
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ from pydantic import BaseModel, Field, ValidationError
 
 logger = logging.getLogger("amigoact.realtime")
 
-# Application close codes (AGENTS.md 16.4).
+# Application close codes (see docs/REALTIME.md).
 CLOSE_BAD_FRAME = 4400
 CLOSE_UNAUTHORIZED = 4401
 CLOSE_FORBIDDEN = 4403
@@ -83,7 +83,7 @@ class TypingFrame(SubscribeFrame):
 
 @dataclass(frozen=True)
 class UnknownFrame:
-    """Unrecognized type: logged and ignored, never crashes (16.4)."""
+    """Unrecognized type: logged and ignored, never crashes."""
 
     frame_type: str
 
@@ -135,7 +135,7 @@ def parse_client_frame(raw: str) -> ClientFrame:
 
 @dataclass(frozen=True)
 class Channel:
-    """Parsed 'kind:{uuid}' name; public kinds get subject=None (16.3)."""
+    """Parsed 'kind:{uuid}' name; public kinds get subject=None."""
 
     kind: str
     subject: UUID | None

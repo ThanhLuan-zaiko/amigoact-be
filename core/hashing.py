@@ -1,4 +1,4 @@
-"""Argon2id password hashing. Single wrapper module (AGENTS.md section 7)."""
+"""Argon2id password hashing. Single wrapper module (see AGENTS.md, Stack and run)."""
 
 from __future__ import annotations
 

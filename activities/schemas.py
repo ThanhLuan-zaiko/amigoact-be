@@ -110,6 +110,10 @@ class ActivitySummary(BaseModel):
     category_id: UUID | None
     tags: list[TagRef] = Field(default_factory=list)
     deleted_at: datetime | None = None
+    # Shown on the manage cards; the detail endpoint carries the full set.
+    location: str | None = None
+    is_remote: bool = False
+    hours_awarded: float = 0.0
 
 
 class DiscoveryBucket(BaseModel):

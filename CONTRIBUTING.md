@@ -9,7 +9,7 @@ cd amigoact-be
 uv sync
 ```
 
-Đọc trước: `README.md`, `docs/ARCHITECTURE.md`, `AGENTS.md` mục 3, 4, 9, 10.
+Đọc trước: `README.md`, `docs/ARCHITECTURE.md`, `AGENTS.md` (các mục Structure, Data and security, Quality and git).
 
 ## 2. Tạo tính năng mới
 

@@ -1,4 +1,4 @@
-# BE CI — 12 required gates (see AGENTS.md §15).
+# BE CI — 12 required gates (see AGENTS.md, Quality and git).
 # No auto-commit / auto-push / docker push in this pipeline.
 name: be-ci
 

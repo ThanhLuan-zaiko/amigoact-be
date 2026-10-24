@@ -129,7 +129,7 @@ async def _subscribe(
     service: RealtimeService,
     manager: ConnectionManager,
 ) -> bool:
-    """Authorize then join a channel. Denials close 4403 (16.4)."""
+    """Authorize then join a channel. Denials close 4403."""
     now = time.monotonic()
     state.subscribe_times = [t for t in state.subscribe_times if now - t < 60.0]
     if len(state.subscribe_times) >= 20:

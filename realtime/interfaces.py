@@ -60,7 +60,7 @@ class UserLookup(ABC):
     """Read port: account status gate for socket admission.
 
     The router cannot see the auth tables without leaking DIP, so the
-    post-ticket status check goes through this port (AGENTS.md 8:
+    post-ticket status check goes through this port (
     a suspended or deleted account must never hold a socket open).
     """
 

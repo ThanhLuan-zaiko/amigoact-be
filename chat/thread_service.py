@@ -18,6 +18,7 @@ from chat.channel_helpers import (
     can_open_channel,
     channel_manager,
     channel_row_or_404,
+    require_event_creator,
     require_org_member,
 )
 from chat.channel_interfaces import ChannelStore
@@ -118,6 +119,8 @@ class ThreadService:
     ) -> ChannelSnapshot:
         org = live_org(self._orgs, org_id)
         require_org_member(self._members, org, actor_id)
+        if activity_id is not None:
+            require_event_creator(self._access, org, actor_id)
         _parent_row, visibility = self._parent(
             org_id, parent_room_id, actor_id
         )

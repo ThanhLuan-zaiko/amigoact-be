@@ -170,7 +170,7 @@ amigoact-be/
     ARCHITECTURE.md
 ```
 
-Cấm tạo thư mục `src/`. Quy tắc chi tiết xem `AGENTS.md` mục 3.
+Cấm tạo thư mục `src/`. Quy tắc chi tiết xem `AGENTS.md` (mục Structure).
 
 ## Kiểm thử
 

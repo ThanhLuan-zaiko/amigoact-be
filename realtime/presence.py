@@ -3,7 +3,7 @@
 Presence rides the members:{org} channel: payloads carry "presence"
 (never "action") so roster-mutation clients can distinguish the two.
 Best-effort like every socket event - the registry is ephemeral and
-re-snapshots on every subscribe (AGENTS.md 16.5).
+re-snapshots on every subscribe.
 """
 
 from __future__ import annotations

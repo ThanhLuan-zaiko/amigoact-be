@@ -3,7 +3,7 @@
 The global timeline is the guest-facing social surface of the home
 page: guests must read it, every item must carry the public teaser
 fields plus org attribution, and non-announcement content must never
-leak (BOARD.md 3.1, AGENTS.md 16.3).
+leak (BOARD.md 3.1, docs/REALTIME.md).
 """
 
 from __future__ import annotations

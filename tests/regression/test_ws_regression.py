@@ -1,4 +1,4 @@
-"""Regression tests: frozen realtime wire contract (AGENTS.md 16)."""
+"""Regression tests: frozen realtime wire contract (docs/REALTIME.md)."""
 
 from __future__ import annotations
 

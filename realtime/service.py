@@ -27,7 +27,7 @@ class IssuedTicket:
 
 
 class RealtimeService:
-    """Ticket lifecycle plus per-channel authorization (16.2, 16.3)."""
+    """Ticket lifecycle plus per-channel authorization."""
 
     def __init__(
         self,

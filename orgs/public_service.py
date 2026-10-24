@@ -9,6 +9,7 @@ from uuid import UUID
 from core.exceptions import NotFoundError
 from core.media import media_kind
 from core.media_rules import is_gallery_asset
+from orgs.brand import brand_url
 from orgs.interfaces import (
     ActivityDirectory,
     MediaRepository,
@@ -51,17 +52,7 @@ class PublicOrgService:
         self, org: Organization, asset_id: UUID | None, role: str
     ) -> str | None:
         """Brand pointer -> URL, only for this org's own logo/cover."""
-        if asset_id is None or self._media is None:
-            return None
-        asset = self._media.get_asset(asset_id)
-        if (
-            asset is None
-            or not is_gallery_asset(asset, org.id)
-            or asset.role != role
-            or getattr(asset, "deleted_at", None) is not None
-        ):
-            return None
-        return f"/media/{asset.file_url}"
+        return brand_url(self._media, org.id, asset_id, role)
 
     def _avatar_url(
         self, user_id: UUID, asset_id: UUID | None

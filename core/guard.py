@@ -11,7 +11,7 @@ Three cheap checks run before any route work:
   the window.
 
 The suppression map is derived, non-authoritative state: the ScyllaDB
-counter stays the source of truth (AGENTS.md section 12). Losing an
+counter stays the source of truth. Losing an
 entry on restart only costs one extra counter read per IP - request
 correctness never depends on process memory. Slot waiting uses plain
 ints plus per-request `asyncio.Event` objects, so nothing in this class

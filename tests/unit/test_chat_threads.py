@@ -243,21 +243,22 @@ def test_threads_stay_out_of_channel_directory() -> None:
 
 def test_thread_activity_link_validation() -> None:
     (_s, _r, threads, _rooms, _c, _ch, _o,
-     members, users, _a, org_id, _owner, acts,) = _world()
-    member = _member(members, users, org_id)
+     members, users, access, org_id, _owner, acts,) = _world()
+    creator = _member(members, users, org_id)
+    access.perms.setdefault((org_id, creator), set()).add("activity:create")
     activity_id = _uid()
     acts.add(activity_id, org_id, "Beach cleanup")
     snap = _thread(
-        threads, org_id, org_id, member, activity_id=activity_id
+        threads, org_id, org_id, creator, activity_id=activity_id
     )
     assert snap.activity_id == activity_id
     assert snap.activity_title == "Beach cleanup"
     with pytest.raises(NotFoundError):
-        _thread(threads, org_id, org_id, member, activity_id=_uid())
+        _thread(threads, org_id, org_id, creator, activity_id=_uid())
     foreign = _uid()
     acts.add(foreign, _uid(), "Other org")
     with pytest.raises(NotFoundError):
-        _thread(threads, org_id, org_id, member, activity_id=foreign)
+        _thread(threads, org_id, org_id, creator, activity_id=foreign)
 
 
 def test_inbox_lists_threads_and_hides_restricted() -> None:

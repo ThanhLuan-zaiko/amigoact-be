@@ -2,11 +2,11 @@
 
 ## 1. Tổng quan
 
-Realtime dùng WebSocket ngay từ đầu (AGENTS.md §16). Không polling, không
+Realtime dùng WebSocket ngay từ đầu (xem AGENTS.md, mục Data and security). Không polling, không
 SSE, không Socket.IO/Pusher/Ably. Transport là `WebSocket` của FastAPI;
 package bổ sung duy nhất là `websockets` (FastAPI yêu cầu cho hỗ trợ WS).
 
-Luồng xác thực (bắt buộc, §16.2): trình duyệt không gắn được header vào
+Luồng xác thực (bắt buộc): trình duyệt không gắn được header vào
 handshake WebSocket nên JWT không bao giờ nằm trong URL. Client gọi
 `POST /ws/tickets` bằng Bearer JWT để lấy ticket một lần, sau đó mở
 `GET /ws?ticket=<ticket>`.
@@ -49,7 +49,7 @@ Mọi frame là JSON `{"type": "<tên có version>", "data": {...}}`.
 
 `type` lạ được bỏ qua và ghi log, không bao giờ làm sập kết nối.
 
-## 3. Kênh và phân quyền (§16.3)
+## 3. Kênh và phân quyền
 
 | Kênh | Quyền |
 |---|---|
@@ -82,9 +82,9 @@ Client đánh dấu kênh là bị từ chối và không join lại khi reconne
 
 ## 5. Kiến trúc
 
-- `core/realtime.py` (§16.6): codec envelope, parse kênh, `ConnectionManager`
+- `core/realtime.py`: codec envelope, parse kênh, `ConnectionManager`
   (registry socket trong RAM — ephemeral transport, không bao giờ là fact
-  source §16.5; cũng đếm socket theo user cho presence), hằng số close code.
+  source; cũng đếm socket theo user cho presence), hằng số close code.
   `heartbeat_loop` nằm ở `core/realtime_heartbeat.py` (tách vì giới hạn 350
   dòng — §4).
 - `realtime/` theo chuẩn 6 file: `model.py` (bảng `ws_tickets`),

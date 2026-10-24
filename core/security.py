@@ -1,4 +1,4 @@
-"""JWT access tokens plus opaque-token helpers (AGENTS.md section 8)."""
+"""JWT access tokens plus opaque-token helpers (see AGENTS.md, Data and security)."""
 
 from __future__ import annotations
 
