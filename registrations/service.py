@@ -26,6 +26,7 @@ from registrations.interfaces import (
     AttendanceEvents,
     AttendanceStore,
     RegistrationStore,
+    SeatEvents,
 )
 from registrations.model import Registration
 from registrations.queries import RegistrationQueriesMixin
@@ -53,6 +54,7 @@ class _RegistrationBase:
         events: AttendanceEvents | None = None,
         forms: RegistrationFormStore | None = None,
         slots: SlotStore | None = None,
+        seat_events: SeatEvents | None = None,
     ) -> None:
         self._registrations = registrations
         self._attendance = attendance
@@ -65,6 +67,12 @@ class _RegistrationBase:
         self._events = events
         self._forms = forms
         self._slots = slots
+        self._seat_events = seat_events
+
+    def _seats_changed(self, activity_id: UUID, org_id: UUID) -> None:
+        """Seat totals only move on review and cancel, so only they publish."""
+        if self._seat_events is not None:
+            self._seat_events.seats_changed(activity_id, org_id)
 
     def _activity(self, activity_id: UUID) -> object:
         row = self._activities.get(activity_id)
@@ -267,6 +275,7 @@ class RegistrationService(
                 "activity_slug": activity.slug,
             },
         )
+        self._seats_changed(activity_id, activity.org_id)
         return updated
 
     def cancel(
@@ -302,4 +311,5 @@ class RegistrationService(
             )
         elif from_status == "approved":
             self._promote_next(activity, row.slot_id, student_id)
+        self._seats_changed(activity_id, activity.org_id)
         return updated

@@ -58,6 +58,7 @@ Mọi frame là JSON `{"type": "<tên có version>", "data": {...}}`.
 | `members:{org_id}` | Phải là member `active` của org; nhận `event.v1` mọi thay đổi roster |
 | `attendance:{activity_id}` | Manager của org sở hữu activity — port `AttendanceAccess`: owner hoặc quyền `activity:manage` (khớp `GET /activities/{id}/attendance`) |
 | `orgs:directory` | **Public** — mở cho mọi socket kể cả ẩn danh; subject cố định `directory` (không phải UUID) |
+| `events:feed` | **Public** — mở cho mọi socket kể cả ẩn danh; subject cố định `feed` (không phải UUID). Chỉ mang id, không có actor hay student |
 
 Đăng ký bị từ chối: server gửi `error.v1` `FORBIDDEN` rồi đóng `4403`.
 Tên kênh sai cú pháp: `error.v1` `INVALID_CHANNEL`, kết nối vẫn sống.
@@ -208,6 +209,13 @@ removed`; flip `public→members` phát `removed`, `members→public` phát
 | Kênh | `payload.action` | `payload` còn lại |
 |---|---|---|
 | `announcements:feed` | `created`/`updated`/`removed` | `post_id`, `org_id` |
+| `events:feed` | `updated`/`removed`/`seats` | `activity_id`, `org_id` |
+
+`events:feed` publishes only what a public browse card can show. `updated`
+covers a public-status activity (published, ongoing, completed) that changed,
+`removed` covers a cancelled or deleted activity, and `seats` covers a
+review or cancel that may have moved the seat count. Drafts, slot changes and
+tag changes never publish here. Payloads are hints only; the FE refetches.
 
 Kênh public (guest subscribe được), payload chỉ chứa id — client
 invalidate query timeline/board rồi refetch qua REST.

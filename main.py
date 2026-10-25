@@ -132,6 +132,7 @@ from activities.category_router import (  # noqa: E402
     router as activity_category_router,
 )
 from activities.detail_router import router as activity_detail_router  # noqa: E402
+from activities.browse_router import router as activity_browse_router  # noqa: E402
 from activities.router import router as activities_router  # noqa: E402
 from activities.slots_router import router as slots_router  # noqa: E402
 from activities.tag_router import router as tag_router  # noqa: E402
@@ -180,6 +181,7 @@ app.include_router(realtime_router)
 app.include_router(admin_router)
 app.include_router(notifications_router)
 app.include_router(profiles_router)
+app.include_router(activity_browse_router)  # before /activities/{id}
 app.include_router(activities_router)
 app.include_router(activity_category_router)
 app.include_router(activity_detail_router)

@@ -284,18 +284,14 @@ class ActivityService:
                 for row in self._activities.list_by_tag(
                     _tag_key(tag_slug), limit
                 )
-                if row.status in _PUBLIC_STATUSES
+                if row.status == status
                 and row.deleted_at is None
                 and (category_id is None or row.category_id == category_id)
             ]
         if category_id is not None:
-            return [
-                row
-                for row in self._activities.list_by_category(
-                    category_id, limit
-                )
-                if row.deleted_at is None
-            ]
+            # Drafts share this feed (no status column); filter them here.
+            found = self._activities.list_by_category(category_id, limit)
+            return [row for row in found if row.status == status and row.deleted_at is None]
         return [
             row
             for row in self._activities.list_by_status(status, limit)

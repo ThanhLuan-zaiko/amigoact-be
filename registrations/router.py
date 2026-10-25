@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends
 from core.dependencies import CurrentUser, get_current_user
 from core.dependencies_registrations import (
     get_attendance_service,
+    get_registration_brief_service,
     get_registration_service,
 )
 from registrations.schemas import (
@@ -18,6 +19,7 @@ from registrations.schemas import (
     CheckinBody,
     CheckoutBody,
     HistoryEntryResponse,
+    RegistrationBriefResponse,
     RegistrationResponse,
     ReviewBody,
     RosterResponse,
@@ -26,6 +28,7 @@ from registrations.schemas import (
 
 if TYPE_CHECKING:
     from registrations.attendance_service import AttendanceService
+    from registrations.brief_service import RegistrationBriefService
     from registrations.model import AttendanceRecord, Registration
     from registrations.queries import RosterItem
     from registrations.service import RegistrationService
@@ -105,6 +108,28 @@ def my_registrations(
 ) -> list[RegistrationResponse]:
     """The caller's application history across activities."""
     return [_response(row) for row in service.list_mine(current.id)]
+
+
+@router.get(
+    "/registrations/mine/brief",
+    response_model=list[RegistrationBriefResponse],
+)
+def my_registration_briefs(
+    current: CurrentUser = Depends(get_current_user),
+    service: RegistrationBriefService = Depends(
+        get_registration_brief_service
+    ),
+) -> list[RegistrationBriefResponse]:
+    """One best status per activity: drives the 'my status' chips."""
+    return [
+        RegistrationBriefResponse(
+            activity_id=brief.activity_id,
+            registration_id=brief.registration_id,
+            status=brief.status,
+            registered_at=brief.registered_at,
+        )
+        for brief in service.briefs_for(current.id)
+    ]
 
 
 @router.get(

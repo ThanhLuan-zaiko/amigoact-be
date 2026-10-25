@@ -18,11 +18,13 @@ if TYPE_CHECKING:
     from rbac.interfaces import AccessControl
     from registrations.appeal_service import AppealService
     from registrations.attendance_service import AttendanceService
+    from registrations.brief_service import RegistrationBriefService
     from registrations.service import RegistrationService
     from registrations.session_service import SessionService
 
 
 def get_registration_service(
+    request: Request,
     settings: Settings = Depends(get_settings),
     access: AccessControl = Depends(get_access_control),
     notifications: NotificationService = Depends(get_notification_service),
@@ -34,6 +36,7 @@ def get_registration_service(
     from orgs.repository import CqlOrgRepository
     from registrations.attendance_repository import CqlAttendanceStore
     from registrations.repository import CqlRegistrationStore
+    from registrations.seat_events import WsSeatEvents
     from registrations.service import RegistrationService
 
     return RegistrationService(
@@ -43,10 +46,21 @@ def get_registration_service(
         attendance=CqlAttendanceStore(settings.scylla_keyspace),
         activities=CqlActivityStore(settings.scylla_keyspace),
         orgs=CqlOrgRepository(settings.scylla_keyspace),
+        seat_events=WsSeatEvents(
+            getattr(request.app.state, "ws_manager", None)
+        ),
         users=user_directory(settings),
         access=access,
         notifications=notifications,
     )
+
+
+def get_registration_brief_service() -> RegistrationBriefService:
+    """Per-student 'my status' summaries read from the by-student feed."""
+    from registrations.brief_repository import CqlRegistrationBriefStore
+    from registrations.brief_service import RegistrationBriefService
+
+    return RegistrationBriefService(CqlRegistrationBriefStore())
 
 
 def get_attendance_service(

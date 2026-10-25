@@ -6,9 +6,14 @@ from typing import TYPE_CHECKING
 from uuid import UUID
 
 from activities.interfaces import ActivityEvents
+from core.events_feed import publish_events_feed
 
 if TYPE_CHECKING:
     from core.realtime import ConnectionManager
+
+# Statuses the public browse feed serves; drafts never reach events:feed.
+_PUBLIC_STATUSES = frozenset({"published", "ongoing", "completed"})
+_REMOVED_ACTIONS = frozenset({"deleted", "cancelled"})
 
 
 class WsActivityEvents(ActivityEvents):
@@ -36,6 +41,16 @@ class WsActivityEvents(ActivityEvents):
                 "status": status,
             },
         )
+        self._publish_public(org_id, action, activity_id, status)
+
+    def _publish_public(
+        self, org_id: UUID, action: str, activity_id: UUID, status: str
+    ) -> None:
+        """Mirror only changes a public browse card can show."""
+        if action in _REMOVED_ACTIONS:
+            publish_events_feed(self._manager, "removed", activity_id, org_id)
+        elif status in _PUBLIC_STATUSES and not action.startswith("slot_"):
+            publish_events_feed(self._manager, "updated", activity_id, org_id)
 
     def tags_changed(
         self, org_id: UUID, action: str, slug: str, actor_id: UUID

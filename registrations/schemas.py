@@ -174,3 +174,12 @@ class SummaryResponse(BaseModel):
     minutes_attended: int
     status: str
     updated_at: datetime | None
+
+
+class RegistrationBriefResponse(BaseModel):
+    """The caller's best registration status for one activity."""
+
+    activity_id: UUID
+    registration_id: UUID
+    status: str
+    registered_at: datetime | None

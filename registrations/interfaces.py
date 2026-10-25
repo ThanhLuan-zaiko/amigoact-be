@@ -201,3 +201,19 @@ class AttendanceEvents(ABC):
         actor_id: UUID,
     ) -> None:
         """Publish check-in/out onto the attendance:{activity_id} channel."""
+
+
+class SeatEvents(ABC):
+    """Fan-out port: seat counts moved (review or cancel) on events:feed."""
+
+    @abstractmethod
+    def seats_changed(self, activity_id: UUID, org_id: UUID) -> None:
+        """Public hint only; the browse feed refetches its own numbers."""
+
+
+class RegistrationBriefStore(ABC):
+    """Read port: one student's registration rows across activities."""
+
+    @abstractmethod
+    def student_rows(self, student_id: UUID, limit: int = 500) -> list:
+        """Newest-first registration rows for one student."""

@@ -28,10 +28,10 @@ CLOSE_PONG_TIMEOUT = 4408
 
 CHANNEL_KINDS = (
     "notifications", "attendance", "activities", "members", "orgs",
-    "posts", "chat", "announcements",
+    "posts", "chat", "announcements", "events",
 )
 # Public kinds carry a fixed literal subject instead of a UUID.
-PUBLIC_CHANNEL_SUBJECTS = {"orgs": "directory", "announcements": "feed"}
+PUBLIC_CHANNEL_SUBJECTS = {"orgs": "directory", "announcements": "feed", "events": "feed"}
 
 
 class BadFrameError(Exception):
