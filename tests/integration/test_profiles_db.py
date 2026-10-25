@@ -140,6 +140,50 @@ async def test_profile_roundtrip_and_public_card(
     assert "contacts" not in public
 
 
+async def test_contacts_replace_roundtrip(client: AsyncClient) -> None:
+    headers = _headers(await _token(client, "p.contacts@example.com", "0901000042"))
+
+    saved = await client.put(
+        "/profiles/me/contacts",
+        json={
+            "contacts": [
+                {"name": "Mom", "relation": "Mẹ", "phone": "0901234567"},
+                {"name": "Dad", "phone": "0907654321"},
+            ]
+        },
+        headers=headers,
+    )
+    assert saved.status_code == 200, saved.text
+    rows = saved.json()["contacts"]
+    assert sorted(row["name"] for row in rows) == ["Dad", "Mom"]
+    assert [row["name"] for row in rows if row["is_primary"]] == ["Mom"]
+
+    mom_id = next(row["contact_id"] for row in rows if row["name"] == "Mom")
+    kept = await client.put(
+        "/profiles/me/contacts",
+        json={
+            "contacts": [
+                {
+                    "contact_id": mom_id,
+                    "name": "Mom",
+                    "relation": "Mẹ",
+                    "phone": "0901234567",
+                }
+            ]
+        },
+        headers=headers,
+    )
+    assert kept.status_code == 200, kept.text
+    assert [row["contact_id"] for row in kept.json()["contacts"]] == [mom_id]
+    assert kept.json()["contacts"][0]["is_primary"] is True
+
+    cleared = await client.put(
+        "/profiles/me/contacts", json={"contacts": []}, headers=headers
+    )
+    assert cleared.status_code == 200, cleared.text
+    assert cleared.json()["contacts"] == []
+
+
 async def test_emergency_contacts_flow(client: AsyncClient) -> None:
     headers = _headers(await _token(client, "p.two@example.com", "0901000011"))
 

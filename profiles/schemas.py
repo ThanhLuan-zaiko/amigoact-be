@@ -50,6 +50,21 @@ class ContactCreate(BaseModel):
     is_primary: bool = False
 
 
+class ContactIn(BaseModel):
+    """One entry of the full-replace contact list; a known id keeps its row."""
+
+    contact_id: UUID | None = None
+    name: str = Field(min_length=1, max_length=120)
+    relation: str | None = Field(default=None, max_length=60)
+    phone: str = Field(min_length=8, max_length=20)
+
+
+class ContactsBody(BaseModel):
+    """Whole-list replace payload for PUT /profiles/me/contacts."""
+
+    contacts: list[ContactIn] = Field(default_factory=list, max_length=10)
+
+
 class ProfileBody(BaseModel):
     """Editable profile fields in PUT /profiles/me (full replace).
 

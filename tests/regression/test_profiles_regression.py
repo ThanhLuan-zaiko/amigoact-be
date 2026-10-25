@@ -74,6 +74,37 @@ async def test_profile_response_shape_locked(client: AsyncClient) -> None:
     }
 
 
+async def test_contacts_replace_contract(client: AsyncClient) -> None:
+    """PUT /profiles/me/contacts keeps the item shape and the cap code."""
+    headers = _headers(await _token(client, "r.contacts@example.com", "0902000012"))
+    saved = await client.put(
+        "/profiles/me/contacts",
+        json={"contacts": [{"name": "Mom", "phone": "0901234567"}]},
+        headers=headers,
+    )
+    assert saved.status_code == 200
+    assert set(saved.json()["contacts"][0]) == {
+        "contact_id",
+        "name",
+        "relation",
+        "phone",
+        "is_primary",
+    }
+
+    overflow = await client.put(
+        "/profiles/me/contacts",
+        json={
+            "contacts": [
+                {"name": f"C{index}", "phone": "0901234567"}
+                for index in range(4)
+            ]
+        },
+        headers=headers,
+    )
+    assert overflow.status_code == 400
+    assert overflow.json()["code"] == "TOO_MANY_CONTACTS"
+
+
 async def test_skill_catalog_public_and_seeded(client: AsyncClient) -> None:
     """Catalog endpoint needs no auth and carries the seeded slugs."""
     response = await client.get("/skills")

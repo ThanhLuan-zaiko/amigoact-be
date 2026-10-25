@@ -57,6 +57,16 @@ class PublicCard:
     avatar_url: str | None
 
 
+@dataclass(frozen=True)
+class ContactEdit:
+    """One desired emergency contact; a known contact_id is updated in place."""
+
+    contact_id: UUID | None
+    name: str
+    relation: str | None
+    phone: str
+
+
 class ProfileService:
     """Own-profile reads/writes plus the public volunteer card."""
 
@@ -199,6 +209,42 @@ class ProfileService:
                 survivor.phone,
                 True,
             )
+        return self.get_mine(user_id)
+
+    def replace_contacts(
+        self, user_id: UUID, edits: list[ContactEdit]
+    ) -> ProfileBundle:
+        """Make the stored list match `edits`; the first entry is primary.
+
+        Writes come before deletes, so a failed save never drops a contact
+        that is still wanted. Unknown or repeated ids become new rows, so a
+        retried save converges on the same list.
+        """
+        if len(edits) > _MAX_CONTACTS:
+            raise TooManyContactsError(
+                f"At most {_MAX_CONTACTS} emergency contacts are allowed."
+            )
+        from core.ids import uuid7
+
+        existing = {
+            row.contact_id for row in self._profiles.list_contacts(user_id)
+        }
+        kept: set[UUID] = set()
+        for index, edit in enumerate(edits):
+            contact_id = edit.contact_id
+            if contact_id is None or contact_id not in existing or contact_id in kept:
+                contact_id = uuid7()
+            kept.add(contact_id)
+            self._profiles.put_contact(
+                user_id,
+                contact_id,
+                edit.name,
+                edit.relation,
+                edit.phone,
+                index == 0,
+            )
+        for stale in existing - kept:
+            self._profiles.delete_contact(user_id, stale)
         return self.get_mine(user_id)
 
     def upload_avatar(

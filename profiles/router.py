@@ -18,6 +18,7 @@ from profiles.schemas import (
     AvatarResponse,
     ContactCreate,
     ContactItem,
+    ContactsBody,
     ProfileBody,
     ProfileResponse,
     PublicProfileResponse,
@@ -25,6 +26,7 @@ from profiles.schemas import (
     SkillEdgeItem,
     SkillItem,
 )
+from profiles.service import ContactEdit
 
 if TYPE_CHECKING:
     from core.config import Settings
@@ -156,6 +158,29 @@ def add_my_contact(
             relation=body.relation,
             phone=body.phone,
             is_primary=body.is_primary,
+        )
+    )
+
+
+@router.put("/profiles/me/contacts", response_model=ProfileResponse)
+def replace_my_contacts(
+    body: ContactsBody,
+    current: CurrentUser = Depends(get_current_user),
+    service: ProfileService = Depends(get_profile_service),
+) -> ProfileResponse:
+    """Replace the whole contact list; the first entry becomes primary."""
+    return _profile_response(
+        service.replace_contacts(
+            current.id,
+            [
+                ContactEdit(
+                    contact_id=item.contact_id,
+                    name=item.name,
+                    relation=item.relation,
+                    phone=item.phone,
+                )
+                for item in body.contacts
+            ],
         )
     )
 

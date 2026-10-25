@@ -13,6 +13,7 @@ from core.exceptions import (
     TooManyContactsError,
     UnsupportedMediaError,
 )
+from profiles.service import ContactEdit
 from tests.unit.profile_fakes import make_service, new_user
 
 
@@ -125,6 +126,56 @@ def test_remove_contact_promotes_survivor() -> None:
     assert after.contacts[0].is_primary is True
     with pytest.raises(NotFoundError):
         service.remove_contact(user.id, dad.contact_id)
+
+
+def test_replace_contacts_updates_in_place_and_drops_missing() -> None:
+    service, _, users, _ = make_service()
+    user = new_user(users)
+    service.add_contact(
+        user.id, name="Mom", relation="mother", phone="0901234567",
+        is_primary=False,
+    )
+    bundle = service.add_contact(
+        user.id, name="Dad", relation=None, phone="0907654321",
+        is_primary=False,
+    )
+    dad_id = next(c.contact_id for c in bundle.contacts if c.name == "Dad")
+    after = service.replace_contacts(
+        user.id,
+        [
+            ContactEdit(contact_id=dad_id, name="Dad 2", relation=None, phone="0907654321"),
+            ContactEdit(contact_id=None, name="Sis", relation="sister", phone="0911111111"),
+        ],
+    )
+    assert sorted(c.name for c in after.contacts) == ["Dad 2", "Sis"]
+    assert dad_id in {c.contact_id for c in after.contacts}
+    assert [c.name for c in after.contacts if c.is_primary] == ["Dad 2"]
+
+
+def test_replace_contacts_caps_at_three_without_writing() -> None:
+    service, _, users, _ = make_service()
+    user = new_user(users)
+    edits = [
+        ContactEdit(contact_id=None, name=f"C{index}", relation=None, phone="0901234567")
+        for index in range(4)
+    ]
+    with pytest.raises(TooManyContactsError):
+        service.replace_contacts(user.id, edits)
+    assert service.get_mine(user.id).contacts == []
+
+
+def test_replace_contacts_retry_converges_on_same_list() -> None:
+    service, _, users, _ = make_service()
+    user = new_user(users)
+    edits = [
+        ContactEdit(contact_id=None, name="Mom", relation=None, phone="0901234567"),
+        ContactEdit(contact_id=None, name="Dad", relation=None, phone="0907654321"),
+    ]
+    service.replace_contacts(user.id, edits)
+    # A retry resends the same draft without ids; the first attempt's rows
+    # are stale and get deleted, so the list still holds exactly two rows.
+    after = service.replace_contacts(user.id, edits)
+    assert sorted(c.name for c in after.contacts) == ["Dad", "Mom"]
 
 
 def test_avatar_upload_writes_asset_and_pointer() -> None:
