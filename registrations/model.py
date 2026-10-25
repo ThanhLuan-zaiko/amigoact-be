@@ -11,7 +11,6 @@ class Registration(models.Model):
     """Authoritative registration row (one student x one activity)."""
 
     __table_name__ = "registrations"
-    __keyspace__ = "amigoact"
 
     registration_id = columns.UUID(primary_key=True, default=uuid7)
     activity_id = columns.UUID(required=True)
@@ -32,7 +31,6 @@ class RegistrationsByActivity(models.Model):
     """Roster feed for org managers, oldest application first."""
 
     __table_name__ = "registrations_by_activity"
-    __keyspace__ = "amigoact"
 
     activity_id = columns.UUID(primary_key=True)
     registered_at = columns.DateTime(
@@ -50,7 +48,6 @@ class RegistrationsByStudent(models.Model):
     """Student's own application history, newest first."""
 
     __table_name__ = "registrations_by_student"
-    __keyspace__ = "amigoact"
 
     student_id = columns.UUID(primary_key=True)
     registered_at = columns.DateTime(
@@ -67,7 +64,6 @@ class RegistrationsByActivityStudent(models.Model):
     """Duplicate guard: one row per (activity, student, slot)."""
 
     __table_name__ = "registrations_by_activity_student"
-    __keyspace__ = "amigoact"
 
     activity_id = columns.UUID(primary_key=True)
     student_id = columns.UUID(primary_key=True)
@@ -81,7 +77,6 @@ class RegistrationsByToken(models.Model):
     """Personal-QR path: checkin_token resolves to a registration."""
 
     __table_name__ = "registrations_by_token"
-    __keyspace__ = "amigoact"
 
     checkin_token = columns.UUID(primary_key=True)
     registration_id = columns.UUID()
@@ -95,7 +90,6 @@ class RegistrationStatusHistory(models.Model):
     """Audit feed of every status change on one registration."""
 
     __table_name__ = "registration_status_history"
-    __keyspace__ = "amigoact"
 
     registration_id = columns.UUID(primary_key=True)
     changed_at = columns.DateTime(
@@ -114,7 +108,6 @@ class WaitlistEntry(models.Model):
     """FIFO queue row for one activity that hit its capacity."""
 
     __table_name__ = "waitlist_entries"
-    __keyspace__ = "amigoact"
 
     activity_id = columns.UUID(primary_key=True)
     joined_at = columns.DateTime(
@@ -133,7 +126,6 @@ class AttendanceRecord(models.Model):
     """Authoritative check-in/out row for one student x one activity."""
 
     __table_name__ = "attendance_records"
-    __keyspace__ = "amigoact"
 
     record_id = columns.UUID(primary_key=True, default=uuid7)
     session_id = columns.UUID()
@@ -152,7 +144,6 @@ class AttendanceByRegistration(models.Model):
     """One attendance record per registration (UNIQUE equivalent)."""
 
     __table_name__ = "attendance_by_registration"
-    __keyspace__ = "amigoact"
 
     registration_id = columns.UUID(primary_key=True)
     record_id = columns.UUID()
@@ -166,7 +157,6 @@ class AttendanceByActivity(models.Model):
     """Org feed: every check-in of one activity, newest first."""
 
     __table_name__ = "attendance_by_activity"
-    __keyspace__ = "amigoact"
 
     activity_id = columns.UUID(primary_key=True)
     scanned_at = columns.DateTime(
@@ -182,7 +172,6 @@ class AttendanceByStudent(models.Model):
     """Student feed: their check-ins across activities."""
 
     __table_name__ = "attendance_by_student"
-    __keyspace__ = "amigoact"
 
     student_id = columns.UUID(primary_key=True)
     scanned_at = columns.DateTime(
@@ -198,7 +187,6 @@ class AttendanceSession(models.Model):
     """One check-in window inside a schedule, guarded by its QR code."""
 
     __table_name__ = "attendance_sessions"
-    __keyspace__ = "amigoact"
 
     schedule_id = columns.UUID(primary_key=True)
     session_id = columns.UUID(
@@ -216,7 +204,6 @@ class QrCode(models.Model):
     """One scannable code; the code string is the whole lookup path."""
 
     __table_name__ = "qr_codes"
-    __keyspace__ = "amigoact"
 
     code = columns.Text(primary_key=True)
     session_id = columns.UUID()
@@ -232,7 +219,6 @@ class AttendanceAppeal(models.Model):
     """Student dispute over their attendance, resolved by a manager."""
 
     __table_name__ = "attendance_appeals"
-    __keyspace__ = "amigoact"
 
     activity_id = columns.UUID(primary_key=True)
     student_id = columns.UUID(primary_key=True, clustering_order="ASC")
@@ -251,7 +237,6 @@ class AttendanceSummary(models.Model):
     """Materialized per-registration attendance rollup."""
 
     __table_name__ = "attendance_summaries"
-    __keyspace__ = "amigoact"
 
     registration_id = columns.UUID(primary_key=True)
     activity_id = columns.UUID()
@@ -267,7 +252,6 @@ class QrScanLog(models.Model):
     """Every scan attempt on one code, newest first (audit)."""
 
     __table_name__ = "qr_scan_logs"
-    __keyspace__ = "amigoact"
 
     qr_code = columns.Text(primary_key=True)
     scanned_at = columns.DateTime(

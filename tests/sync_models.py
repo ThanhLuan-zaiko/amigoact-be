@@ -57,6 +57,7 @@ SYNC_MODELS = [
     rbac_models.AccessAuditByResource,
     admin_models.PlatformUserRole,
     admin_models.PlatformRoleRoster,
+    admin_models.MediaModeration,
     notification_models.Notification,
     notification_models.NotificationsByUser,
     profile_models.StudentProfile,

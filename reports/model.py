@@ -9,7 +9,6 @@ class ReportSnapshot(models.Model):
     """Saved report payload per org, newest first."""
 
     __table_name__ = "report_snapshots"
-    __keyspace__ = "amigoact"
 
     org_id = columns.UUID(primary_key=True, partition_key=True)
     created_at = columns.DateTime(primary_key=True, clustering_order="DESC")
@@ -25,7 +24,6 @@ class ExportJob(models.Model):
     """Async export request owned by the requester, newest first."""
 
     __table_name__ = "export_jobs"
-    __keyspace__ = "amigoact"
 
     requested_by = columns.UUID(primary_key=True, partition_key=True)
     created_at = columns.DateTime(primary_key=True, clustering_order="DESC")

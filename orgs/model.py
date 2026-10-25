@@ -11,7 +11,6 @@ class Organization(models.Model):
     """Org row with owner and legal identity for business kinds."""
 
     __table_name__ = "organizations"
-    __keyspace__ = "amigoact"
 
     id = columns.UUID(primary_key=True, default=uuid7)
     name = columns.Text(required=True)
@@ -49,7 +48,6 @@ class OrganizationsBySlug(models.Model):
     """Unique slug index claimed with LWT on create."""
 
     __table_name__ = "organizations_by_slug"
-    __keyspace__ = "amigoact"
 
     slug = columns.Text(primary_key=True)
     org_id = columns.UUID(required=True)
@@ -59,7 +57,6 @@ class OrganizationsByTaxCode(models.Model):
     """One org per tax code; claimed with LWT like the slug index."""
 
     __table_name__ = "organizations_by_tax_code"
-    __keyspace__ = "amigoact"
 
     tax_code = columns.Text(primary_key=True)
     org_id = columns.UUID(required=True)
@@ -69,7 +66,6 @@ class OrganizationsByLegalStatus(models.Model):
     """Platform-admin verification queue, oldest first."""
 
     __table_name__ = "organizations_by_legal_status"
-    __keyspace__ = "amigoact"
 
     legal_status = columns.Text(primary_key=True, partition_key=True)
     created_at = columns.DateTime(primary_key=True, clustering_order="ASC")
@@ -86,7 +82,6 @@ class OrganizationsPublic(models.Model):
     """
 
     __table_name__ = "organizations_public"
-    __keyspace__ = "amigoact"
 
     kind = columns.Text(primary_key=True, partition_key=True)
     created_at = columns.DateTime(primary_key=True, clustering_order="DESC")
@@ -99,7 +94,6 @@ class OrganizationMember(models.Model):
     """Membership rows partitioned by org."""
 
     __table_name__ = "organization_members"
-    __keyspace__ = "amigoact"
 
     org_id = columns.UUID(primary_key=True, partition_key=True)
     user_id = columns.UUID(primary_key=True, clustering_order="ASC")
@@ -112,7 +106,6 @@ class MemberByUser(models.Model):
     """Membership rows partitioned by user for mine listings."""
 
     __table_name__ = "members_by_user"
-    __keyspace__ = "amigoact"
 
     user_id = columns.UUID(primary_key=True, partition_key=True)
     org_id = columns.UUID(primary_key=True, clustering_order="ASC")
@@ -125,7 +118,6 @@ class MediaAsset(models.Model):
     """Binary metadata; bytes live in MediaStore (local now, cloud later)."""
 
     __table_name__ = "media_assets"
-    __keyspace__ = "amigoact"
 
     asset_id = columns.UUID(primary_key=True, default=uuid7)
     owner_id = columns.UUID(required=True)
@@ -154,7 +146,6 @@ class MediaByOwner(models.Model):
     """Newest-first media feed per owner (org gallery)."""
 
     __table_name__ = "media_by_owner"
-    __keyspace__ = "amigoact"
 
     owner_id = columns.UUID(primary_key=True, partition_key=True)
     created_at = columns.DateTime(primary_key=True, clustering_order="DESC")
@@ -168,7 +159,6 @@ class MediaByHash(models.Model):
     """Content-checksum lookup for dedup and integrity checks."""
 
     __table_name__ = "media_by_hash"
-    __keyspace__ = "amigoact"
 
     file_hash = columns.Text(primary_key=True)
     asset_id = columns.UUID(required=True)
@@ -178,7 +168,6 @@ class MediaByUploader(models.Model):
     """Newest-first feed of one user's uploads across owners."""
 
     __table_name__ = "media_by_uploader"
-    __keyspace__ = "amigoact"
 
     uploader_id = columns.UUID(primary_key=True, partition_key=True)
     created_at = columns.DateTime(primary_key=True, clustering_order="DESC")
@@ -192,7 +181,6 @@ class Campus(models.Model):
     """One physical site belonging to an organization."""
 
     __table_name__ = "campuses"
-    __keyspace__ = "amigoact"
 
     id = columns.UUID(primary_key=True, default=uuid7)
     org_id = columns.UUID(required=True)
@@ -206,7 +194,6 @@ class CampusByOrg(models.Model):
     """Denormalized per-org campus listing."""
 
     __table_name__ = "campuses_by_org"
-    __keyspace__ = "amigoact"
 
     org_id = columns.UUID(primary_key=True, partition_key=True)
     campus_id = columns.UUID(primary_key=True)
@@ -217,7 +204,6 @@ class Department(models.Model):
     """One faculty/office inside an org, optionally bound to a campus."""
 
     __table_name__ = "departments"
-    __keyspace__ = "amigoact"
 
     id = columns.UUID(primary_key=True, default=uuid7)
     org_id = columns.UUID(required=True)
@@ -232,7 +218,6 @@ class DepartmentByCampus(models.Model):
     """Departments grouped under one campus for the org tree."""
 
     __table_name__ = "departments_by_campus"
-    __keyspace__ = "amigoact"
 
     campus_id = columns.UUID(primary_key=True, partition_key=True)
     department_id = columns.UUID(primary_key=True)
@@ -244,7 +229,6 @@ class DepartmentByOrg(models.Model):
     """Org-level department listing, also covering campus-less rows."""
 
     __table_name__ = "departments_by_org"
-    __keyspace__ = "amigoact"
 
     org_id = columns.UUID(primary_key=True, partition_key=True)
     department_id = columns.UUID(primary_key=True)
@@ -257,7 +241,6 @@ class OrgType(models.Model):
     """Org-kind lookup row; seeds replace the hard-coded enum."""
 
     __table_name__ = "org_types"
-    __keyspace__ = "amigoact"
 
     code = columns.Text(primary_key=True)
     name = columns.Text(required=True)

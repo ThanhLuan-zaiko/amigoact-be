@@ -11,7 +11,6 @@ class Notification(models.Model):
     """Full notification row; the by-user feed holds a light projection."""
 
     __table_name__ = "notifications"
-    __keyspace__ = "amigoact"
 
     notification_id = columns.UUID(primary_key=True, default=uuid7)
     user_id = columns.UUID(required=True)
@@ -29,7 +28,6 @@ class NotificationsByUser(models.Model):
     """Newest-first per-user feed; drives the bell and the inbox page."""
 
     __table_name__ = "notifications_by_user"
-    __keyspace__ = "amigoact"
 
     user_id = columns.UUID(primary_key=True, partition_key=True)
     created_at = columns.DateTime(primary_key=True, clustering_order="DESC")
@@ -44,7 +42,6 @@ class NotificationPreference(models.Model):
     """Per-user delivery preferences: muted types + channel toggles."""
 
     __table_name__ = "notification_preferences"
-    __keyspace__ = "amigoact"
 
     user_id = columns.UUID(primary_key=True)
     channels = columns.Map(columns.Text, columns.Boolean)

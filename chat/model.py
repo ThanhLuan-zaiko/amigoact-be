@@ -18,7 +18,6 @@ class OrgRoomMessage(models.Model):
     """One chat message inside its room+month partition."""
 
     __table_name__ = "org_room_messages"
-    __keyspace__ = "amigoact"
 
     room_id = columns.UUID(primary_key=True, partition_key=True)
     bucket = columns.Text(primary_key=True, partition_key=True)
@@ -51,7 +50,6 @@ class OrgRoomMedia(models.Model):
     """
 
     __table_name__ = "org_room_media"
-    __keyspace__ = "amigoact"
 
     room_id = columns.UUID(primary_key=True, partition_key=True)
     bucket = columns.Text(primary_key=True, partition_key=True)
@@ -86,7 +84,6 @@ class OrgRoomMediaByAuthor(models.Model):
     """
 
     __table_name__ = "org_room_media_by_author"
-    __keyspace__ = "amigoact"
 
     room_id = columns.UUID(primary_key=True, partition_key=True)
     kind = columns.Text(primary_key=True, partition_key=True)
@@ -112,7 +109,6 @@ class OrgRoomMediaAuthor(models.Model):
     the row is dropped once no by-author item of the pair remains."""
 
     __table_name__ = "org_room_media_authors"
-    __keyspace__ = "amigoact"
 
     room_id = columns.UUID(primary_key=True, partition_key=True)
     kind = columns.Text(primary_key=True, clustering_order="ASC")
@@ -130,7 +126,6 @@ class OrgChatAttachmentClaim(models.Model):
     """
 
     __table_name__ = "chat_attachment_claims"
-    __keyspace__ = "amigoact"
 
     media_id = columns.UUID(primary_key=True)
     room_id = columns.UUID(required=True)
@@ -142,7 +137,6 @@ class OrgRoomReaction(models.Model):
     """One user's emoji reaction; toggling removes the (emoji,user) pair."""
 
     __table_name__ = "org_room_reactions"
-    __keyspace__ = "amigoact"
 
     room_id = columns.UUID(primary_key=True, partition_key=True)
     message_id = columns.UUID(primary_key=True, partition_key=True)
@@ -161,7 +155,6 @@ class OrgRoomPinV2(models.Model):
     """
 
     __table_name__ = "org_room_pins_v2"
-    __keyspace__ = "amigoact"
 
     room_id = columns.UUID(primary_key=True, partition_key=True)
     message_id = columns.UUID(primary_key=True, clustering_order="ASC")
@@ -173,7 +166,6 @@ class OrgRoomMute(models.Model):
     """Per-user mute flag of one room; muted rooms still list but dim."""
 
     __table_name__ = "org_room_mutes"
-    __keyspace__ = "amigoact"
 
     user_id = columns.UUID(primary_key=True, partition_key=True)
     room_id = columns.UUID(primary_key=True, clustering_order="ASC")
@@ -184,7 +176,6 @@ class OrgRoomRead(models.Model):
     """Per-member read pointer of one room for the unread badge."""
 
     __table_name__ = "org_room_reads"
-    __keyspace__ = "amigoact"
 
     room_id = columns.UUID(primary_key=True, partition_key=True)
     user_id = columns.UUID(primary_key=True, clustering_order="ASC")
@@ -196,7 +187,6 @@ class OrgDmPair(models.Model):
     """Canonical dm pair -> room. user_lo < user_hi, claimed with LWT."""
 
     __table_name__ = "org_dm_pairs"
-    __keyspace__ = "amigoact"
 
     org_id = columns.UUID(primary_key=True, partition_key=True)
     user_lo = columns.UUID(primary_key=True, clustering_order="ASC")
@@ -209,7 +199,6 @@ class OrgDmRoom(models.Model):
     """One participant's dm inbox row (also the room ACL lookup)."""
 
     __table_name__ = "org_dm_rooms"
-    __keyspace__ = "amigoact"
 
     user_id = columns.UUID(primary_key=True, partition_key=True)
     room_id = columns.UUID(primary_key=True, clustering_order="ASC")
@@ -227,7 +216,6 @@ class OrgChatChannel(models.Model):
     """
 
     __table_name__ = "org_chat_channels"
-    __keyspace__ = "amigoact"
 
     org_id = columns.UUID(primary_key=True, partition_key=True)
     channel_id = columns.UUID(
@@ -259,7 +247,6 @@ class OrgChatChannelById(models.Model):
     """channel_id -> full row mirror for room resolution lookups."""
 
     __table_name__ = "org_chat_channels_by_id"
-    __keyspace__ = "amigoact"
 
     channel_id = columns.UUID(primary_key=True)
     org_id = columns.UUID(required=True)
@@ -286,7 +273,6 @@ class OrgChatRoomThread(models.Model):
     """
 
     __table_name__ = "org_chat_room_threads"
-    __keyspace__ = "amigoact"
 
     parent_room_id = columns.UUID(primary_key=True, partition_key=True)
     channel_id = columns.UUID(
@@ -310,7 +296,6 @@ class OrgChatChannelName(models.Model):
     """LWT claim making one live channel name unique per org."""
 
     __table_name__ = "org_chat_channel_names"
-    __keyspace__ = "amigoact"
 
     org_id = columns.UUID(primary_key=True, partition_key=True)
     name_folded = columns.Text(primary_key=True, clustering_order="ASC")
@@ -322,7 +307,6 @@ class OrgChatChannelMember(models.Model):
     """Restricted-channel roster row: who may open the room."""
 
     __table_name__ = "org_chat_channel_members"
-    __keyspace__ = "amigoact"
 
     channel_id = columns.UUID(primary_key=True, partition_key=True)
     user_id = columns.UUID(primary_key=True, clustering_order="ASC")
@@ -334,7 +318,6 @@ class OrgChatChannelMembership(models.Model):
     """Per-user restricted-channel index for inbox enumeration."""
 
     __table_name__ = "org_chat_channel_memberships"
-    __keyspace__ = "amigoact"
 
     user_id = columns.UUID(primary_key=True, partition_key=True)
     channel_id = columns.UUID(primary_key=True, clustering_order="ASC")

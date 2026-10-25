@@ -11,7 +11,6 @@ class VolunteerHourEntry(models.Model):
     """Authoritative append-only ledger row."""
 
     __table_name__ = "volunteer_hour_ledger"
-    __keyspace__ = "amigoact"
 
     entry_id = columns.UUID(primary_key=True, default=uuid7)
     student_id = columns.UUID(required=True)
@@ -32,7 +31,6 @@ class HoursByStudent(models.Model):
     """Approved-hours rollup per student per term."""
 
     __table_name__ = "hours_by_student"
-    __keyspace__ = "amigoact"
 
     student_id = columns.UUID(primary_key=True)
     term = columns.Text(primary_key=True)
@@ -45,7 +43,6 @@ class HoursByActivity(models.Model):
     """Per-activity ledger feed for reports, newest first."""
 
     __table_name__ = "hours_by_activity"
-    __keyspace__ = "amigoact"
 
     activity_id = columns.UUID(primary_key=True)
     recorded_at = columns.DateTime(
@@ -63,7 +60,6 @@ class PendingHoursByOrg(models.Model):
     """Manager approval queue: pending entries, oldest first."""
 
     __table_name__ = "pending_hours_by_org"
-    __keyspace__ = "amigoact"
 
     org_id = columns.UUID(primary_key=True)
     recorded_at = columns.DateTime(
@@ -82,7 +78,6 @@ class HourEntriesByStudent(models.Model):
     so this feed keeps per-student reads partition-local)."""
 
     __table_name__ = "hour_entries_by_student"
-    __keyspace__ = "amigoact"
 
     student_id = columns.UUID(primary_key=True)
     recorded_at = columns.DateTime(
@@ -101,7 +96,6 @@ class LeaderboardByTerm(models.Model):
     """Ranked student hours per term (term='all' is the all-time board)."""
 
     __table_name__ = "leaderboard_by_term"
-    __keyspace__ = "amigoact"
 
     term = columns.Text(primary_key=True)
     total_hours = columns.Double(
@@ -118,7 +112,6 @@ class LeaderboardTerm(models.Model):
     """Distinct term list for leaderboard filters."""
 
     __table_name__ = "leaderboard_terms"
-    __keyspace__ = "amigoact"
 
     term = columns.Text(primary_key=True)
 
@@ -127,7 +120,6 @@ class HourAdjustment(models.Model):
     """Staff correction rows (kept for audit trail)."""
 
     __table_name__ = "hour_adjustments"
-    __keyspace__ = "amigoact"
 
     adjustment_id = columns.UUID(primary_key=True, default=uuid7)
     student_id = columns.UUID()
@@ -142,7 +134,6 @@ class HourRule(models.Model):
     """Per-org multiplier/cap applied to recorded attendance hours."""
 
     __table_name__ = "hour_rules"
-    __keyspace__ = "amigoact"
 
     rule_id = columns.UUID(primary_key=True, default=uuid7)
     org_id = columns.UUID(index=True)

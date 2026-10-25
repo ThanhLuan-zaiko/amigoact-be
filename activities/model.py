@@ -12,7 +12,6 @@ class Activity(models.Model):
     """Source-of-truth row; every feed below is a denormalized projection."""
 
     __table_name__ = "activities"
-    __keyspace__ = "amigoact"
 
     id = columns.UUID(primary_key=True, default=uuid7)
     org_id = columns.UUID(required=True)
@@ -50,7 +49,6 @@ class ActivitiesByOrg(models.Model):
     """Org feed: newest-first by start_at for the manage screens."""
 
     __table_name__ = "activities_by_org"
-    __keyspace__ = "amigoact"
 
     org_id = columns.UUID(primary_key=True, partition_key=True)
     start_at = columns.DateTime(primary_key=True, clustering_order="DESC")
@@ -66,7 +64,6 @@ class ActivitiesByStatus(models.Model):
     """Public feed partitioned by status for the discovery surface."""
 
     __table_name__ = "activities_by_status"
-    __keyspace__ = "amigoact"
 
     status = columns.Text(primary_key=True, partition_key=True)
     start_at = columns.DateTime(primary_key=True, clustering_order="DESC")
@@ -81,7 +78,6 @@ class ActivitiesByCategory(models.Model):
     """Discovery feed partitioned by catalog category."""
 
     __table_name__ = "activities_by_category"
-    __keyspace__ = "amigoact"
 
     category_id = columns.UUID(primary_key=True, partition_key=True)
     start_at = columns.DateTime(primary_key=True, clustering_order="DESC")
@@ -96,7 +92,6 @@ class ActivitiesByTag(models.Model):
     """Community-tag feed partitioned by canonical slug."""
 
     __table_name__ = "activities_by_tag"
-    __keyspace__ = "amigoact"
 
     tag_slug = columns.Text(primary_key=True, partition_key=True)
     start_at = columns.DateTime(primary_key=True, clustering_order="DESC")
@@ -112,7 +107,6 @@ class ActivitiesTrashByOrg(models.Model):
     """Manager trash bin: soft-deleted rows stay listable per org."""
 
     __table_name__ = "activities_trash_by_org"
-    __keyspace__ = "amigoact"
 
     org_id = columns.UUID(primary_key=True, partition_key=True)
     deleted_at = columns.DateTime(primary_key=True, clustering_order="DESC")
@@ -126,7 +120,6 @@ class ActivityMedia(models.Model):
     """Ordered gallery entries bound to one activity."""
 
     __table_name__ = "activity_media"
-    __keyspace__ = "amigoact"
 
     activity_id = columns.UUID(partition_key=True, primary_key=True)
     position = columns.Integer(primary_key=True)
@@ -139,7 +132,6 @@ class ActivitiesBySlug(models.Model):
     """Pretty-URL lookup; also the per-org slug uniqueness claim."""
 
     __table_name__ = "activities_by_slug"
-    __keyspace__ = "amigoact"
 
     org_id = columns.UUID(primary_key=True, partition_key=True)
     slug = columns.Text(primary_key=True, clustering_order="ASC")
@@ -153,7 +145,6 @@ class ActivityCategory(models.Model):
     """Catalog row; org_id NULL means the row is global."""
 
     __table_name__ = "activity_categories"
-    __keyspace__ = "amigoact"
 
     id = columns.UUID(primary_key=True, default=uuid7)
     org_id = columns.UUID(required=False)
@@ -169,7 +160,6 @@ class ActivitySkill(models.Model):
     """Activity -> skill edge (required or desired)."""
 
     __table_name__ = "activity_skills"
-    __keyspace__ = "amigoact"
 
     activity_id = columns.UUID(primary_key=True, partition_key=True)
     skill_id = columns.UUID(primary_key=True, clustering_order="ASC")
@@ -180,7 +170,6 @@ class ActivityPartner(models.Model):
     """Activity -> partner org edge (co_organizer | sponsor)."""
 
     __table_name__ = "activity_partners"
-    __keyspace__ = "amigoact"
 
     activity_id = columns.UUID(primary_key=True, partition_key=True)
     org_id = columns.UUID(primary_key=True, clustering_order="ASC")
@@ -192,7 +181,6 @@ class PartnerActivitiesByOrg(models.Model):
     """Reverse feed: activities one org partners on."""
 
     __table_name__ = "partner_activities_by_org"
-    __keyspace__ = "amigoact"
 
     org_id = columns.UUID(primary_key=True, partition_key=True)
     start_at = columns.DateTime(primary_key=True, clustering_order="DESC")
@@ -207,7 +195,6 @@ class ActivitySchedule(models.Model):
     """One session inside an activity (shifts hang off slots later)."""
 
     __table_name__ = "activity_schedules"
-    __keyspace__ = "amigoact"
 
     id = columns.UUID(primary_key=True, default=uuid7)
     activity_id = columns.UUID(required=True)
@@ -223,7 +210,6 @@ class ScheduleByActivity(models.Model):
     """Session feed per activity; the main row stays keyed by id."""
 
     __table_name__ = "schedules_by_activity"
-    __keyspace__ = "amigoact"
 
     activity_id = columns.UUID(primary_key=True, partition_key=True)
     start_at = columns.DateTime(primary_key=True, clustering_order="ASC")
@@ -238,7 +224,6 @@ class ActivityStaff(models.Model):
     """Staff assignment: organizer | supervisor | supporter."""
 
     __table_name__ = "activity_staff"
-    __keyspace__ = "amigoact"
 
     activity_id = columns.UUID(primary_key=True, partition_key=True)
     user_id = columns.UUID(primary_key=True, clustering_order="ASC")
@@ -251,7 +236,6 @@ class ActivityAnnouncement(models.Model):
     """News board per activity, newest first."""
 
     __table_name__ = "activity_announcements"
-    __keyspace__ = "amigoact"
 
     activity_id = columns.UUID(primary_key=True, partition_key=True)
     published_at = columns.DateTime(
@@ -269,7 +253,6 @@ class RegistrationForm(models.Model):
     """One custom question on an activity's sign-up form."""
 
     __table_name__ = "registration_forms"
-    __keyspace__ = "amigoact"
 
     activity_id = columns.UUID(primary_key=True, partition_key=True)
     position = columns.Integer(
@@ -287,7 +270,6 @@ class ActivitySlot(models.Model):
     """One capacity-bounded shift inside a schedule."""
 
     __table_name__ = "activity_slots"
-    __keyspace__ = "amigoact"
 
     schedule_id = columns.UUID(primary_key=True, partition_key=True)
     slot_id = columns.UUID(

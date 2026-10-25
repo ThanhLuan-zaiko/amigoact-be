@@ -30,6 +30,9 @@ TEST_JWT_SECRET = "integration-test-secret-32-bytes!"
 # Bare Settings() reads env (TestClient lifespan resolves get_settings());
 # guarantee the required secret exists on CI runners without .env.
 os.environ["JWT_SECRET"] = TEST_JWT_SECRET
+# The app lifespan connects with the env keyspace; pin it so no path can
+# resolve a model or repository to the dev keyspace.
+os.environ["SCYLLA_KEYSPACE"] = TEST_KEYSPACE
 
 TEST_ADMIN_EMAIL = "root@amigoact.test"
 
@@ -138,6 +141,18 @@ def test_db() -> str:
     finally:
         for model, keyspace in saved.items():
             model.__keyspace__ = keyspace
+
+
+@pytest.fixture(autouse=True)
+def _pin_default_keyspace() -> None:
+    """Fail loudly if cqlengine would write outside the test keyspace."""
+    from cassandra.cqlengine import models as cql_models
+
+    default = cql_models.DEFAULT_KEYSPACE
+    if default not in (None, TEST_KEYSPACE):
+        raise RuntimeError(
+            f"cqlengine default keyspace is {default!r}, not {TEST_KEYSPACE!r}"
+        )
 
 
 @pytest.fixture()

@@ -11,7 +11,6 @@ class User(models.Model):
     """Primary user row. Email/phone uniqueness lives in index tables."""
 
     __table_name__ = "users"
-    __keyspace__ = "amigoact"
 
     id = columns.UUID(primary_key=True, default=uuid7)
     email = columns.Text(required=True)
@@ -41,7 +40,6 @@ class UsersByEmail(models.Model):
     """Unique email index. Claimed with LWT (IF NOT EXISTS) on register."""
 
     __table_name__ = "users_by_email"
-    __keyspace__ = "amigoact"
 
     email = columns.Text(primary_key=True)
     user_id = columns.UUID(required=True)
@@ -51,7 +49,6 @@ class UsersByPhone(models.Model):
     """Unique phone index. Claimed with LWT (IF NOT EXISTS) on register."""
 
     __table_name__ = "users_by_phone"
-    __keyspace__ = "amigoact"
 
     phone = columns.Text(primary_key=True)
     user_id = columns.UUID(required=True)
@@ -61,7 +58,6 @@ class AuthRefreshToken(models.Model):
     """Stored SHA-256 digests of opaque refresh tokens (never plaintext)."""
 
     __table_name__ = "auth_refresh_tokens"
-    __keyspace__ = "amigoact"
 
     token_hash = columns.Text(primary_key=True)
     user_id = columns.UUID(required=True)
@@ -76,7 +72,6 @@ class EmailVerification(models.Model):
     """Single-use numeric verification codes, stored as digests."""
 
     __table_name__ = "email_verifications"
-    __keyspace__ = "amigoact"
 
     token_hash = columns.Text(primary_key=True)
     user_id = columns.UUID(required=True)
@@ -89,7 +84,6 @@ class PasswordReset(models.Model):
     """Single-use numeric password reset codes, stored as digests."""
 
     __table_name__ = "password_resets"
-    __keyspace__ = "amigoact"
 
     token_hash = columns.Text(primary_key=True)
     user_id = columns.UUID(required=True)
@@ -101,7 +95,6 @@ class RefreshTokenByUser(models.Model):
     """Query table: list every refresh digest owned by one user."""
 
     __table_name__ = "refresh_tokens_by_user"
-    __keyspace__ = "amigoact"
 
     user_id = columns.UUID(primary_key=True, partition_key=True)
     token_hash = columns.Text(primary_key=True, clustering_order="ASC")
@@ -114,7 +107,6 @@ class RefreshTokenByFamily(models.Model):
     """Query table: list every refresh digest of one token family."""
 
     __table_name__ = "refresh_tokens_by_family"
-    __keyspace__ = "amigoact"
 
     family_id = columns.UUID(primary_key=True, partition_key=True)
     token_hash = columns.Text(primary_key=True, clustering_order="ASC")
@@ -127,7 +119,6 @@ class AuthSession(models.Model):
     """Per-device login session; session_id mirrors the token family."""
 
     __table_name__ = "auth_sessions"
-    __keyspace__ = "amigoact"
 
     user_id = columns.UUID(primary_key=True, partition_key=True)
     session_id = columns.UUID(primary_key=True)

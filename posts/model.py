@@ -20,7 +20,6 @@ class OrgPost(models.Model):
     """
 
     __table_name__ = "org_posts"
-    __keyspace__ = "amigoact"
 
     post_id = columns.UUID(primary_key=True, default=uuid7)
     org_id = columns.UUID(required=True)
@@ -54,7 +53,6 @@ class OrgPostFeed(models.Model):
     """
 
     __table_name__ = "org_posts_feed"
-    __keyspace__ = "amigoact"
 
     org_id = columns.UUID(primary_key=True, partition_key=True)
     post_id = columns.UUID(
@@ -72,7 +70,6 @@ class AnnouncementFeed(models.Model):
     """
 
     __table_name__ = "announcements_feed"
-    __keyspace__ = "amigoact"
 
     bucket = columns.Text(primary_key=True, partition_key=True)
     post_id = columns.UUID(
@@ -85,7 +82,6 @@ class OrgPostPinned(models.Model):
     """Pinned posts of one org, newest post first."""
 
     __table_name__ = "org_posts_pinned"
-    __keyspace__ = "amigoact"
 
     org_id = columns.UUID(primary_key=True, partition_key=True)
     post_id = columns.UUID(
@@ -97,7 +93,6 @@ class OrgPostDraft(models.Model):
     """One author's unpublished drafts inside one org, newest first."""
 
     __table_name__ = "org_post_drafts"
-    __keyspace__ = "amigoact"
 
     org_id = columns.UUID(primary_key=True, partition_key=True)
     author_id = columns.UUID(primary_key=True, partition_key=True)
@@ -114,7 +109,6 @@ class OrgPostTrash(models.Model):
     """
 
     __table_name__ = "org_posts_trash"
-    __keyspace__ = "amigoact"
 
     org_id = columns.UUID(primary_key=True, partition_key=True)
     post_id = columns.UUID(
@@ -128,7 +122,6 @@ class OrgPostMedia(models.Model):
     """Gallery attachments per post; the asset stays owned by the org."""
 
     __table_name__ = "org_post_media"
-    __keyspace__ = "amigoact"
 
     post_id = columns.UUID(primary_key=True, partition_key=True)
     position = columns.Integer(primary_key=True, clustering_order="ASC")
@@ -139,7 +132,6 @@ class OrgPostComment(models.Model):
     """Flat comment thread of one post, oldest first."""
 
     __table_name__ = "org_post_comments"
-    __keyspace__ = "amigoact"
 
     post_id = columns.UUID(primary_key=True, partition_key=True)
     comment_id = columns.UUID(

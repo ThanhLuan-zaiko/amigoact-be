@@ -9,7 +9,6 @@ class ApiKey(models.Model):
     """Programmatic credential; lookup by digest only."""
 
     __table_name__ = "api_keys"
-    __keyspace__ = "amigoact"
 
     key_hash = columns.Text(primary_key=True)
     key_id = columns.UUID(required=True)
@@ -26,7 +25,6 @@ class ApiKeyByOrg(models.Model):
     """Query table: list one org's keys by key_id."""
 
     __table_name__ = "api_keys_by_org"
-    __keyspace__ = "amigoact"
 
     org_id = columns.UUID(primary_key=True, partition_key=True)
     key_id = columns.UUID(primary_key=True)

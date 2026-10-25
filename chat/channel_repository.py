@@ -48,7 +48,7 @@ def _mirror(row) -> OrgChatChannelById:  # noqa: ANN001
 class CqlChannelStore(ChannelStore):
     """Channel metadata partitions plus restricted-channel rosters."""
 
-    def __init__(self, keyspace: str = "amigoact") -> None:
+    def __init__(self, keyspace: str) -> None:
         self._keyspace = keyspace
 
     def _claim_once(

@@ -10,7 +10,6 @@ class ActivityDailyStats(models.Model):
     """Per-activity per-day rollup (registrations/attendees/hours)."""
 
     __table_name__ = "activity_daily_stats"
-    __keyspace__ = "amigoact"
 
     activity_id = columns.UUID(primary_key=True, partition_key=True)
     day = columns.Date(primary_key=True, clustering_order="DESC")
@@ -23,7 +22,6 @@ class OrgMonthlyStats(models.Model):
     """Per-org per-month rollup over activities/participants/hours/certs."""
 
     __table_name__ = "org_monthly_stats"
-    __keyspace__ = "amigoact"
 
     org_id = columns.UUID(primary_key=True, partition_key=True)
     month = columns.Text(primary_key=True, clustering_order="DESC")

@@ -11,7 +11,6 @@ class Role(models.Model):
     """Role row; org_id null marks a platform system role."""
 
     __table_name__ = "roles"
-    __keyspace__ = "amigoact"
 
     id = columns.UUID(primary_key=True, default=uuid7)
     org_id = columns.UUID(required=False)
@@ -26,7 +25,6 @@ class RolesByOrg(models.Model):
     """Custom roles owned by one org (org-defined roles land later)."""
 
     __table_name__ = "roles_by_org"
-    __keyspace__ = "amigoact"
 
     org_id = columns.UUID(primary_key=True, partition_key=True)
     role_id = columns.UUID(primary_key=True, clustering_order="ASC")
@@ -37,7 +35,6 @@ class Permission(models.Model):
     """Stable permission code catalog (seeded, read-heavy)."""
 
     __table_name__ = "permissions"
-    __keyspace__ = "amigoact"
 
     code = columns.Text(primary_key=True)
     module = columns.Text(required=True)
@@ -48,7 +45,6 @@ class RolePermission(models.Model):
     """Permission codes attached to one role."""
 
     __table_name__ = "role_permissions"
-    __keyspace__ = "amigoact"
 
     role_id = columns.UUID(primary_key=True, partition_key=True)
     permission_code = columns.Text(primary_key=True, clustering_order="ASC")
@@ -58,7 +54,6 @@ class UserRole(models.Model):
     """Role assignments partitioned by org for roster rendering."""
 
     __table_name__ = "user_roles"
-    __keyspace__ = "amigoact"
 
     org_id = columns.UUID(primary_key=True, partition_key=True)
     user_id = columns.UUID(primary_key=True, clustering_order="ASC")
@@ -72,7 +67,6 @@ class RolesByUser(models.Model):
     """Reverse view: every role one user holds, partitioned by user."""
 
     __table_name__ = "roles_by_user"
-    __keyspace__ = "amigoact"
 
     user_id = columns.UUID(primary_key=True, partition_key=True)
     org_id = columns.UUID(primary_key=True, clustering_order="ASC")
@@ -85,7 +79,6 @@ class UserPermissionGrant(models.Model):
     """Direct per-user permission grant inside one org."""
 
     __table_name__ = "user_permission_grants"
-    __keyspace__ = "amigoact"
 
     org_id = columns.UUID(primary_key=True, partition_key=True)
     user_id = columns.UUID(primary_key=True, clustering_order="ASC")
@@ -100,7 +93,6 @@ class AccessAuditLog(models.Model):
     """Append-only authorization trail per org; newest first."""
 
     __table_name__ = "access_audit_logs"
-    __keyspace__ = "amigoact"
 
     org_id = columns.UUID(primary_key=True, partition_key=True)
     occurred_at = columns.DateTime(primary_key=True, clustering_order="DESC")
@@ -120,7 +112,6 @@ class AccessAuditByResource(models.Model):
     """Per-resource audit trail ("everything that happened to object X")."""
 
     __table_name__ = "access_audit_by_resource"
-    __keyspace__ = "amigoact"
 
     resource_id = columns.UUID(primary_key=True, partition_key=True)
     occurred_at = columns.DateTime(primary_key=True, clustering_order="DESC")

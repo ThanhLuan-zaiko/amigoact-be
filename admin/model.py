@@ -10,7 +10,6 @@ class PlatformUserRole(models.Model):
     """Platform roles held by one user (the is-admin lookup)."""
 
     __table_name__ = "platform_user_roles"
-    __keyspace__ = "amigoact"
 
     user_id = columns.UUID(primary_key=True, partition_key=True)
     role_id = columns.UUID(primary_key=True, clustering_order="ASC")
@@ -23,7 +22,6 @@ class PlatformRoleRoster(models.Model):
     """Reverse feed: every user holding one platform role."""
 
     __table_name__ = "platform_role_roster"
-    __keyspace__ = "amigoact"
 
     role_id = columns.UUID(primary_key=True, partition_key=True)
     user_id = columns.UUID(primary_key=True, clustering_order="ASC")
@@ -36,7 +34,6 @@ class MediaModeration(models.Model):
     """Moderation queue bucketed by status (pending/approved/rejected)."""
 
     __table_name__ = "media_moderation"
-    __keyspace__ = "amigoact"
 
     status = columns.Text(primary_key=True, partition_key=True)
     created_at = columns.DateTime(primary_key=True, clustering_order="DESC")

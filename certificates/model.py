@@ -11,7 +11,6 @@ class Certificate(models.Model):
     """Canonical certificate row, one per (activity, student)."""
 
     __table_name__ = "certificates"
-    __keyspace__ = "amigoact"
 
     activity_id = columns.UUID(primary_key=True)
     student_id = columns.UUID(primary_key=True)
@@ -29,7 +28,6 @@ class CertificatesByStudent(models.Model):
     """Student's certificate wall, newest first."""
 
     __table_name__ = "certificates_by_student"
-    __keyspace__ = "amigoact"
 
     student_id = columns.UUID(primary_key=True)
     issued_at = columns.DateTime(
@@ -47,7 +45,6 @@ class CertificatesBySerial(models.Model):
     """Public verification path keyed by the printed serial."""
 
     __table_name__ = "certificates_by_serial"
-    __keyspace__ = "amigoact"
 
     serial_no = columns.Text(primary_key=True)
     certificate_id = columns.UUID()
@@ -60,7 +57,6 @@ class CertificatesById(models.Model):
     """Certificate-id lookup feeding the PDF download endpoint."""
 
     __table_name__ = "certificates_by_id"
-    __keyspace__ = "amigoact"
 
     certificate_id = columns.UUID(primary_key=True)
     activity_id = columns.UUID()
@@ -71,7 +67,6 @@ class CertificateRevocation(models.Model):
     """Append-only revocation trail."""
 
     __table_name__ = "certificate_revocations"
-    __keyspace__ = "amigoact"
 
     revocation_id = columns.UUID(primary_key=True, default=uuid7)
     certificate_id = columns.UUID()
@@ -86,7 +81,6 @@ class CertificateTemplate(models.Model):
     """Per-org visual template (background + layout JSON)."""
 
     __table_name__ = "certificate_templates"
-    __keyspace__ = "amigoact"
 
     template_id = columns.UUID(primary_key=True, default=uuid7)
     org_id = columns.UUID(index=True)

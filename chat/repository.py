@@ -32,7 +32,7 @@ from chat.model import (
 class CqlChatStore(ChatStore):
     """Room message partitions, read pointers, and dm room rows."""
 
-    def __init__(self, keyspace: str = "amigoact") -> None:
+    def __init__(self, keyspace: str) -> None:
         self._keyspace = keyspace
 
     def create(

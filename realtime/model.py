@@ -10,7 +10,6 @@ class WsTicket(models.Model):
     """One-time WS handshake ticket. Hash only, self-expiring via TTL."""
 
     __table_name__ = "ws_tickets"
-    __keyspace__ = "amigoact"
 
     ticket_hash = columns.Text(primary_key=True)
     user_id = columns.UUID(required=True)

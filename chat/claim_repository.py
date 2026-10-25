@@ -16,7 +16,7 @@ class CqlClaimStore(AttachmentClaimStore):
     cqlengine cannot surface IF NOT EXISTS results (same justification
     as the dm pair claim in repository.py)."""
 
-    def __init__(self, keyspace: str = "amigoact") -> None:
+    def __init__(self, keyspace: str) -> None:
         self._keyspace = keyspace
 
     def claim_attachment(

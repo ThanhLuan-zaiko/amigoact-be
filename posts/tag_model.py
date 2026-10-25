@@ -14,7 +14,6 @@ class PostTagsByOrg(models.Model):
     """
 
     __table_name__ = "post_tags_by_org"
-    __keyspace__ = "amigoact"
 
     org_id = columns.UUID(primary_key=True, partition_key=True)
     tag_slug = columns.Text(primary_key=True, clustering_order="ASC")
@@ -25,7 +24,6 @@ class TrashedPostTagEdgesByOrg(models.Model):
     """Remembered post edges of a soft-deleted tag, for exact restore."""
 
     __table_name__ = "trashed_post_tag_edges_by_org"
-    __keyspace__ = "amigoact"
 
     org_id = columns.UUID(primary_key=True, partition_key=True)
     tag_slug = columns.Text(primary_key=True, clustering_order="ASC")

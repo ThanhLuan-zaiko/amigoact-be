@@ -11,7 +11,6 @@ class ReviewsByActivity(models.Model):
     """Public review feed of one activity, newest first."""
 
     __table_name__ = "reviews_by_activity"
-    __keyspace__ = "amigoact"
 
     activity_id = columns.UUID(primary_key=True)
     created_at = columns.DateTime(
@@ -29,7 +28,6 @@ class ReviewsByStudent(models.Model):
     """One student's reviews, doubles as the per-activity dedup index."""
 
     __table_name__ = "reviews_by_student"
-    __keyspace__ = "amigoact"
 
     student_id = columns.UUID(primary_key=True)
     created_at = columns.DateTime(

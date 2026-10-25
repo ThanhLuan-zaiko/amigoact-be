@@ -11,7 +11,6 @@ class StudentProfile(models.Model):
     """One row per user; the main profile aggregate."""
 
     __table_name__ = "student_profiles"
-    __keyspace__ = "amigoact"
 
     user_id = columns.UUID(primary_key=True)
     student_code = columns.Text(required=False)
@@ -31,7 +30,6 @@ class EmergencyContact(models.Model):
     """Per-user contact list; contact_id is the clustering key."""
 
     __table_name__ = "emergency_contacts"
-    __keyspace__ = "amigoact"
 
     user_id = columns.UUID(primary_key=True, partition_key=True)
     contact_id = columns.UUID(
@@ -47,7 +45,6 @@ class Skill(models.Model):
     """Seeded skill catalog row (first-aid, teaching, translation, ...)."""
 
     __table_name__ = "skills"
-    __keyspace__ = "amigoact"
 
     id = columns.UUID(primary_key=True, default=uuid7)
     name = columns.Text(required=True)
@@ -58,7 +55,6 @@ class SkillBySlug(models.Model):
     """Slug -> skill_id lookup for stable URL/identifier reads."""
 
     __table_name__ = "skills_by_slug"
-    __keyspace__ = "amigoact"
 
     slug = columns.Text(primary_key=True)
     skill_id = columns.UUID(required=True)
@@ -68,7 +64,6 @@ class UserSkill(models.Model):
     """User -> skill edge with a self-declared 1-5 level."""
 
     __table_name__ = "user_skills"
-    __keyspace__ = "amigoact"
 
     user_id = columns.UUID(primary_key=True, partition_key=True)
     skill_id = columns.UUID(primary_key=True, clustering_order="ASC")
@@ -79,7 +74,6 @@ class UserBySkill(models.Model):
     """Reverse edge: who holds a skill - coordinator matching feed."""
 
     __table_name__ = "users_by_skill"
-    __keyspace__ = "amigoact"
 
     skill_id = columns.UUID(primary_key=True, partition_key=True)
     user_id = columns.UUID(primary_key=True, clustering_order="ASC")
@@ -90,7 +84,6 @@ class StudentProfileByCode(models.Model):
     """Student-code lookup keyed by campus for org-scoped searches."""
 
     __table_name__ = "student_profiles_by_code"
-    __keyspace__ = "amigoact"
 
     campus_id = columns.UUID(primary_key=True, partition_key=True)
     student_code = columns.Text(primary_key=True)
