@@ -101,3 +101,36 @@ class MembershipPage(BaseModel):
 
     items: list[MyMembership]
     total: int
+
+
+class VolunteerSkillOut(BaseModel):
+    """One declared skill of a member, as a manager sees it."""
+
+    id: UUID
+    name: str
+    level: int = Field(ge=1, le=5)
+
+
+class VolunteerContactOut(BaseModel):
+    """One emergency contact; org managers use these during incidents."""
+
+    name: str
+    relation: str | None
+    phone: str
+    is_primary: bool
+
+
+class MemberVolunteerProfile(BaseModel):
+    """Volunteer profile of one member, for org managers only."""
+
+    user_id: UUID
+    student_code: str | None
+    class_name: str | None
+    enrollment_year: int | None
+    school_name: str | None
+    bio: str | None
+    interests: list[str]
+    status: str | None
+    total_hours: float
+    skills: list[VolunteerSkillOut]
+    contacts: list[VolunteerContactOut]

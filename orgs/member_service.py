@@ -30,6 +30,7 @@ from orgs.member_helpers import (
 )
 from orgs.member_invitations import MemberInvitationsMixin
 from orgs.member_matching import MemberMatchingMixin
+from orgs.member_volunteer import MemberVolunteerMixin
 from orgs.member_moderation import MemberModerationMixin
 from orgs.member_listing import (
     MemberPage,
@@ -47,7 +48,10 @@ if TYPE_CHECKING:
 
 
 class MemberService(
-    MemberInvitationsMixin, MemberModerationMixin, MemberMatchingMixin
+    MemberInvitationsMixin,
+    MemberModerationMixin,
+    MemberMatchingMixin,
+    MemberVolunteerMixin,
 ):
     """Invite/accept/decline/join/leave/suspend/remove/role for orgs."""
 

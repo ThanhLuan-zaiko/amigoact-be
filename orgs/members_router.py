@@ -18,7 +18,10 @@ from orgs.member_schemas import (
     MemberResponse,
     MembershipPage,
     MyMembership,
+    MemberVolunteerProfile,
     SkillMatchResponse,
+    VolunteerContactOut,
+    VolunteerSkillOut,
     UpdateMemberRequest,
 )
 from orgs.member_listing import MemberSnapshot
@@ -112,6 +115,46 @@ def list_members(
         ],
         viewer_role=page.viewer_role,
         viewer_permissions=page.viewer_permissions,
+    )
+
+
+@router.get(
+    "/orgs/{org_id}/members/{user_id}/volunteer-profile",
+    response_model=MemberVolunteerProfile,
+    status_code=status.HTTP_200_OK,
+)
+def get_member_volunteer_profile(
+    org_id: UUID,
+    user_id: UUID,
+    current_user: CurrentUser = Depends(get_current_user),
+    service: MemberService = Depends(get_member_service),
+) -> MemberVolunteerProfile:
+    """Manager view of one active member's volunteer profile (audited)."""
+    view = service.volunteer_profile(org_id, user_id, current_user.id)
+    profile = view.profile
+    return MemberVolunteerProfile(
+        user_id=view.user_id,
+        student_code=getattr(profile, "student_code", None),
+        class_name=getattr(profile, "class_name", None),
+        enrollment_year=getattr(profile, "enrollment_year", None),
+        school_name=getattr(profile, "school_name", None),
+        bio=getattr(profile, "bio", None),
+        interests=sorted(getattr(profile, "interests", None) or []),
+        status=getattr(profile, "status", None),
+        total_hours=float(getattr(profile, "total_hours", 0.0) or 0.0),
+        skills=[
+            VolunteerSkillOut(id=row.skill_id, name=row.name, level=row.level)
+            for row in view.skills
+        ],
+        contacts=[
+            VolunteerContactOut(
+                name=row.name,
+                relation=row.relation,
+                phone=row.phone,
+                is_primary=bool(row.is_primary),
+            )
+            for row in view.contacts
+        ],
     )
 
 
