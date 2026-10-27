@@ -45,6 +45,8 @@ class BrowseItem(BaseModel):
     registration_deadline: datetime | None
     registration_open: bool
     org: BrowseOrg
+    # Viewer-agnostic: open now and asks nothing beyond a click (no form, no slots).
+    quick_apply: bool = False
 
 
 class CityFacet(BaseModel):
@@ -74,11 +76,16 @@ class BrowseFacets(BaseModel):
     tags: list[TagFacet]
 
 
-class BrowsePage(BaseModel):
+class BrowseEnvelope(BaseModel):
     items: list[BrowseItem]
     total: int
     truncated: bool
     facets: BrowseFacets
+
+
+class BrowsePage(BrowseEnvelope):
+    # Continuation token for the next window; set only when truncated.
+    next_cursor: str | None = None
 
 
 class MyRegistration(BaseModel):
@@ -102,6 +109,6 @@ class MineFacets(BrowseFacets):
     my_status: list[StatusFacet]
 
 
-class MineBrowsePage(BrowsePage):
+class MineBrowsePage(BrowseEnvelope):
     items: list[MineBrowseItem]
     facets: MineFacets

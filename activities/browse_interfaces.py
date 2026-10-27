@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from uuid import UUID
 
+from activities.browse_window import Cursor, Cut
 from activities.model import Activity
 
 
@@ -19,17 +20,37 @@ class MyRegistrationBrief:
     registered_at: datetime | None
 
 
+@dataclass(frozen=True)
+class ScanPlan:
+    """What one window reads: a public phase, or one organization's feed."""
+
+    phase: str
+    now: datetime
+    starts_from: datetime | None
+    starts_to: datetime | None
+    org_id: UUID | None
+    cursor: Cursor | None
+
+
+@dataclass(frozen=True)
+class CandidateWindow:
+    """Activity ids for one window, and the cut that ends it."""
+
+    ids: list[UUID]
+    cut: Cut
+
+
 class BrowseIndex(ABC):
     """Bounded candidate reads over the denormalized feeds, plus hydration."""
 
     @abstractmethod
-    def candidates(self, phase: str, now: datetime) -> tuple[list[UUID], bool]:
-        """Activity ids for one phase window from the status feeds.
+    def candidates(self, plan: ScanPlan) -> CandidateWindow:
+        """Activity ids for one window, narrowed by dates and cursor.
 
-        Tag and category filters are applied in memory, never by narrowing
-        the read: a narrowed read would hide the other values the facets
-        need to count. The flag is True when a source held more rows than
-        the window keeps, so the caller can say the list is not exhaustive.
+        Tag, category and city filters are applied in memory, never by
+        narrowing the read: a narrowed read would hide the other values the
+        facets need to count. The cut is set when a source held more rows
+        than the window keeps, so the caller can offer the next window.
         """
 
     @abstractmethod
@@ -51,3 +72,11 @@ class RegistrationBriefs(ABC):
     @abstractmethod
     def briefs_for(self, student_id: UUID) -> dict[UUID, MyRegistrationBrief]:
         """Best registration keyed by activity id, for one student."""
+
+
+class QuickApplyProbe(ABC):
+    """Whether an activity asks the applicant for anything beyond a click."""
+
+    @abstractmethod
+    def needs_input(self, activity_id: UUID) -> bool:
+        """True when the activity has form questions or session slots."""

@@ -23,6 +23,8 @@ from orgs.interfaces import MediaRepository, OrgRepository
 from rbac.interfaces import AccessControl
 
 _MEDIA_ROLES = {"cover", "gallery", "document"}
+# Activities on the public feed; their gallery reads without signing in.
+_PUBLIC_MEDIA_STATUSES = frozenset({"published", "ongoing", "completed"})
 
 
 @dataclass(slots=True)
@@ -102,7 +104,7 @@ class ActivityMediaService:
         org_id = self._activity(activity_id)
         row = self._activities.get(activity_id)
         assert row is not None
-        if getattr(row, "status", None) != "published" and (
+        if getattr(row, "status", None) not in _PUBLIC_MEDIA_STATUSES and (
             viewer_id is None or not self._is_manager(org_id, viewer_id)
         ):
             raise NotFoundError("Activity not found.")

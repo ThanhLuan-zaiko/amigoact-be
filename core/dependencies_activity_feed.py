@@ -12,6 +12,7 @@ from fastapi import Depends
 
 from activities.browse_interfaces import (
     MyRegistrationBrief,
+    QuickApplyProbe,
     RegistrationBriefs,
     SeatCounter,
 )
@@ -70,6 +71,22 @@ class _RegistrationBriefs(RegistrationBriefs):
         }
 
 
+class _FormAndSlots(QuickApplyProbe):
+    """Quick sign-up only when the activity needs no form answer and no slot."""
+
+    def __init__(self) -> None:
+        from activities.links_repository import CqlRegistrationFormStore
+        from activities.ops_repository import CqlSlotStore
+
+        self._forms = CqlRegistrationFormStore()
+        self._slots = CqlSlotStore()
+
+    def needs_input(self, activity_id: UUID) -> bool:
+        if self._forms.list_form(activity_id):
+            return True
+        return bool(self._slots.list_for_activity(activity_id))
+
+
 def get_activity_browse_service(
     settings: Settings = Depends(get_settings),
 ) -> ActivityBrowseService:
@@ -92,4 +109,5 @@ def get_activity_browse_service(
         ),
         briefs=_RegistrationBriefs(get_registration_brief_service()),
         categories=CqlCategoryStore(),
+        quick=_FormAndSlots(),
     )

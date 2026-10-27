@@ -8,10 +8,14 @@ from uuid import UUID
 
 from activities.browse_interfaces import (
     BrowseIndex,
+    CandidateWindow,
     MyRegistrationBrief,
+    QuickApplyProbe,
     RegistrationBriefs,
+    ScanPlan,
     SeatCounter,
 )
+from activities.browse_window import Cut
 from activities.browse_service import ActivityBrowseService
 from core.ids import uuid7
 
@@ -64,9 +68,12 @@ class FakeIndex(BrowseIndex):
     def __init__(self, rows, truncated=False) -> None:
         self.rows = rows
         self.truncated = truncated
+        self.plans: list[ScanPlan] = []
 
-    def candidates(self, phase, now):  # noqa: ANN001, ANN202
-        return [row.id for row in self.rows], self.truncated
+    def candidates(self, plan):  # noqa: ANN001, ANN202
+        self.plans.append(plan)
+        cut = Cut(NOW, True) if self.truncated else Cut()
+        return CandidateWindow(ids=[row.id for row in self.rows], cut=cut)
 
     def hydrate(self, ids):  # noqa: ANN001, ANN202
         by_id = {row.id: row for row in self.rows}
@@ -81,6 +88,11 @@ class FakeOrgs:
     def get_by_id(self, org_id):  # noqa: ANN001, ANN202
         self.calls.append(org_id)
         return self.by_id.get(org_id)
+
+    def get_by_slug(self, slug):  # noqa: ANN001, ANN202
+        return next(
+            (org for org in self.by_id.values() if org.slug == slug), None
+        )
 
 
 class FakeEntries:
@@ -136,14 +148,28 @@ def _brief(status: str) -> MyRegistrationBrief:
 
 def _service(rows, orgs=None, **kwargs) -> ActivityBrowseService:  # noqa: ANN003
     return ActivityBrowseService(
-        index=FakeIndex(rows, kwargs.pop("truncated", False)),
+        index=kwargs.pop("index", None)
+        or FakeIndex(rows, kwargs.pop("truncated", False)),
         orgs=orgs or FakeOrgs(_org()),
         entries=FakeEntries(kwargs.pop("entries", None)),
         media=FakeMedia(kwargs.pop("assets", None)),
         seats=FakeSeats(kwargs.pop("seats", None)),
         briefs=FakeBriefs(kwargs.pop("briefs", None)),
         categories=FakeCategoryNames(kwargs.pop("category_names", None)),
+        quick=kwargs.pop("quick", None),
     )
+
+
+class FakeQuick(QuickApplyProbe):
+    """Probe that reports the activities which still need applicant input."""
+
+    def __init__(self, needing=()) -> None:  # noqa: ANN001
+        self.needing = set(needing)
+        self.asked: list = []
+
+    def needs_input(self, activity_id):  # noqa: ANN001, ANN202
+        self.asked.append(activity_id)
+        return activity_id in self.needing
 
 
 ENV = uuid7()

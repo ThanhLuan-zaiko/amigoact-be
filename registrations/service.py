@@ -10,6 +10,7 @@ from activities.edge_interfaces import (
     SlotStore,
 )
 from activities.interfaces import ActivityStore
+from core.event_phase import classify_phase, utc_naive
 from core.exceptions import (
     ForbiddenError,
     InvalidRegistrationStateError,
@@ -149,12 +150,23 @@ class RegistrationService(
         form_data: dict | None = None,
         slot_id: UUID | None = None,
     ) -> Registration:
-        """Published/ongoing activities accept applications until deadline."""
+        """Published/ongoing activities accept applications until deadline.
+
+        A published activity whose window has closed counts as past and no
+        longer takes applications, even without a deadline.
+        """
         activity = self._activity(activity_id)
         if activity.status not in APPLYABLE_STATUSES:
             raise RegistrationClosedError(
                 "This activity is not accepting registrations."
             )
+        if classify_phase(
+            activity.status,
+            utc_naive(activity.start_at),
+            utc_naive(activity.end_at),
+            utc_naive(utcnow()),
+        ) == "past":
+            raise RegistrationClosedError("The activity has already ended.")
         deadline = getattr(activity, "registration_deadline", None)
         if deadline is not None and utcnow() > deadline:
             raise RegistrationClosedError(

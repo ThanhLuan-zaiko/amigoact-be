@@ -58,7 +58,9 @@ def test_signed_in_and_brief_routes_are_registered() -> None:
 
 
 def test_browse_contract_keys_are_frozen() -> None:
-    assert set(BrowsePage.model_fields) == {"items", "total", "truncated", "facets"}
+    assert set(BrowsePage.model_fields) == {
+        "items", "total", "truncated", "facets", "next_cursor",
+    }
     assert set(BrowseFacets.model_fields) == {"cities", "categories", "tags"}
     assert set(BrowseOrg.model_fields) == {"id", "name", "slug", "logo_url", "verified"}
     assert set(BrowseItem.model_fields) == {
@@ -66,8 +68,24 @@ def test_browse_contract_keys_are_frozen() -> None:
         "start_at", "end_at", "city", "location", "is_remote",
         "hours_awarded", "category_id", "tags", "excerpt", "cover_url",
         "max_participants", "registered_count", "seats_left",
-        "registration_deadline", "registration_open", "org",
+        "registration_deadline", "registration_open", "quick_apply", "org",
     }
+
+
+def test_activity_card_route_is_registered_for_guests() -> None:
+    routes = dict(_flat_routes())
+    assert routes["/activities/{activity_id}/card"] == frozenset({"GET"})
+
+
+def test_browse_routes_take_scope_cursor_and_mine_date_params() -> None:
+    import inspect
+
+    from activities.browse_router import browse_activities, browse_my_activities
+
+    public = set(inspect.signature(browse_activities).parameters)
+    assert {"org", "cursor"} <= public
+    mine = set(inspect.signature(browse_my_activities).parameters)
+    assert {"starts_from", "starts_to", "registration_open"} <= mine
 
 
 def test_public_item_has_no_per_viewer_field() -> None:

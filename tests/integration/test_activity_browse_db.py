@@ -155,7 +155,7 @@ async def test_browse_validation_and_anonymous_access(client: AsyncClient) -> No
     assert rejected.json()["code"] == "VALIDATION_ERROR"
 
     empty = await _browse(client, phase="upcoming", limit=30, offset=0)
-    assert set(empty) == {"items", "total", "truncated", "facets"}
+    assert set(empty) == {"items", "total", "truncated", "facets", "next_cursor"}
 
 
 async def test_signed_in_view_follows_the_registration_lifecycle(

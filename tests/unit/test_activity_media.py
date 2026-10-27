@@ -126,3 +126,24 @@ def test_update_and_delete_entry():
     assert item.asset_id not in media.assets
     with pytest.raises(NotFoundError):
         service.delete(act.id, owner, item.asset_id)
+
+
+@pytest.mark.parametrize("status", ["ongoing", "completed"])
+def test_anonymous_gallery_reads_follow_the_public_feed(status) -> None:
+    service, activities, orgs, *_ = _svc()
+    owner = uuid_utils.uuid7()
+    org = _org(orgs, owner)
+    act = published_activity(activities, org.id, owner)
+    act.status = status
+    assert service.list_media(act.id, None) == []
+
+
+def test_anonymous_gallery_stays_hidden_for_drafts_and_cancelled() -> None:
+    service, activities, orgs, *_ = _svc()
+    owner = uuid_utils.uuid7()
+    org = _org(orgs, owner)
+    act = published_activity(activities, org.id, owner)
+    for status in ("draft", "cancelled"):
+        act.status = status
+        with pytest.raises(NotFoundError):
+            service.list_media(act.id, None)

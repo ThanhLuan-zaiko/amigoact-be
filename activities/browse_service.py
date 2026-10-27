@@ -7,6 +7,7 @@ and only the page that is returned pays for org, cover and seat reads.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import datetime
 from uuid import UUID
 
@@ -26,7 +27,9 @@ from activities.browse_filters import (
 from activities.browse_interfaces import (
     BrowseIndex,
     MyRegistrationBrief,
+    QuickApplyProbe,
     RegistrationBriefs,
+    ScanPlan,
     SeatCounter,
 )
 from activities.browse_types import (
@@ -40,13 +43,16 @@ from activities.browse_types import (
     mine_order,
     public_order,
 )
+from activities.browse_window import cursor_after, resolve_cursor
 from activities.edge_interfaces import ActivityMediaStore
 from activities.interfaces import CategoryStore
 from activities.model import Activity
+from core.exceptions import NotFoundError
 from core.security import utcnow
 from orgs.brand import brand_url
 from orgs.interfaces import MediaRepository, OrgRepository
 from orgs.listing import fold_search_text
+
 
 class ActivityBrowseService:
     """Read-only feed; the public path never sees per-viewer data."""
@@ -60,6 +66,7 @@ class ActivityBrowseService:
         seats: SeatCounter,
         briefs: RegistrationBriefs,
         categories: CategoryStore,
+        quick: QuickApplyProbe | None = None,
     ) -> None:
         self._index = index
         self._orgs = orgs
@@ -68,14 +75,38 @@ class ActivityBrowseService:
         self._seats = seats
         self._briefs = briefs
         self._categories = categories
+        self._quick = quick
 
     def browse(
         self, query: BrowseQuery, now: datetime | None = None
     ) -> BrowseResult:
         moment = utc_naive(now or utcnow())
-        ids, truncated = self._index.candidates(query.phase, moment)
-        return self._run(
-            self._index.hydrate(ids), query, moment, truncated, None
+        org_id: UUID | None = None
+        if query.org_slug is not None:
+            org_id = self._live_org_id(query.org_slug)
+            if org_id is None:
+                return BrowseResult(cards=[], total=0, truncated=False)
+        scope = str(org_id) if org_id is not None else None
+        window = self._index.candidates(
+            ScanPlan(
+                phase=query.phase,
+                now=moment,
+                starts_from=query.starts_from,
+                starts_to=query.starts_to,
+                org_id=org_id,
+                cursor=resolve_cursor(query.cursor, query.phase, scope),
+            )
+        )
+        result = self._run(
+            self._index.hydrate(window.ids),
+            query,
+            moment,
+            window.cut.boundary is not None,
+            None,
+        )
+        return replace(
+            result,
+            next_cursor=cursor_after(query.phase, scope, window.cut),
         )
 
     def browse_mine(
@@ -87,6 +118,34 @@ class ActivityBrowseService:
         return self._run(
             self._index.hydrate(list(briefs)), query, moment, False, briefs
         )
+
+    def card_for(
+        self, activity_id: UUID, now: datetime | None = None
+    ) -> BrowseCard:
+        """One card for the detail page; 404 when the feed would not serve it."""
+        moment = utc_naive(now or utcnow())
+        rows = self._index.hydrate([activity_id])
+        row = rows[0] if rows else None
+        phase = None
+        if row is not None and row.deleted_at is None:
+            phase = classify_phase(
+                row.status,
+                utc_naive(row.start_at),
+                utc_naive(row.end_at),
+                moment,
+            )
+        org = self._org(row.org_id, {}) if phase is not None else None
+        if row is None or phase is None or org is None:
+            raise NotFoundError("Activity not found.")
+        card = self._card(Match(row, phase, org, None), moment)
+        return self._quick_apply(card)
+
+    def _live_org_id(self, slug: str) -> UUID | None:
+        """The organization behind a slug, when the feed may serve it."""
+        org = self._orgs.get_by_slug(slug)
+        if org is None or self._org(org.id, {}) is None:
+            return None
+        return org.id
 
     def _run(
         self,
@@ -132,7 +191,7 @@ class ActivityBrowseService:
         )
         page = ordered[query.offset : query.offset + query.limit]
         return BrowseResult(
-            cards=[self._card(m, now) for m in page],
+            cards=[self._quick_apply(self._card(m, now)) for m in page],
             total=len(ordered),
             truncated=truncated,
             cities=cities,
@@ -229,6 +288,14 @@ class ActivityBrowseService:
             if category is not None:
                 names[category_id] = category.name
         return names
+
+    def _quick_apply(self, card: BrowseCard) -> BrowseCard:
+        """Asked only for open cards, so closed cards cost no probe."""
+        if self._quick is None or not card.registration_open:
+            return card
+        return replace(
+            card, quick_apply=not self._quick.needs_input(card.activity.id)
+        )
 
     def _card(self, match: Match, now: datetime) -> BrowseCard:
         row, org = match.row, match.org

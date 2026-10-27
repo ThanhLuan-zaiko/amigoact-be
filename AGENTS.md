@@ -31,3 +31,4 @@ Source of truth for AI agents and contributors. Follow it strictly; add a rule h
 - Python code, comments and logs in English; never log secrets. Other `.md` files are Vietnamese.
 - Never commit, push, reset the database or build Docker images unless the user explicitly asks.
 - Never commit junk (`__pycache__/`, `.venv/`, `.env`, `.pytest_cache/`); never `git add -A`. After each task, run `git status --short` and report it.
+- Before every push, check CI: `.github/workflows/ci.yml` runs on every branch and gate-12 is the required check. Run each gate locally first (the `python` heredocs and shell steps, on a snapshot of `git ls-files -co --exclude-standard` so local caches do not count), plus `uv run pytest` for unit, integration and regression. Gate 11 (Docker build) runs only in CI, so check the Actions run after pushing. Do not push while a gate fails.

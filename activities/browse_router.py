@@ -68,6 +68,7 @@ def _item(card: BrowseCard) -> BrowseItem:
         seats_left=card.seats_left,
         registration_deadline=utc_aware(row.registration_deadline),
         registration_open=card.registration_open,
+        quick_apply=card.quick_apply,
         org=BrowseOrg(
             id=card.org.id,
             name=card.org.name,
@@ -101,6 +102,7 @@ def _page(result: BrowseResult) -> BrowsePage:
         total=result.total,
         truncated=result.truncated,
         facets=BrowseFacets(**_facet_fields(result)),
+        next_cursor=result.next_cursor,
     )
 
 
@@ -147,6 +149,8 @@ def browse_activities(
     starts_to: datetime | None = Query(default=None),
     registration_open: bool = Query(default=False),
     sort: str = Query(default="start", pattern="^(start|published)$"),
+    org: str | None = Query(default=None, max_length=80),
+    cursor: str | None = Query(default=None, max_length=512),
     limit: int = Query(default=12, ge=1, le=30),
     offset: int = Query(default=0, ge=0, le=500),
     service: ActivityBrowseService = Depends(get_activity_browse_service),
@@ -165,11 +169,22 @@ def browse_activities(
             starts_to=utc_naive(starts_to),
             registration_open_only=registration_open,
             sort=sort,
+            org_slug=(org or "").strip() or None,
+            cursor=cursor,
             limit=limit,
             offset=offset,
         )
     )
     return _page(result)
+
+
+@router.get("/activities/{activity_id}/card", response_model=BrowseItem)
+def activity_card(
+    activity_id: UUID,
+    service: ActivityBrowseService = Depends(get_activity_browse_service),
+) -> BrowseItem:
+    """One public card for the detail page, in the feed's item shape."""
+    return _item(service.card_for(activity_id))
 
 
 @router.get("/activities/browse/mine", response_model=MineBrowsePage)
@@ -183,6 +198,9 @@ def browse_my_activities(
         default=None,
         pattern="^(pending|approved|waitlisted|attended|rejected|cancelled)$",
     ),
+    starts_from: datetime | None = Query(default=None),
+    starts_to: datetime | None = Query(default=None),
+    registration_open: bool = Query(default=False),
     limit: int = Query(default=12, ge=1, le=30),
     offset: int = Query(default=0, ge=0, le=500),
     current: CurrentUser = Depends(get_current_user),
@@ -199,6 +217,9 @@ def browse_my_activities(
             city=(city or "").strip() or None,
             mode=mode,
             my_status=my_status,
+            starts_from=utc_naive(starts_from),
+            starts_to=utc_naive(starts_to),
+            registration_open_only=registration_open,
             limit=limit,
             offset=offset,
         ),

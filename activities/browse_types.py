@@ -39,6 +39,10 @@ class BrowseQuery:
     limit: int = 12
     offset: int = 0
     my_status: str | None = None
+    # Scopes the public feed to one organization's slug.
+    org_slug: str | None = None
+    # Opaque token from the previous window; None starts at the beginning.
+    cursor: str | None = None
 
 
 @dataclass(frozen=True)
@@ -61,6 +65,8 @@ class BrowseCard:
     registration_open: bool
     excerpt: str
     my_registration: MyRegistrationBrief | None = None
+    # Viewer-agnostic: an open activity that asks nothing beyond a click.
+    quick_apply: bool = False
 
 
 @dataclass(frozen=True)
@@ -72,6 +78,7 @@ class BrowseResult:
     categories: list[CategoryCount] = field(default_factory=list)
     tags: list[TagCount] = field(default_factory=list)
     my_statuses: list[tuple[str, int]] = field(default_factory=list)
+    next_cursor: str | None = None
 
 
 class Match(NamedTuple):
