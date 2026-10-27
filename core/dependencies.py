@@ -112,10 +112,15 @@ def get_access_control() -> AccessControl:
     )
     from rbac.service import AccessControlService
 
+    from orgs.member_repository import CqlMemberRepository
+    from rbac.repository import CqlMemberDefaultsRepository
+
     return AccessControlService(
         roles=CqlRoleRepository(),
         grants=CqlGrantRepository(),
         audit=CqlAuditWriter(),
+        defaults=CqlMemberDefaultsRepository(),
+        members=CqlMemberRepository(),
     )
 
 

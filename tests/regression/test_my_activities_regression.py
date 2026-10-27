@@ -14,10 +14,10 @@ from tests.integration.test_workspace_db import _org_with_member
 ITEM_KEYS = {
     "id", "org_id", "title", "slug", "status", "start_at", "category_id",
     "tags", "deleted_at", "location", "is_remote", "hours_awarded",
-    "can_manage",
+    "can_manage", "can_delete",
 }
 ORG_KEYS = {
-    "id", "name", "slug", "kind", "can_create", "can_manage",
+    "id", "name", "slug", "kind", "can_create", "can_manage", "can_delete",
     "activity_count", "logo_url",
 }
 

@@ -19,6 +19,10 @@ class Role(models.Model):
     description = columns.Text(required=False, default="")
     is_system = columns.Boolean(required=True, default=False)
     created_at = columns.DateTime(required=True)
+    # Colour key from rbac.catalog.ROLE_COLORS ("" = default).
+    color = columns.Text(required=False, default="")
+    # Seniority inside one org: higher outranks lower (see role_hierarchy).
+    position = columns.Integer(required=False, default=0)
 
 
 class RolesByOrg(models.Model):
@@ -47,6 +51,15 @@ class RolePermission(models.Model):
     __table_name__ = "role_permissions"
 
     role_id = columns.UUID(primary_key=True, partition_key=True)
+    permission_code = columns.Text(primary_key=True, clustering_order="ASC")
+
+
+class OrgMemberDefault(models.Model):
+    """Permission codes every active member of one org holds by default."""
+
+    __table_name__ = "org_member_defaults"
+
+    org_id = columns.UUID(primary_key=True, partition_key=True)
     permission_code = columns.Text(primary_key=True, clustering_order="ASC")
 
 

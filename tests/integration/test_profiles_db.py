@@ -147,7 +147,7 @@ async def test_contacts_replace_roundtrip(client: AsyncClient) -> None:
         "/profiles/me/contacts",
         json={
             "contacts": [
-                {"name": "Mom", "relation": "Mẹ", "phone": "0901234567"},
+                {"name": "Mom", "relation": "M\u1eb9", "phone": "0901234567"},
                 {"name": "Dad", "phone": "0907654321"},
             ]
         },
@@ -166,7 +166,7 @@ async def test_contacts_replace_roundtrip(client: AsyncClient) -> None:
                 {
                     "contact_id": mom_id,
                     "name": "Mom",
-                    "relation": "Mẹ",
+                    "relation": "M\u1eb9",
                     "phone": "0901234567",
                 }
             ]

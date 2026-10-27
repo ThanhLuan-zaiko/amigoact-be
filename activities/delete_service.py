@@ -20,6 +20,7 @@ from core.exceptions import (
 from core.media import MediaStore
 from core.security import utcnow
 from orgs.interfaces import OrgRepository
+from rbac.implied import holds
 from rbac.interfaces import AccessControl
 
 
@@ -81,10 +82,8 @@ class ActivityDeleteService:
         org = self._orgs.get_by_id(org_id)
         if org is None or getattr(org, "deleted_at", None) is not None:
             raise NotFoundError("Organization not found.")
-        if getattr(org, "owner_id", None) != actor_id and not (
-            self._access.has_permission(
-                org_id, actor_id, "activity:manage"
-            )
+        if getattr(org, "owner_id", None) != actor_id and not holds(
+            self._access, org_id, actor_id, "activity:delete"
         ):
             raise ForbiddenError("Only org managers can do this.")
 

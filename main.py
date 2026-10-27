@@ -169,6 +169,7 @@ from chat.channels_router import router as channels_router  # noqa: E402
 from chat.inbox_router import router as chat_inbox_router  # noqa: E402
 from chat.media_router import router as chat_media_router  # noqa: E402
 from chat.router import router as chat_router  # noqa: E402
+from chat.safety_router import router as chat_safety_router  # noqa: E402
 from chat.write_router import router as chat_write_router  # noqa: E402
 from hours.router import router as hours_router  # noqa: E402
 from notifications.router import router as notifications_router  # noqa: E402
@@ -224,6 +225,7 @@ app.include_router(post_media_router)
 app.include_router(post_lifecycle_router)
 app.include_router(posts_public_router)  # guest announcements read
 app.include_router(post_comments_router)
+app.include_router(chat_safety_router)
 app.include_router(chat_router)
 app.include_router(chat_inbox_router)
 app.include_router(chat_media_router)

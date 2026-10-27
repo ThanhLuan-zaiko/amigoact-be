@@ -18,10 +18,33 @@ PERMISSIONS: dict[str, str] = {
     "activity:view": "View draft and internal activity details.",
     "activity:create": "Create activities inside the org.",
     "activity:manage": "Publish, edit, staff, and cancel activities.",
+    "activity:delete": "Trash, restore and permanently delete activities.",
     "post:announce": "Publish announcements on the org board.",
     "post:manage": "Pin, edit or remove any org post or comment.",
-    "chat:manage": "Remove chat messages of other members.",
+    "chat:manage": "Full chat control: implies the three chat:* codes below.",
+    "chat:moderate": "Pin messages and remove chat messages of other members.",
+    "chat:channel": "Create, edit and archive channels and manage their rosters.",
+    "chat:view-private": "See and enter restricted channels without a roster seat.",
+    "chat:mention-all": "Notify every room member with @all.",
+    "chat:timeout": "Temporarily mute members in chat.",
+    "chat:attach": "Attach files when the org restricts attachments.",
     "tag:manage": "Create, rename, merge and delete org activity tags.",
+}
+
+# Legacy umbrella codes: holding the key counts as holding every value, so
+# roles that predate the chat split keep working unchanged.
+IMPLIED_PERMISSIONS: dict[str, frozenset[str]] = {
+    "chat:manage": frozenset(
+        {
+            "chat:moderate",
+            "chat:channel",
+            "chat:view-private",
+            "chat:mention-all",
+            "chat:timeout",
+            "chat:attach",
+        }
+    ),
+    "activity:manage": frozenset({"activity:delete"}),
 }
 
 # Permissions a custom org role may carry. media:upload stays out:
@@ -30,6 +53,22 @@ PERMISSIONS: dict[str, str] = {
 ASSIGNABLE_PERMISSIONS: frozenset[str] = frozenset(
     code for code in PERMISSIONS if code != "media:upload"
 )
+
+# Permissions the owner may hand to every active member as the baseline.
+# Moderation, admin and ownership-adjacent codes stay role-only.
+BASELINE_PERMISSIONS: frozenset[str] = frozenset(
+    {
+        "member:view",
+        "member:invite",
+        "activity:view",
+        "activity:create",
+        "post:announce",
+    }
+)
+
+# Role colour keys: neutral chrome plus the three semantic tones the
+# frontend palette allows. "" means the default (zinc).
+ROLE_COLORS: tuple[str, ...] = ("zinc", "red", "amber", "emerald")
 
 # Display names that can never label a custom role: they collide with
 # the built-in pseudo-roles (owner/member) or seeded system roles.

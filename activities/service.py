@@ -27,6 +27,7 @@ from core.exceptions import (
 )
 from core.security import utcnow
 from orgs.interfaces import OrgRepository
+from rbac.implied import holds
 from rbac.interfaces import AccessControl
 
 _PUBLIC_STATUSES = {"published", "ongoing", "completed"}
@@ -109,7 +110,7 @@ class ActivityService:
         org = self._org(org_id)
         if (
             getattr(org, "owner_id", None) != actor_id
-            and not self._access.has_permission(org_id, actor_id, permission)
+            and not holds(self._access, org_id, actor_id, permission)
         ):
             self._access.record(
                 org_id, actor_id, permission, "activity", None, "denied"
@@ -256,7 +257,7 @@ class ActivityService:
         """Org feed for members; trash lists are manager-only."""
         self._org(org_id)
         if trash:
-            self._require_manager(org_id, viewer_id, "activity:manage")
+            self._require_manager(org_id, viewer_id, "activity:delete")
             return self._activities.list_trash(org_id)
         if not self._is_member(org_id, viewer_id):
             raise ForbiddenError(

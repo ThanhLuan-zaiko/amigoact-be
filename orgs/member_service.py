@@ -180,6 +180,10 @@ class MemberService(
             counts=result.counts,
             viewer_role=viewer_role,
             viewer_permissions=viewer_permissions,
+            viewer_ceiling=(
+                None if is_owner
+                else self._access.role_ceiling(org_id, viewer_id)
+            ),
         )
 
     def list_my_memberships(

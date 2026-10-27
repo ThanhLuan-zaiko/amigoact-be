@@ -12,6 +12,7 @@ from core.exceptions import (
     MemberNotFoundError,
     OwnerImmutableError,
 )
+from core.exceptions_roles import RoleHierarchyError
 from core.security import utcnow
 from orgs.member_helpers import (
     is_admin,
@@ -85,11 +86,16 @@ class MemberModerationMixin:
         removed = current - target
         if org.owner_id != actor_id:
             held = self._access.effective_permissions(org.id, actor_id)
+            ceiling = self._access.role_ceiling(org.id, actor_id)
             for name in added | removed:
                 if name == "admin" or not resolved.get(name, set()) <= held:
                     raise self._deny(
                         org.id, actor_id, "member.role", user_id
                     )
+                rank = self._access.role_position_of(org.id, name)
+                if ceiling is not None and rank is not None and rank >= ceiling:
+                    self._deny(org.id, actor_id, "member.role", user_id)
+                    raise RoleHierarchyError("Role ranks at or above your own.")
         for name in removed:
             self._access.revoke(org.id, user_id, name)
         for name in added:

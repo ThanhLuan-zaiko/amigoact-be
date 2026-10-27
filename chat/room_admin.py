@@ -25,6 +25,7 @@ from chat.interfaces import (
     ChatStore,
 )
 from chat.model import OrgRoomMessage
+from chat.permissions import MODERATE, holds_chat_permission
 from chat.rooms import emit, emit_inbox, open_room, require_live_activity
 from core.exceptions import (
     ChannelArchivedError,
@@ -107,11 +108,13 @@ class ChatRoomAdmin:
     def _require_manager(
         self, room_id: UUID, actor_id: UUID, action: str
     ):
-        """Owner or chat:manage gate shared by pin/unpin/delete."""
+        """Owner or chat:moderate gate shared by pin/unpin."""
         org, floor, dm = self._open_room(room_id, actor_id, action)
         if org.owner_id != actor_id and not (
             is_active_member(self._members, org.id, actor_id)
-            and self._access.has_permission(org.id, actor_id, "chat:manage")
+            and holds_chat_permission(
+                self._access, org.id, actor_id, MODERATE
+            )
         ):
             self._access.record(
                 org.id, actor_id, action, "chat", None, "denied"
@@ -129,8 +132,8 @@ class ChatRoomAdmin:
         if row.author_id != actor_id:
             if org.owner_id != actor_id and not (
                 is_active_member(self._members, org.id, actor_id)
-                and self._access.has_permission(
-                    org.id, actor_id, "chat:manage"
+                and holds_chat_permission(
+                    self._access, org.id, actor_id, MODERATE
                 )
             ):
                 self._access.record(

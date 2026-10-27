@@ -1,6 +1,6 @@
 """Channel gates shared by the channel, thread and roster services.
 
-Like rooms.py for room services: the owner/chat:manage rule, the
+Like rooms.py for room services: the owner/chat:channel rule, the
 channel-row 404 and the restricted-seat check repeat across services,
 so they live here once. Rows are duck-typed (SimpleNamespace in tests,
 cqlengine models in production).
@@ -12,6 +12,12 @@ from typing import TYPE_CHECKING
 from uuid import UUID
 
 from core.exceptions import ChannelNotFoundError, ForbiddenError
+from chat.permissions import (
+    CHANNEL,
+    VIEW_PRIVATE,
+    holds_chat_permission,
+    owner_or_chat_permission,
+)
 from orgs.interfaces import MemberRepository
 from orgs.member_helpers import is_active_member
 
@@ -24,10 +30,8 @@ if TYPE_CHECKING:
 def channel_manager(
     access: "AccessControl", org: "Organization", actor_id: UUID
 ) -> bool:
-    """True for org owner or a chat:manage holder."""
-    return org.owner_id == actor_id or access.has_permission(
-        org.id, actor_id, "chat:manage"
-    )
+    """True for org owner or a chat:channel (or chat:manage) holder."""
+    return owner_or_chat_permission(access, org, actor_id, CHANNEL)
 
 
 def require_channel_manager(
@@ -112,7 +116,7 @@ def can_open_channel(
         return True
     return (
         org.owner_id == user_id
-        or access.has_permission(org.id, user_id, "chat:manage")
+        or holds_chat_permission(access, org.id, user_id, VIEW_PRIVATE)
         or channels.get_channel_member(gate.channel_id, user_id)
         is not None
     )

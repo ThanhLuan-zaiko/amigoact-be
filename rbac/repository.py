@@ -10,11 +10,13 @@ from rbac.interfaces import (
     AuditReader,
     AuditWriter,
     GrantRepository,
+    MemberDefaultsRepository,
     RoleRepository,
 )
 from rbac.model import (
     AccessAuditByResource,
     AccessAuditLog,
+    OrgMemberDefault,
     Permission,
     Role,
     RolePermission,
@@ -149,6 +151,8 @@ class CqlRoleRepository(RoleRepository):
         name: str,
         description: str,
         now: datetime,
+        color: str = "",
+        position: int = 0,
     ) -> Role:
         role = Role.create(
             id=role_id,
@@ -157,6 +161,8 @@ class CqlRoleRepository(RoleRepository):
             description=description,
             is_system=False,
             created_at=now,
+            color=color,
+            position=position,
         )
         RolesByOrg.create(org_id=org_id, role_id=role_id, name=name)
         return role
@@ -167,11 +173,14 @@ class CqlRoleRepository(RoleRepository):
         role_id: UUID,
         name: str | None,
         description: str | None,
+        color: str | None = None,
     ) -> Role | None:
         role = self.get_role(role_id)
         if role is None or role.org_id != org_id or role.is_system:
             return None
         updates: dict[str, str] = {}
+        if color is not None:
+            updates["color"] = color
         if name is not None:
             updates["name"] = name
         if description is not None:
@@ -184,6 +193,15 @@ class CqlRoleRepository(RoleRepository):
                 name=name
             )
         return self.get_role(role_id)
+
+    def set_role_positions(
+        self, org_id: UUID, positions: dict[UUID, int]
+    ) -> None:
+        for role_id, position in positions.items():
+            role = self.get_role(role_id)
+            if role is None or role.org_id != org_id or role.is_system:
+                continue
+            Role.objects(id=role_id).update(position=position)
 
     def delete_org_role(self, org_id: UUID, role_id: UUID) -> bool:
         role = self.get_role(role_id)
@@ -222,6 +240,25 @@ class CqlRoleRepository(RoleRepository):
         for row in UserRole.objects(org_id=org_id).all():
             counts[row.role_id] = counts.get(row.role_id, 0) + 1
         return counts
+
+
+class CqlMemberDefaultsRepository(MemberDefaultsRepository):
+    """org_member_defaults rows: the baseline permission set per org."""
+
+    def list_defaults(self, org_id: UUID) -> set[str]:
+        return {
+            row.permission_code
+            for row in OrgMemberDefault.objects(org_id=org_id).all()
+        }
+
+    def set_defaults(self, org_id: UUID, codes: set[str]) -> None:
+        existing = self.list_defaults(org_id)
+        for code in existing - codes:
+            OrgMemberDefault.objects(
+                org_id=org_id, permission_code=code
+            ).delete()
+        for code in codes - existing:
+            OrgMemberDefault.create(org_id=org_id, permission_code=code)
 
 
 class CqlGrantRepository(GrantRepository):

@@ -15,6 +15,7 @@ from chat.dtos import InboxRoomSnapshot
 from chat.helpers import bucket_of, peek_last_message, unread_count
 from chat.channel_interfaces import ChannelStore
 from chat.interfaces import ActivityLookup, ChatStore
+from chat.permissions import VIEW_PRIVATE, holds_chat_permission
 from chat.rooms import linked_activity_deleted
 from core.security import utc_aware, utcnow
 from orgs.interfaces import (
@@ -175,7 +176,7 @@ class ChatInboxService:
         """Live channels visible to the caller.
 
         Org-wide channels appear for every active member; restricted
-        ones need a roster seat or a manager role (owner/chat:manage).
+        ones need a roster seat or a manager role (owner/chat:view-private).
         """
         if self._channels is None:
             return []
@@ -187,8 +188,8 @@ class ChatInboxService:
         for org in orgs.values():
             manager = org.owner_id == user_id or (
                 self._access is not None
-                and self._access.has_permission(
-                    org.id, user_id, "chat:manage"
+                and holds_chat_permission(
+                    self._access, org.id, user_id, VIEW_PRIVATE
                 )
             )
             org_logo = self._media_url(getattr(org, "logo_media_id", None))

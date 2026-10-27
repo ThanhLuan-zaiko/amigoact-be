@@ -17,6 +17,7 @@ from activities.model import Activity
 from core.security import utc_aware
 from orgs.brand import brand_url
 from orgs.interfaces import MediaRepository, OrgRepository
+from rbac.implied import holds
 from rbac.interfaces import AccessControl
 
 # Per-org read cap, and the total returned to the page after sorting.
@@ -32,6 +33,7 @@ class OrgGrant:
     org: object
     can_create: bool
     can_manage: bool
+    can_delete: bool = False
     activity_count: int = 0
     logo_url: str | None = None
 
@@ -40,6 +42,7 @@ class OrgGrant:
 class FeedRow:
     activity: Activity
     can_manage: bool
+    can_delete: bool = False
 
 
 @dataclass(frozen=True)
@@ -76,6 +79,8 @@ class MyActivitiesService:
             or self._access.has_permission(org_id, user_id, "activity:create"),
             can_manage=owner
             or self._access.has_permission(org_id, user_id, "activity:manage"),
+            can_delete=owner
+            or holds(self._access, org_id, user_id, "activity:delete"),
             logo_url=brand_url(
                 self._media,
                 org_id,
@@ -103,10 +108,12 @@ class MyActivitiesService:
         orgs: list[OrgGrant] = []
         rows: list[FeedRow] = []
         for grant in grants:
-            if trash and not grant.can_manage:
+            if trash and not grant.can_delete:
                 continue
             found = self._fetch(grant.org.id, trash)  # type: ignore[attr-defined]
             orgs.append(replace(grant, activity_count=len(found)))
-            rows.extend(FeedRow(row, grant.can_manage) for row in found)
+            rows.extend(
+                FeedRow(row, grant.can_manage, grant.can_delete) for row in found
+            )
         rows.sort(key=lambda item: _start_key(item.activity))
         return MyFeed(orgs=orgs, rows=rows[:FEED_LIMIT])

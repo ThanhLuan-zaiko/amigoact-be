@@ -13,17 +13,23 @@ from core.exceptions import (
     RoleNameTakenError,
     RoleNotFoundError,
 )
+from core.exceptions_roles import RoleHierarchyError
 from core.ids import uuid7
 from core.security import utcnow
 from orgs.interfaces import MemberEvents, MemberRepository, OrgRepository
 from orgs.model import Organization
-from rbac.catalog import ASSIGNABLE_PERMISSIONS, RESERVED_ROLE_NAMES
+from rbac.catalog import RESERVED_ROLE_NAMES
 from rbac.interfaces import AccessControl, RoleRepository
 from rbac.model import Role
+from rbac.role_events import RoleFanOut
+from rbac.role_rules import (
+    valid_color,
+    valid_description,
+    valid_permissions,
+)
 
 MAX_ROLES_PER_ORG = 20
 NAME_MIN, NAME_MAX = 2, 40
-DESCRIPTION_MAX = 200
 
 
 @dataclass(frozen=True)
@@ -36,6 +42,8 @@ class OrgRoleView:
     permissions: list[str]
     member_count: int
     is_system: bool
+    color: str = ""
+    position: int = 0
 
 
 class OrgRoleService:
@@ -58,7 +66,7 @@ class OrgRoleService:
         self._members = members
         self._roles = roles
         self._access = access
-        self._events = events
+        self._fan = RoleFanOut(events)
 
     def _live_org(self, org_id: UUID) -> Organization:
         org = self._orgs.get_by_id(org_id)
@@ -116,23 +124,31 @@ class OrgRoleService:
                 "You can only delegate permissions you hold."
             )
 
-    def _emit_catalog(
-        self,
-        org_id: UUID,
-        role_id: UUID,
-        actor_id: UUID,
-        detail: str | None = None,
+    def _holders(self, org_id: UUID, role_id: UUID) -> set[UUID]:
+        """Users currently holding one role (read before a delete wipes it)."""
+        return {
+            row.user_id
+            for row in self._roles.list_org_assignments(org_id)
+            if row.role_id == role_id
+        }
+
+    def _require_below(
+        self, org: Organization, actor_id: UUID, role: Role, action: str
     ) -> None:
-        """Best-effort roster refresh so every client reloads roles."""
-        if self._events is None:
+        """Hierarchy: a non-owner may only touch roles under their top role.
+
+        Actors holding no ranked role (e.g. a direct grant) are not limited
+        beyond the delegation subset rule.
+        """
+        if org.owner_id == actor_id:
             return
-        try:
-            self._events.member_changed(
-                org_id, "role_catalog_changed", role_id, actor_id,
-                detail=detail,
+        ceiling = self._access.role_ceiling(org.id, actor_id)
+        rank = int(getattr(role, "position", 0) or 0)
+        if ceiling is not None and rank >= ceiling:
+            self._access.record(
+                org.id, actor_id, action, "role", role.id, "denied"
             )
-        except Exception:  # noqa: BLE001 - realtime is best-effort
-            pass
+            raise RoleHierarchyError("Role ranks at or above your own.")
 
     def _view(
         self, role: Role, counts: dict[UUID, int], *, is_system: bool
@@ -144,6 +160,8 @@ class OrgRoleService:
             permissions=sorted(self._roles.list_role_permissions(role.id)),
             member_count=counts.get(role.id, 0),
             is_system=is_system,
+            color=getattr(role, "color", "") or "",
+            position=int(getattr(role, "position", 0) or 0),
         )
 
     def _valid_name(
@@ -162,20 +180,6 @@ class OrgRoleService:
                 raise RoleNameTakenError("Role name is taken.")
         return clean
 
-    @staticmethod
-    def _valid_description(description: str | None) -> str:
-        clean = (description or "").strip()
-        if len(clean) > DESCRIPTION_MAX:
-            raise InvalidRoleError("Role description is invalid.")
-        return clean
-
-    @staticmethod
-    def _valid_permissions(permissions: list[str] | None) -> set[str]:
-        codes = set(permissions or [])
-        if not codes or not codes <= ASSIGNABLE_PERMISSIONS:
-            raise InvalidRoleError("Role permissions are invalid.")
-        return codes
-
     def list_roles(self, org_id: UUID, viewer_id: UUID) -> list[OrgRoleView]:
         """System admin plus org customs; any active member may read."""
         org = self._live_org(org_id)
@@ -193,7 +197,10 @@ class OrgRoleService:
             out.append(self._view(admin, counts, is_system=True))
         customs = sorted(
             self._roles.list_org_roles(org_id),
-            key=lambda role: (role.name or "").casefold(),
+            key=lambda role: (
+                -int(getattr(role, "position", 0) or 0),
+                (role.name or "").casefold(),
+            ),
         )
         out.extend(
             self._view(role, counts, is_system=False) for role in customs
@@ -207,26 +214,33 @@ class OrgRoleService:
         name: str,
         description: str,
         permissions: list[str],
+        color: str = "",
     ) -> OrgRoleView:
-        """Create a custom role; subset rule applies to non-owners."""
+        """Create a custom role at the bottom rank; subset rule applies."""
         org = self._live_org(org_id)
         self._require_role_manager(org, actor_id, "role.create")
         clean_name = self._valid_name(org_id, name, exclude=None)
-        clean_description = self._valid_description(description)
-        codes = self._valid_permissions(permissions)
+        clean_description = valid_description(description)
+        codes = valid_permissions(permissions)
+        clean_color = valid_color(color) or ""
         self._check_subset(org, actor_id, codes, "role.create")
-        if len(self._roles.list_org_roles(org_id)) >= MAX_ROLES_PER_ORG:
+        existing = self._roles.list_org_roles(org_id)
+        if len(existing) >= MAX_ROLES_PER_ORG:
             raise InvalidRoleError(
                 "The org already has the maximum number of roles."
             )
+        # New roles start below every existing one, so whoever creates a
+        # role (holding any ranked role) can still manage it afterwards.
+        ranks = [int(getattr(row, "position", 0) or 0) for row in existing]
         role = self._roles.create_org_role(
-            org_id, uuid7(), clean_name, clean_description, utcnow()
+            org_id, uuid7(), clean_name, clean_description, utcnow(),
+            color=clean_color, position=min(ranks) - 1 if ranks else 0,
         )
         self._roles.set_role_permissions(role.id, codes)
         self._access.record(
             org_id, actor_id, "role.create", "role", role.id, "allowed"
         )
-        self._emit_catalog(org_id, role.id, actor_id, detail=role.name)
+        self._fan.catalog(org_id, role.id, actor_id, detail=role.name)
         return OrgRoleView(
             id=role.id,
             name=role.name,
@@ -234,6 +248,8 @@ class OrgRoleService:
             permissions=sorted(codes),
             member_count=0,
             is_system=False,
+            color=clean_color,
+            position=int(getattr(role, "position", 0) or 0),
         )
 
     def _custom_role(self, org_id: UUID, role_id: UUID) -> Role:
@@ -253,35 +269,44 @@ class OrgRoleService:
         name: str | None = None,
         description: str | None = None,
         permissions: list[str] | None = None,
+        color: str | None = None,
     ) -> OrgRoleView:
-        """Rename, re-describe or re-permission a custom role."""
+        """Rename, re-describe, recolour or re-permission a custom role."""
         org = self._live_org(org_id)
-        self._custom_role(org_id, role_id)
+        target = self._custom_role(org_id, role_id)
         self._require_role_manager(org, actor_id, "role.update", role_id)
+        self._require_below(org, actor_id, target, "role.update")
+        clean_color = valid_color(color)
         clean_name = (
             self._valid_name(org_id, name, exclude=role_id)
             if name is not None
             else None
         )
         clean_description = (
-            self._valid_description(description)
+            valid_description(description)
             if description is not None
             else None
         )
+        perms_changed = False
         if permissions is not None:
-            codes = self._valid_permissions(permissions)
+            codes = valid_permissions(permissions)
             self._check_subset(
                 org, actor_id, codes, "role.update", role_id
             )
+            perms_changed = codes != self._roles.list_role_permissions(role_id)
             self._roles.set_role_permissions(role_id, codes)
         fresh = self._roles.update_org_role(
-            org_id, role_id, clean_name, clean_description
+            org_id, role_id, clean_name, clean_description, color=clean_color
         )
         assert fresh is not None
         self._access.record(
             org_id, actor_id, "role.update", "role", role_id, "allowed"
         )
-        self._emit_catalog(org_id, role_id, actor_id, detail=fresh.name)
+        self._fan.catalog(org_id, role_id, actor_id, detail=fresh.name)
+        if perms_changed:
+            self._fan.notify(
+                org_id, self._holders(org_id, role_id), actor_id, fresh.name
+            )
         return self._view(
             fresh, self._roles.count_role_holders(org_id), is_system=False
         )
@@ -293,12 +318,15 @@ class OrgRoleService:
         org = self._live_org(org_id)
         role = self._custom_role(org_id, role_id)
         self._require_role_manager(org, actor_id, "role.delete", role_id)
+        self._require_below(org, actor_id, role, "role.delete")
         held_perms = self._roles.list_role_permissions(role.id)
         self._check_subset(
             org, actor_id, held_perms, "role.delete", role_id
         )
+        holders = self._holders(org_id, role_id)
         self._roles.delete_org_role(org_id, role_id)
         self._access.record(
             org_id, actor_id, "role.delete", "role", role_id, "allowed"
         )
-        self._emit_catalog(org_id, role_id, actor_id, detail=role.name)
+        self._fan.catalog(org_id, role_id, actor_id, detail=role.name)
+        self._fan.notify(org_id, holders, actor_id, role.name)

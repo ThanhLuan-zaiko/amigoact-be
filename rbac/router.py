@@ -11,12 +11,18 @@ from core.dependencies import (
     get_current_user,
     get_role_service,
 )
-from rbac.catalog import ASSIGNABLE_PERMISSIONS
+from core.dependencies_roles import get_defaults_service, get_role_order_service
+from rbac.catalog import ASSIGNABLE_PERMISSIONS, BASELINE_PERMISSIONS, ROLE_COLORS
+from rbac.defaults_service import MemberDefaultsService
+from rbac.order_service import RoleOrderService
 from rbac.roles_service import OrgRoleService, OrgRoleView
 from rbac.schemas import (
     CreateRoleRequest,
+    MemberDefaultsRequest,
+    MemberDefaultsResponse,
     OrgRoleListResponse,
     OrgRoleResponse,
+    ReorderRolesRequest,
     UpdateRoleRequest,
 )
 
@@ -31,6 +37,8 @@ def _to_role(row: OrgRoleView) -> OrgRoleResponse:
         permissions=row.permissions,
         member_count=row.member_count,
         is_system=row.is_system,
+        color=row.color,
+        position=row.position,
     )
 
 
@@ -43,6 +51,7 @@ def list_roles(
     org_id: UUID,
     current_user: CurrentUser = Depends(get_current_user),
     service: OrgRoleService = Depends(get_role_service),
+    defaults: MemberDefaultsService = Depends(get_defaults_service),
 ) -> OrgRoleListResponse:
     """List the org's roles (system admin plus customs); members only."""
     return OrgRoleListResponse(
@@ -51,6 +60,44 @@ def list_roles(
             for row in service.list_roles(org_id, current_user.id)
         ],
         assignable_permissions=sorted(ASSIGNABLE_PERMISSIONS),
+        member_defaults=defaults.get(org_id, current_user.id),
+        baseline_permissions=sorted(BASELINE_PERMISSIONS),
+        colors=list(ROLE_COLORS),
+    )
+
+
+@router.put(
+    "/orgs/{org_id}/roles/order",
+    response_model=OrgRoleListResponse,
+    status_code=status.HTTP_200_OK,
+)
+def reorder_roles(
+    org_id: UUID,
+    body: ReorderRolesRequest,
+    current_user: CurrentUser = Depends(get_current_user),
+    order: RoleOrderService = Depends(get_role_order_service),
+    service: OrgRoleService = Depends(get_role_service),
+    defaults: MemberDefaultsService = Depends(get_defaults_service),
+) -> OrgRoleListResponse:
+    """Owner sets custom-role seniority, most senior first."""
+    order.reorder(org_id, current_user.id, body.role_ids)
+    return list_roles(org_id, current_user, service, defaults)
+
+
+@router.put(
+    "/orgs/{org_id}/roles/member-defaults",
+    response_model=MemberDefaultsResponse,
+    status_code=status.HTTP_200_OK,
+)
+def set_member_defaults(
+    org_id: UUID,
+    body: MemberDefaultsRequest,
+    current_user: CurrentUser = Depends(get_current_user),
+    defaults: MemberDefaultsService = Depends(get_defaults_service),
+) -> MemberDefaultsResponse:
+    """Owner replaces the permissions every active member holds."""
+    return MemberDefaultsResponse(
+        permissions=defaults.set(org_id, current_user.id, body.permissions)
     )
 
 
@@ -73,6 +120,7 @@ def create_role(
             body.name,
             body.description,
             body.permissions,
+            color=body.color,
         )
     )
 
@@ -98,6 +146,7 @@ def update_role(
             name=body.name,
             description=body.description,
             permissions=body.permissions,
+            color=body.color,
         )
     )
 

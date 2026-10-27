@@ -79,10 +79,13 @@ class FakeRoles(RoleRepository):
     def list_org_roles(self, org_id):  # noqa: ANN001, ANN202
         raise NotImplementedError
 
-    def create_org_role(self, org_id, role_id, name, description, now):  # noqa: ANN001, ANN202
+    def create_org_role(self, org_id, role_id, name, description, now, color="", position=0):  # noqa: ANN001, ANN202
         raise NotImplementedError
 
-    def update_org_role(self, org_id, role_id, name, description):  # noqa: ANN001, ANN202
+    def update_org_role(self, org_id, role_id, name, description, color=None):  # noqa: ANN001, ANN202
+        raise NotImplementedError
+
+    def set_role_positions(self, org_id, positions):  # noqa: ANN001, ANN202
         raise NotImplementedError
 
     def delete_org_role(self, org_id, role_id):  # noqa: ANN001, ANN202
@@ -227,3 +230,14 @@ def test_record_survives_broken_audit_store() -> None:
     service, _, _, _ = _service()
     service._audit = FakeAudit(fail=True)  # noqa: SLF001
     service.record(_uid(), _uid(), "member.invite", "member", None, "allowed")
+
+
+def test_effective_permissions_expand_the_chat_umbrella() -> None:
+    service, roles, _, _ = _service()
+    org, user = _uid(), _uid()
+    role_id = _seed_admin(roles, org)
+    roles.perms[role_id] = {"chat:manage"}
+    roles.assign_role(org, user, role_id, _uid(), datetime.now(timezone.utc))
+    held = service.effective_permissions(org, user)
+    assert {"chat:manage", "chat:moderate", "chat:channel", "chat:view-private"} <= held
+    assert "member:invite" not in held

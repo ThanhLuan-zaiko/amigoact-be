@@ -180,3 +180,18 @@ def test_org_logo_resolves_only_from_its_own_logo_asset() -> None:
     assert service.feed(owner).orgs[0].logo_url is None
     # Another org's asset never resolves, even if pointed at.
     assert brand_url(media, other, logo, "logo") is None
+
+
+def test_delete_holder_sees_trash_without_manage_right() -> None:
+    service, orgs, activities, access = _world()
+    owner, cleaner = uuid_utils.uuid7(), uuid_utils.uuid7()
+    org_id = _org(orgs, owner)
+    orgs.join(cleaner, org_id)
+    _activity(activities, org_id, owner, title="Old", trashed=True)
+    access.perms[(org_id, cleaner)] = {"activity:delete"}
+    feed = service.feed(cleaner, trash=True)
+    assert [row.activity.title for row in feed.rows] == ["Old"]
+    grant = feed.orgs[0]
+    assert (grant.can_manage, grant.can_delete) == (False, True)
+    assert feed.rows[0].can_delete is True
+

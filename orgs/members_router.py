@@ -115,6 +115,7 @@ def list_members(
         ],
         viewer_role=page.viewer_role,
         viewer_permissions=page.viewer_permissions,
+        viewer_ceiling=page.viewer_ceiling,
     )
 
 

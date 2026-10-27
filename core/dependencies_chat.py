@@ -23,6 +23,7 @@ if TYPE_CHECKING:
     from chat.channel_roster import ChannelRosterService
     from chat.channel_service import ChannelService
     from chat.inbox_service import ChatInboxService
+    from chat.safety_service import ChatSafetyService
     from chat.media_service import ChatMediaService
     from chat.service import ChatService
     from chat.thread_service import ThreadService
@@ -46,6 +47,8 @@ def get_chat_service(
     from chat.crypto import chat_cipher
     from chat.events import WsChatEvents
     from chat.repository import CqlChatStore
+    from chat.safety import SafetyGate
+    from chat.safety_repository import CqlChatSafetyStore
     from chat.service import ChatService
     from orgs.media_repository import CqlMediaRepository
     from orgs.member_repository import CqlMemberRepository
@@ -92,7 +95,30 @@ def get_chat_service(
             cipher=cipher,
             notifications=notifications,
             channels=channels,
+            gate=SafetyGate(CqlChatSafetyStore(), access),
         ),
+    )
+
+
+def get_chat_safety_service(
+    request: Request,
+    settings: Settings = Depends(get_settings),
+    access: AccessControl = Depends(get_access_control),
+) -> ChatSafetyService:
+    """Attachment policy and timeouts for one org's chat."""
+    from chat.safety_repository import CqlChatSafetyStore
+    from chat.safety_service import ChatSafetyService
+    from orgs.member_events import WsMemberEvents
+    from orgs.member_repository import CqlMemberRepository
+    from orgs.repository import CqlOrgRepository
+
+    return ChatSafetyService(
+        orgs=CqlOrgRepository(settings.scylla_keyspace),
+        members=CqlMemberRepository(),
+        store=CqlChatSafetyStore(),
+        access=access,
+        users=user_directory(settings),
+        events=WsMemberEvents(getattr(request.app.state, "ws_manager", None)),
     )
 
 

@@ -18,6 +18,7 @@ class MyActivityOrg(BaseModel):
     kind: str
     can_create: bool
     can_manage: bool
+    can_delete: bool = False
     activity_count: int
     # Public logo path (/media/...) or null; the rail falls back to initials.
     logo_url: str | None = None
@@ -27,6 +28,7 @@ class MyActivityItem(ActivitySummary):
     """Feed row: the org-scoped summary plus the caller's manage right."""
 
     can_manage: bool = False
+    can_delete: bool = False
 
 
 class MyActivitiesResponse(BaseModel):

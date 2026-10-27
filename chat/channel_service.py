@@ -20,6 +20,7 @@ from chat.channel_helpers import (
 from chat.channel_interfaces import ChannelStore
 from chat.dtos import ChannelSnapshot
 from chat.interfaces import ActivityLookup, ChatEvents
+from chat.permissions import VIEW_PRIVATE, owner_or_chat_permission
 from chat.rooms import emit_inbox
 from core.exceptions import (
     ChannelNameTakenError,
@@ -112,11 +113,15 @@ class ChannelService:
     ) -> list[ChannelSnapshot]:
         """Visible channels: org-wide live ones, plus restricted rooms
         the viewer sits on. Managers additionally see archived rows so
-        they can restore them. Sub-threads never list here - they belong
+        they can restore them; chat:view-private holders see restricted
+        rows without a roster seat. Sub-threads never list here - they belong
         to their parent room (ThreadService.list_room_threads)."""
         org = live_org(self._orgs, org_id)
         require_org_member(self._members, org, viewer_id)
         manager = channel_manager(self._access, org, viewer_id)
+        private = owner_or_chat_permission(
+            self._access, org, viewer_id, VIEW_PRIVATE
+        )
         seats = {
             row.channel_id
             for row in self._channels.list_channel_memberships(viewer_id)
@@ -128,7 +133,7 @@ class ChannelService:
             and (row.archived_at is None or manager)
             and (
                 row.visibility != "restricted"
-                or manager
+                or private
                 or row.channel_id in seats
             )
         ]

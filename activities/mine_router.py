@@ -33,6 +33,7 @@ def my_activities(
             MyActivityItem(
                 **_summary(row.activity).model_dump(),
                 can_manage=row.can_manage,
+                can_delete=row.can_delete,
             )
             for row in feed.rows
         ],
@@ -44,6 +45,7 @@ def my_activities(
                 kind=getattr(grant.org, "org_type", None) or "organization",
                 can_create=grant.can_create,
                 can_manage=grant.can_manage,
+                can_delete=grant.can_delete,
                 activity_count=grant.activity_count,
                 logo_url=grant.logo_url,
             )

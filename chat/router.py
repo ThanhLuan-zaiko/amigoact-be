@@ -188,7 +188,7 @@ def delete_room_message(
     current_user: CurrentUser = Depends(get_current_user),
     service: ChatService = Depends(get_chat_service),
 ) -> Response:
-    """Author removes their message; managers (chat:manage) remove any."""
+    """Author removes their message; chat:moderate holders remove any."""
     service.delete_message(room_id, current_user.id, message_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 

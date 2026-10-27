@@ -308,7 +308,29 @@ CREATE TABLE IF NOT EXISTS roles (
     name text,
     description text,
     is_system boolean,
-    created_at timestamp
+    created_at timestamp,
+    color text, // colour key ('' = default); see rbac.catalog.ROLE_COLORS
+    position int // seniority inside one org; higher outranks lower
+);
+
+CREATE TABLE IF NOT EXISTS org_chat_settings (
+    org_id uuid PRIMARY KEY,
+    attach_restricted boolean // true: attaching files needs chat:attach
+);
+
+CREATE TABLE IF NOT EXISTS org_chat_timeouts (
+    org_id uuid,
+    user_id uuid,
+    until timestamp, // also enforced by the row TTL
+    set_by uuid,
+    reason text,
+    PRIMARY KEY ((org_id), user_id)
+);
+
+CREATE TABLE IF NOT EXISTS org_member_defaults (
+    org_id uuid,
+    permission_code text, // baseline every active member holds
+    PRIMARY KEY ((org_id), permission_code)
 );
 
 CREATE TABLE IF NOT EXISTS roles_by_org (

@@ -23,7 +23,9 @@ from chat.helpers import (
     message_snapshot,
 )
 from chat.channel_interfaces import ChannelStore
-from chat.mentions import resolve_mentions
+from chat.mentions import ALL_USER_ID, all_recipients, resolve_mentions
+from chat.permissions import CHANNEL, holds_chat_permission
+from chat.safety import SafetyGate
 from chat.interfaces import (
     ActivityLookup,
     ChatEvents,
@@ -64,7 +66,9 @@ class ChatComposer:
         cipher=None,  # noqa: ANN001
         notifications=None,  # noqa: ANN001
         channels: ChannelStore | None = None,
+        gate: SafetyGate | None = None,
     ) -> None:
+        self._gate = gate
         self._chat = chat
         self._orgs = orgs
         self._members = members
@@ -104,12 +108,25 @@ class ChatComposer:
         data = json.dumps(
             {"room_id": str(room_id), "message_id": str(message_id)}
         )
-        for mention in mentions:
+        named = {m.user_id for m in mentions if m.user_id != ALL_USER_ID}
+        everyone = (
+            all_recipients(
+                self._members, self._access, self._channels, ctx, actor_id
+            )
+            if any(m.user_id == ALL_USER_ID for m in mentions)
+            else []
+        )
+        for user_id in dict.fromkeys([*named, *everyone]):
+            title = (
+                f"{actor_name} nh\u1eafc \u0111\u1ebfn b\u1ea1n"
+                if user_id in named
+                else f"{actor_name} nh\u1eafc c\u1ea3 nh\u00f3m"
+            )
             try:
                 self._notifications.notify(
-                    mention.user_id,
+                    user_id,
                     "chat.mention",
-                    f"{actor_name} nh\u1eafc \u0111\u1ebfn b\u1ea1n",
+                    title,
                     f"Trong {ctx.org.name}: {text[:80]}",
                     data,
                 )
@@ -128,6 +145,8 @@ class ChatComposer:
         reject posts from regular members; a deleted linked event
         freezes the room like an archive."""
         require_live_activity(ctx)
+        if self._gate is not None:
+            self._gate.check_timeout(ctx, actor_id)
         channel = ctx.channel
         if channel is None:
             return
@@ -136,8 +155,8 @@ class ChatComposer:
         if (
             channel.post_policy == "managers"
             and ctx.org.owner_id != actor_id
-            and not self._access.has_permission(
-                ctx.org.id, actor_id, "chat:manage"
+            and not holds_chat_permission(
+                self._access, ctx.org.id, actor_id, CHANNEL
             )
         ):
             raise ForbiddenError("Only managers can post in this channel.")
@@ -163,6 +182,8 @@ class ChatComposer:
             raise ChatContentRequiredError(
                 "A message needs text or an attachment."
             )
+        if attachment_ids and self._gate is not None:
+            self._gate.check_attach(ctx, actor_id)
         reply = self._reply_fields(room_id, reply_to_id)
         mentions = self._mentions(ctx, actor_id, text)
 
@@ -224,6 +245,8 @@ class ChatComposer:
         """Only the author rewrites their own text."""
         ctx = self._room(room_id, actor_id, "chat.edit")
         require_live_activity(ctx)
+        if self._gate is not None:
+            self._gate.check_timeout(ctx, actor_id)
         channel = ctx.channel
         if channel is not None and channel.archived_at is not None:
             raise ChannelArchivedError("This channel is archived.")
@@ -285,6 +308,8 @@ class ChatComposer:
         """Validate room access, then stage the file as a chat attachment."""
         ctx = self._room(room_id, actor_id, "chat.attach")
         self._check_post(ctx, actor_id)
+        if self._gate is not None:
+            self._gate.check_attach(ctx, actor_id)
         brief = self._attachments.stage(
             ctx.org.id, room_id, actor_id, filename, mime, content
         )

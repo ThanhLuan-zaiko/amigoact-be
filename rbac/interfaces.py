@@ -59,6 +59,8 @@ class RoleRepository(ABC):
         name: str,
         description: str,
         now: datetime,
+        color: str = "",
+        position: int = 0,
     ) -> Role:
         """Insert a custom role row plus its roles_by_org link."""
 
@@ -69,8 +71,15 @@ class RoleRepository(ABC):
         role_id: UUID,
         name: str | None,
         description: str | None,
+        color: str | None = None,
     ) -> Role | None:
-        """Rename/re-describe an org-owned role; None when not found."""
+        """Rename/re-describe/recolour an org-owned role; None if absent."""
+
+    @abstractmethod
+    def set_role_positions(
+        self, org_id: UUID, positions: dict[UUID, int]
+    ) -> None:
+        """Rewrite the seniority of the listed org-owned roles."""
 
     @abstractmethod
     def delete_org_role(self, org_id: UUID, role_id: UUID) -> bool:
@@ -83,6 +92,18 @@ class RoleRepository(ABC):
     @abstractmethod
     def count_role_holders(self, org_id: UUID) -> dict[UUID, int]:
         """Assignment totals per role id inside one org."""
+
+
+class MemberDefaultsRepository(ABC):
+    """Persistence port for the per-org baseline every member holds."""
+
+    @abstractmethod
+    def list_defaults(self, org_id: UUID) -> set[str]:
+        """Permission codes granted to every active member of the org."""
+
+    @abstractmethod
+    def set_defaults(self, org_id: UUID, codes: set[str]) -> None:
+        """Replace the org's baseline permission set."""
 
 
 class GrantRepository(ABC):
@@ -155,6 +176,15 @@ class AccessControl(ABC):
         self, org_id: UUID, role_name: str
     ) -> set[str] | None:
         """Permission set of a named role; None when it does not resolve."""
+
+    def role_position_of(self, org_id: UUID, role_name: str) -> int | None:
+        """Seniority of a named custom role; None for system/unknown roles."""
+        return None
+
+    def role_ceiling(self, org_id: UUID, user_id: UUID) -> int | None:
+        """Highest custom-role seniority a user holds; None means the user
+        holds no ranked role, so the role hierarchy does not limit them."""
+        return None
 
     @abstractmethod
     def assign(

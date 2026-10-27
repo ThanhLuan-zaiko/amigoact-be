@@ -13,6 +13,7 @@ from core.exceptions import (
     InvalidRoleError,
     UserNotFoundError,
 )
+from core.exceptions_roles import RoleHierarchyError
 from core.security import utcnow
 from orgs.member_helpers import (
     is_active_member,
@@ -102,6 +103,11 @@ class MemberInvitationsMixin:
                     raise self._deny(
                         org.id, actor_id, "member.invite", brief.id
                     )
+                ceiling = self._access.role_ceiling(org_id, actor_id)
+                rank = self._access.role_position_of(org_id, role)
+                if ceiling is not None and rank is not None and rank >= ceiling:
+                    self._deny(org.id, actor_id, "member.invite", brief.id)
+                    raise RoleHierarchyError("Role ranks at or above your own.")
         now = utcnow()
         if row is None:
             self._members.put(

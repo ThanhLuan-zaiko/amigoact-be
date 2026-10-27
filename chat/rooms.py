@@ -72,7 +72,7 @@ def open_room(
     non-participants get the generic org 404; dm_row is None for
     general and activity rooms. The floor stops history scans at the
     room's own creation month. Restricted channels additionally demand
-    a roster seat (or org owner / chat:manage); a sub-thread inherits
+    a roster seat (or org owner / chat:view-private); a sub-thread inherits
     its parent channel's gate.
     """
     dm = chat.get_dm_room(user_id, room_id)

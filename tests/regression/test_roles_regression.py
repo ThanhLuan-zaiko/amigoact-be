@@ -33,7 +33,7 @@ async def _make_org(client: AsyncClient, headers: dict[str, str], slug: str) -> 
 
 
 async def test_role_envelope_and_error_codes(client: AsyncClient) -> None:
-    """Role list keeps {items,assignable_permissions}; codes stay stable."""
+    """Role list envelope is additive over {items,assignable_permissions}."""
     owner = await _token(client, "xown@example.com", "0912349001")
     headers = _headers(owner)
     org_id = await _make_org(client, headers, "x-club")
@@ -41,11 +41,20 @@ async def test_role_envelope_and_error_codes(client: AsyncClient) -> None:
     listed = await client.get(f"/orgs/{org_id}/roles", headers=headers)
     assert listed.status_code == 200
     body = listed.json()
-    assert set(body.keys()) == {"items", "assignable_permissions"}
+    assert set(body.keys()) == {
+        "items",
+        "assignable_permissions",
+        "member_defaults",
+        "baseline_permissions",
+        "colors",
+    }
     item = body["items"][0]
     assert {
-        "id", "name", "description", "permissions", "member_count", "is_system"
+        "id", "name", "description", "permissions", "member_count",
+        "is_system", "color", "position",
     } <= set(item.keys())
+    assert body["member_defaults"] == []
+    assert set(body["colors"]) == {"zinc", "red", "amber", "emerald"}
 
     # Reserved names and unknown permissions keep their codes.
     for payload, code in (

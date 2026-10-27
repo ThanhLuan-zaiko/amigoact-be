@@ -74,6 +74,8 @@ class MemberPage:
     counts: list[tuple[str, int]] = field(default_factory=list)
     viewer_role: str = "member"
     viewer_permissions: list[str] = field(default_factory=list)
+    # Seniority of the viewer's top custom role; None = unlimited.
+    viewer_ceiling: int | None = None
 
 
 @dataclass(frozen=True)

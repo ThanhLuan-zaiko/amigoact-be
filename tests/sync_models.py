@@ -10,6 +10,7 @@ import apikeys.model as apikey_models
 import auth.model as models
 import certificates.model as cert_models
 import chat.model as chat_models
+import chat.safety_model as chat_safety_models
 import hours.model as hour_models
 import notifications.model as notification_models
 import orgs.model as org_models
@@ -47,7 +48,10 @@ SYNC_MODELS = [
     org_models.MediaByHash,
     org_models.MediaByUploader,
     rbac_models.Role,
+    chat_safety_models.OrgChatSettings,
+    chat_safety_models.OrgChatTimeout,
     rbac_models.RolesByOrg,
+    rbac_models.OrgMemberDefault,
     rbac_models.Permission,
     rbac_models.RolePermission,
     rbac_models.UserRole,

@@ -82,6 +82,7 @@ class MemberListPage(BaseModel):
     counts: list[BucketCount] = []
     viewer_role: str = "member"
     viewer_permissions: list[str] = []
+    viewer_ceiling: int | None = None
 
 
 class MyMembership(BaseModel):

@@ -46,7 +46,7 @@ from rbac.interfaces import AccessControl
 
 
 class ChatService:
-    """Room rules: members chat, authors or chat:manage moderate.
+    """Room rules: members chat, authors or chat:moderate holders moderate.
 
     A room id is the org id (general), an activity id (activity room), or
     a dm room id resolvable only through a participant inbox row. Every

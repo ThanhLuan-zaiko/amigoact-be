@@ -47,8 +47,10 @@ async def test_member_page_envelope_and_viewer_role(client: AsyncClient) -> None
         "counts",
         "viewer_role",
         "viewer_permissions",
+        "viewer_ceiling",
     }
     assert body["viewer_role"] == "owner"
+    assert body["viewer_ceiling"] is None
     assert "member:role-assign" in body["viewer_permissions"]
     assert body["total"] == 1
     item = body["items"][0]
