@@ -1612,11 +1612,14 @@ CREATE TABLE IF NOT EXISTS org_room_messages (
     bucket text, // 'YYYYMM' of created_at
     message_id uuid,
     author_id uuid,
-    body text,
-    // Phase 1/2 columns (ALTER TABLE org_room_messages ADD ...):
-    //   reply_to_id uuid, reply_to_author text, reply_to_body text,
-    //   edited_at timestamp, attachments_json text, mentions_json text.
-    // body stores AES-256-GCM ciphertext ('v1gcm:' prefix) at rest.
+    body text, // AES-256-GCM ciphertext ('v1gcm:' prefix) at rest.
+    // Denormalized reply preview; the target may live in another bucket.
+    reply_to_id uuid,
+    reply_to_author text,
+    reply_to_body text,
+    edited_at timestamp,
+    attachments_json text, // JSON list of attachment descriptors
+    mentions_json text, // JSON list of {id, name}
     created_at timestamp,
     PRIMARY KEY ((room_id, bucket), message_id)
 ) WITH CLUSTERING ORDER BY (message_id ASC);
