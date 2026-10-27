@@ -47,7 +47,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--keyspace", default="", help="Target keyspace.")
     parser.add_argument("--username", default="", help="CQL username if auth is on.")
     parser.add_argument("--password", default="", help="CQL password if auth is on.")
-    parser.add_argument("--timeout", type=float, default=10.0, help="Timeouts.")
+    parser.add_argument("--timeout", type=float, default=15.0, help="Connect timeout (s).")
     parser.add_argument("--yes", action="store_true", help="Skip confirmation.")
     parser.add_argument("--force", action="store_true", help="Allow ENV=prod.")
     parser.add_argument("--dry-run", action="store_true", help="Parse only.")
@@ -255,16 +255,12 @@ def execute_reset(
         except Exception:
             logger.error("cassandra-driver is unusable on this Python.")
             return 2
-    from cassandra.io.asyncioreactor import AsyncioConnection
-    # Force asyncio reactor (Python 3.12+ removed asyncore).
-    options: dict[str, object] = {
-        "connect_timeout": timeout,
-        "connection_class": AsyncioConnection,
-        "protocol_version": 4,  # ScyllaDB max is v4; skips noisy downgrades.
-    }
-    if datacenter:
-        from cassandra.policies import DCAwareRoundRobinPolicy
-        options["load_balancing_policy"] = DCAwareRoundRobinPolicy(local_dc=datacenter)
+    from core.database import DDL_TIMEOUT, cluster_options, execute_with_retry
+
+    # DDL waits for schema agreement, so give it a much longer budget.
+    options = cluster_options(
+        connect_timeout=timeout, request_timeout=DDL_TIMEOUT, local_dc=datacenter
+    )
     if username:
         from cassandra.auth import PlainTextAuthProvider
 
@@ -279,11 +275,11 @@ def execute_reset(
     try:
         if drop:
             # Validated by KEYSPACE_RE, so interpolation is safe (no bind for names).
-            session.execute(f"DROP KEYSPACE IF EXISTS {keyspace}")
+            execute_with_retry(session, f"DROP KEYSPACE IF EXISTS {keyspace}")
             logger.info("Dropped keyspace '%s' (if it existed).", keyspace)
         total = len(statements)
         for index, stmt in enumerate(statements, 1):
-            session.execute(stmt)
+            execute_with_retry(session, stmt)
             if index % 20 == 0 or index == total:
                 logger.info("Applied %d/%d statements.", index, total)
         tables = count_tables(session, keyspace)

@@ -6,7 +6,7 @@ import main
 from httpx import AsyncClient
 
 from core.config import get_settings
-from tests.conftest import TEST_KEYSPACE, _test_settings
+from tests.conftest import TEST_KEYSPACE, _test_settings, counter_bucket
 
 
 def _guard_settings(**overrides):
@@ -16,7 +16,7 @@ def _guard_settings(**overrides):
 
 
 def _edge_hits() -> int:
-    """Total hits recorded in auth_rate_limits under 'edge:' buckets."""
+    """This test's hits in auth_rate_limits under 'edge:' buckets."""
     from cassandra.cqlengine.connection import get_session
 
     rows = (
@@ -27,7 +27,7 @@ def _edge_hits() -> int:
     return sum(
         int(row["hits"])
         for row in rows
-        if str(row["bucket"]).startswith("edge:")
+        if str(row["bucket"]).startswith(counter_bucket("edge:"))
     )
 
 

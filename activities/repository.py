@@ -5,7 +5,6 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from cassandra.cqlengine.connection import get_session
 
 from activities.feed_helpers import (
     _clear_feeds,
@@ -41,6 +40,7 @@ from activities.model import (
 from core.exceptions import SlugTakenError
 from orgs.media_repository import media_feeds_delete
 from orgs.model import MediaAsset, MediaByOwner
+from core.cql import run as cql_run
 
 
 class CqlActivityStore(ActivityStore):
@@ -59,8 +59,7 @@ class CqlActivityStore(ActivityStore):
         from core.ids import uuid7
 
         activity_id = uuid7()
-        session = get_session()
-        claim = session.execute(
+        claim = cql_run(
             f"INSERT INTO {self._keyspace}.activities_by_slug"
             " (org_id, slug, activity_id, title, status, start_at)"
             " VALUES (%s, %s, %s, %s, %s, %s) IF NOT EXISTS",
@@ -126,8 +125,7 @@ class CqlActivityStore(ActivityStore):
         if old is None:
             return None
         if fields.slug != old.slug:
-            session = get_session()
-            claim = session.execute(
+            claim = cql_run(
                 f"INSERT INTO {self._keyspace}.activities_by_slug"
                 " (org_id, slug, activity_id, title, status, start_at)"
                 " VALUES (%s, %s, %s, %s, %s, %s) IF NOT EXISTS",

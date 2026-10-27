@@ -11,7 +11,6 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from cassandra.cqlengine.connection import get_session
 
 from chat.channel_interfaces import ChannelStore
 from core.ids import uuid7
@@ -23,6 +22,7 @@ from chat.model import (
     OrgChatChannelName,
     OrgChatRoomThread,
 )
+from core.cql import run as cql_run
 
 
 def _mirror(row) -> OrgChatChannelById:  # noqa: ANN001
@@ -55,7 +55,7 @@ class CqlChannelStore(ChannelStore):
         self, scope_id: UUID, name_folded: str, channel_id: UUID,
         now: datetime,
     ) -> None:
-        get_session().execute(
+        cql_run(
             f"INSERT INTO {self._keyspace}.org_chat_channel_names"
             " (org_id, name_folded, channel_id, created_at)"
             " VALUES (%s, %s, %s, %s) IF NOT EXISTS",

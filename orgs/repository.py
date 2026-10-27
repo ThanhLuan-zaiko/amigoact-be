@@ -5,7 +5,6 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from cassandra.cqlengine.connection import get_session
 
 from core.exceptions import SlugTakenError, TaxCodeTakenError
 from orgs.directory_feed import delete_public_feed, write_public_feed
@@ -23,6 +22,8 @@ from orgs.model import (
     OrganizationsPublic,
 )
 from orgs.repo_helpers import contact_fields, queue_delete, queue_write
+from core.cql import claim, run as cql_run
+from orgs.public_cache import PUBLIC_ORGS_CACHE, invalidates_public, owns
 
 class CqlOrgRepository(OrgRepository):
     """Orgs plus slug index and dual membership query tables."""
@@ -30,6 +31,7 @@ class CqlOrgRepository(OrgRepository):
     def __init__(self, keyspace: str) -> None:
         self._keyspace = keyspace
 
+    @invalidates_public
     def create(
         self,
         org_id: UUID,
@@ -47,22 +49,26 @@ class CqlOrgRepository(OrgRepository):
         now: datetime,
         contact: OrgContactDetails | None = None,
     ) -> Organization:
-        session = get_session()
-        claim = session.execute(
+        slug_applied = claim(
             f"INSERT INTO {self._keyspace}.organizations_by_slug (slug, org_id)"
             " VALUES (%s, %s) IF NOT EXISTS",
             [slug, org_id],
+            lambda: owns(OrganizationsBySlug.objects(slug=slug).first(), org_id),
         )
-        if not claim.was_applied:
+        if not slug_applied:
             raise SlugTakenError("Organization slug is already taken.")
         if tax_code is not None:
             # One org per tax code; second claim fails and frees the slug.
-            tax_claim = session.execute(
+            tax_applied = claim(
                 f"INSERT INTO {self._keyspace}.organizations_by_tax_code"
                 " (tax_code, org_id) VALUES (%s, %s) IF NOT EXISTS",
                 [tax_code, org_id],
+                lambda: owns(
+                    OrganizationsByTaxCode.objects(tax_code=tax_code).first(),
+                    org_id,
+                ),
             )
-            if not tax_claim.was_applied:
+            if not tax_applied:
                 OrganizationsBySlug.objects(slug=slug).delete()
                 raise TaxCodeTakenError("Tax code is already registered.")
         org = Organization.create(
@@ -131,7 +137,7 @@ class CqlOrgRepository(OrgRepository):
         new_tax = legal.get("tax_code") if legal else None
         if not isinstance(new_tax, str) or not new_tax or new_tax == org.tax_code:
             return None
-        claim = get_session().execute(
+        claim = cql_run(
             f"INSERT INTO {self._keyspace}.organizations_by_tax_code"
             " (tax_code, org_id) VALUES (%s, %s) IF NOT EXISTS",
             [new_tax, org.id],
@@ -140,6 +146,7 @@ class CqlOrgRepository(OrgRepository):
             raise TaxCodeTakenError("Tax code is already registered.")
         return new_tax
 
+    @invalidates_public
     def update_details(
         self,
         org_id: UUID,
@@ -191,6 +198,7 @@ class CqlOrgRepository(OrgRepository):
         ).update(name=name, slug=org.slug)
         return self.get_by_id(org_id)
 
+    @invalidates_public
     def mark_deleted(self, org_id: UUID, now: datetime) -> Organization | None:
         org = self.get_by_id(org_id)
         if org is None:
@@ -203,15 +211,15 @@ class CqlOrgRepository(OrgRepository):
         Organization.objects(id=org_id).update(deleted_at=now, updated_at=now)
         return self.get_by_id(org_id)
 
+    @invalidates_public
     def mark_restored(self, org_id: UUID, now: datetime) -> Organization | None:
         org = self.get_by_id(org_id)
         if org is None:
             return None
-        session = get_session()
         original = org.slug
         chosen: str | None = None
         for candidate in (original, *(f"{original}-r{n}" for n in range(2, 6))):
-            claim = session.execute(
+            claim = cql_run(
                 f"INSERT INTO {self._keyspace}.organizations_by_slug"
                 " (slug, org_id) VALUES (%s, %s) IF NOT EXISTS",
                 [candidate[:60], org_id],
@@ -233,6 +241,7 @@ class CqlOrgRepository(OrgRepository):
         write_public_feed(fresh)
         return fresh
 
+    @invalidates_public
     def set_brand_media(
         self, org_id: UUID, role: str, asset_id: UUID | None, now: datetime
     ) -> None:
@@ -257,6 +266,10 @@ class CqlOrgRepository(OrgRepository):
         return orgs
 
     def list_public(self) -> list[Organization]:
+        """Cached merge of every public kind partition."""
+        return list(PUBLIC_ORGS_CACHE.get_or_load(self._keyspace, self._load_public))
+
+    def _load_public(self) -> list[Organization]:
         """Merge every kind partition; re-reads skip dead or hidden rows."""
         orgs: list[Organization] = []
         for kind in ORG_KINDS:
@@ -269,6 +282,7 @@ class CqlOrgRepository(OrgRepository):
                 orgs.append(org)
         return orgs
 
+    @invalidates_public
     def set_legal_status(
         self,
         org_id: UUID,
@@ -299,6 +313,7 @@ class CqlOrgRepository(OrgRepository):
         queue_write(fresh)
         return fresh
 
+    @invalidates_public
     def delete_everything(self, org_id: UUID) -> bool:
         org = self.get_by_id(org_id)
         if org is None:

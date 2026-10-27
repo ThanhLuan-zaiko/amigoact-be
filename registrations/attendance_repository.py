@@ -9,7 +9,6 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from cassandra.cqlengine.connection import get_session
 
 from core.exceptions import AlreadyCheckedInError
 from registrations.interfaces import AttendanceStore
@@ -19,6 +18,7 @@ from registrations.model import (
     AttendanceByStudent,
     AttendanceRecord,
 )
+from core.cql import run as cql_run
 
 
 class CqlAttendanceStore(AttendanceStore):
@@ -41,7 +41,7 @@ class CqlAttendanceStore(AttendanceStore):
         from core.ids import uuid7
 
         record_id = uuid7()
-        claim = get_session().execute(
+        claim = cql_run(
             f"INSERT INTO {self._keyspace}.attendance_by_registration"
             " (registration_id, record_id, activity_id, student_id,"
             " session_id, scanned_at)"

@@ -5,7 +5,6 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from cassandra.cqlengine.connection import get_session
 
 from activities.user_tag_model import (
     UserActivityTag,
@@ -14,6 +13,7 @@ from activities.user_tag_model import (
     UserPostTagSet,
     UserTag,
 )
+from core.cql import run as cql_run
 
 
 class CqlUserTagStore:
@@ -32,7 +32,7 @@ class CqlUserTagStore:
         self, user_id: UUID, slug: str, name: str, now: datetime
     ) -> bool:
         """True when this call created the row."""
-        applied = get_session().execute(
+        applied = cql_run(
             f"INSERT INTO {self._keyspace}.tags_by_user"
             " (user_id, slug, name, created_at, updated_at)"
             " VALUES (%s, %s, %s, %s, %s) IF NOT EXISTS",

@@ -19,6 +19,14 @@ class Settings(BaseSettings):
     scylla_port: int = 9042
     scylla_datacenter: str = "datacenter1"
     scylla_keyspace: str = "amigoact"
+    # Empty username = no auth (local dev); set both on secured clusters.
+    scylla_username: str = ""
+    scylla_password: str = ""
+    scylla_connect_timeout_seconds: float = Field(default=15.0, ge=1.0, le=120.0)
+    scylla_request_timeout_seconds: float = Field(default=30.0, ge=1.0, le=300.0)
+    # Threadpool size for sync endpoints and the slow-request log threshold.
+    worker_threads: int = Field(default=200, ge=10, le=1000)
+    slow_request_ms: float = Field(default=500.0, ge=1.0)
     jwt_secret: str  # Required: no default so boot fails fast without a secret.
     # Base64 32-byte AES key for chat bodies at rest; empty derives one
     # from jwt_secret (documented fallback, rotate via this field).

@@ -11,9 +11,9 @@ from abc import ABC, abstractmethod
 from datetime import datetime, timedelta
 from uuid import UUID
 
-from cassandra.cqlengine.connection import get_session
 
 from core.security import utcnow
+from core.cql import run as cql_run
 
 IDEMPOTENCY_TTL_SECONDS = 24 * 60 * 60
 LEASE_TTL_SECONDS = 5 * 60
@@ -56,9 +56,8 @@ class CqlIdempotencyStore(IdempotencyStore):
         self._keyspace = keyspace
 
     def claim(self, key: str, user_id: UUID | None, now: datetime) -> str | None:
-        session = get_session()
         expires = now + timedelta(seconds=IDEMPOTENCY_TTL_SECONDS)
-        applied = session.execute(
+        applied = cql_run(
             f"INSERT INTO {self._keyspace}.idempotency_keys "
             "(key, user_id, status, response_json, created_at, expires_at) "
             "VALUES (%s, %s, 'in_progress', NULL, %s, %s) "
@@ -67,7 +66,7 @@ class CqlIdempotencyStore(IdempotencyStore):
         ).one()
         if applied and applied.applied:
             return None
-        row = session.execute(
+        row = cql_run(
             f"SELECT status, response_json, expires_at "
             f"FROM {self._keyspace}.idempotency_keys WHERE key = %s",
             (key,),
@@ -78,7 +77,7 @@ class CqlIdempotencyStore(IdempotencyStore):
             return row.response_json or ""
         if row.status == "failed" or _past(row.expires_at):
             # Previous attempt failed or rotted: reclaim for this retry.
-            session.execute(
+            cql_run(
                 f"UPDATE {self._keyspace}.idempotency_keys USING TTL %s "
                 "SET status = 'in_progress', user_id = %s, created_at = %s, "
                 "expires_at = %s WHERE key = %s",
@@ -88,14 +87,14 @@ class CqlIdempotencyStore(IdempotencyStore):
         return "in_progress"
 
     def complete(self, key: str, response_json: str, now: datetime) -> None:
-        get_session().execute(
+        cql_run(
             f"UPDATE {self._keyspace}.idempotency_keys "
             "SET status = 'completed', response_json = %s WHERE key = %s",
             (response_json, key),
         )
 
     def fail(self, key: str, now: datetime) -> None:
-        get_session().execute(
+        cql_run(
             f"UPDATE {self._keyspace}.idempotency_keys "
             "SET status = 'failed' WHERE key = %s",
             (key,),
@@ -109,10 +108,9 @@ class CqlJobLeaseStore(JobLeaseStore):
         self._keyspace = keyspace
 
     def acquire(self, job_id: UUID, owner: str, ttl_seconds: int) -> bool:
-        session = get_session()
         now = utcnow()
         expires = now + timedelta(seconds=ttl_seconds)
-        applied = session.execute(
+        applied = cql_run(
             f"INSERT INTO {self._keyspace}.job_leases "
             "(job_id, owner, status, acquired_at, expires_at) "
             "VALUES (%s, %s, 'held', %s, %s) IF NOT EXISTS",
@@ -120,7 +118,7 @@ class CqlJobLeaseStore(JobLeaseStore):
         ).one()
         if applied and applied.applied:
             return True
-        row = session.execute(
+        row = cql_run(
             f"SELECT owner, status, expires_at "
             f"FROM {self._keyspace}.job_leases WHERE job_id = %s",
             (job_id,),
@@ -130,7 +128,7 @@ class CqlJobLeaseStore(JobLeaseStore):
         if row.status == "done":
             return False
         if row.owner == owner or _past(row.expires_at):
-            session.execute(
+            cql_run(
                 f"UPDATE {self._keyspace}.job_leases SET owner = %s, "
                 "status = 'held', acquired_at = %s, expires_at = %s "
                 "WHERE job_id = %s",
@@ -140,7 +138,7 @@ class CqlJobLeaseStore(JobLeaseStore):
         return False
 
     def release(self, job_id: UUID, owner: str, status: str) -> None:
-        get_session().execute(
+        cql_run(
             f"UPDATE {self._keyspace}.job_leases SET status = %s, "
             "expires_at = %s WHERE job_id = %s IF owner = %s",
             (status, utcnow(), job_id, owner),

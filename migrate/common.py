@@ -53,7 +53,7 @@ def parse_args(description: str, argv: list[str] | None = None):
     parser.add_argument("--keyspace", default="", help="Target keyspace.")
     parser.add_argument("--username", default="", help="CQL username.")
     parser.add_argument("--password", default="", help="CQL password.")
-    parser.add_argument("--timeout", type=float, default=10.0)
+    parser.add_argument("--timeout", type=float, default=15.0)
     parser.add_argument(
         "--dry-run", action="store_true",
         help="Count rows and print DDL; write nothing.",
@@ -102,19 +102,11 @@ def connect(cfg: Config):
         alias.AsyncoreConnection = AsyncConn
         sys.modules["cassandra.io.asyncorereactor"] = alias
         from cassandra.cluster import Cluster
-    from cassandra.io.asyncioreactor import AsyncioConnection
+    from core.database import cluster_options
 
-    options: dict[str, object] = {
-        "connect_timeout": cfg.timeout,
-        "connection_class": AsyncioConnection,
-        "protocol_version": 4,  # ScyllaDB max is v4.
-    }
-    if cfg.datacenter:
-        from cassandra.policies import DCAwareRoundRobinPolicy
-
-        options["load_balancing_policy"] = DCAwareRoundRobinPolicy(
-            local_dc=cfg.datacenter
-        )
+    options = cluster_options(
+        connect_timeout=cfg.timeout, local_dc=cfg.datacenter
+    )
     if cfg.username:
         from cassandra.auth import PlainTextAuthProvider
 

@@ -10,7 +10,6 @@ from collections.abc import Iterable
 from datetime import datetime
 from uuid import UUID
 
-from cassandra.cqlengine.connection import get_session
 
 from chat.dtos import SharedItemDraft
 from chat.helpers import MEDIA_KINDS
@@ -27,6 +26,7 @@ from chat.model import (
     OrgRoomReaction,
     OrgRoomRead,
 )
+from core.cql import run as cql_run
 
 
 class CqlChatStore(ChatStore):
@@ -326,8 +326,7 @@ class CqlChatStore(ChatStore):
         user_hi: UUID,
         now: datetime,
     ) -> OrgDmPair:
-        session = get_session()
-        session.execute(
+        cql_run(
             f"INSERT INTO {self._keyspace}.org_dm_pairs"
             " (org_id, user_lo, user_hi, room_id, created_at)"
             " VALUES (%s, %s, %s, %s, %s) IF NOT EXISTS",

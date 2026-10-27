@@ -10,7 +10,6 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from cassandra.cqlengine.connection import get_session
 
 from core.exceptions import AlreadyRegisteredError
 from registrations.interfaces import RegistrationStore
@@ -23,6 +22,7 @@ from registrations.model import (
     RegistrationsByToken,
     WaitlistEntry,
 )
+from core.cql import run as cql_run
 
 
 def _sync_feeds(row: Registration) -> None:
@@ -85,7 +85,7 @@ class CqlRegistrationStore(RegistrationStore):
 
         registration_id = uuid7()
         slot = slot_id or UUID(int=0)
-        claim = get_session().execute(
+        claim = cql_run(
             f"INSERT INTO {self._keyspace}.registrations_by_activity_student"
             " (activity_id, student_id, slot_id, registration_id, status,"
             " registered_at)"

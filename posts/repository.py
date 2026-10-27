@@ -5,7 +5,6 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from cassandra.cqlengine.connection import get_session
 
 from posts.helpers import post_visibility
 from posts.interfaces import CommentStore, PostStore
@@ -19,6 +18,7 @@ from posts.model import (
     OrgPostPinned,
     OrgPostTrash,
 )
+from core.cql import run as cql_run
 
 TIMELINE_BUCKET = "all"
 
@@ -120,7 +120,7 @@ class CqlPostStore(PostStore):
         return list(query.limit(limit))
 
     def count_feed(self, org_id: UUID) -> int:
-        row = get_session().execute(
+        row = cql_run(
             f"SELECT COUNT(*) AS c FROM {self._keyspace}.org_posts_feed"
             " WHERE org_id = %s",
             [org_id],
@@ -140,7 +140,7 @@ class CqlPostStore(PostStore):
         return [row.post_id for row in rows]
 
     def count_drafts(self, org_id: UUID, author_id: UUID) -> int:
-        row = get_session().execute(
+        row = cql_run(
             f"SELECT COUNT(*) AS c FROM {self._keyspace}.org_post_drafts"
             " WHERE org_id = %s AND author_id = %s",
             [org_id, author_id],
@@ -268,7 +268,7 @@ class CqlCommentStore(CommentStore):
         self._keyspace = keyspace
 
     def _bump(self, post_id: UUID, delta: int) -> None:
-        get_session().execute(
+        cql_run(
             f"UPDATE {self._keyspace}.org_post_comment_counts"
             " SET comments = comments + %s WHERE post_id = %s",
             [delta, post_id],
@@ -309,14 +309,14 @@ class CqlCommentStore(CommentStore):
 
     def remove_all(self, post_id: UUID) -> None:
         OrgPostComment.objects(post_id=post_id).delete()
-        get_session().execute(
+        cql_run(
             f"DELETE FROM {self._keyspace}.org_post_comment_counts"
             " WHERE post_id = %s",
             [post_id],
         )
 
     def count(self, post_id: UUID) -> int:
-        row = get_session().execute(
+        row = cql_run(
             f"SELECT comments FROM {self._keyspace}.org_post_comment_counts"
             " WHERE post_id = %s",
             [post_id],

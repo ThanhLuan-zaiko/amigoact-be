@@ -5,7 +5,6 @@ from __future__ import annotations
 from datetime import date, datetime, timezone
 from uuid import UUID
 
-from cassandra.cqlengine.connection import get_session
 
 from auth.interfaces import (
     PasswordHasherPort,
@@ -27,6 +26,12 @@ from auth.model import (
 )
 from core.exceptions import EmailTakenError, PhoneTakenError
 from core.ids import uuid7
+from core.cql import claim, run as cql_run
+
+
+def _owns(row: object | None, user_id: UUID) -> bool:
+    """True when an index row exists and points at this user."""
+    return row is not None and getattr(row, "user_id", None) == user_id
 
 
 class CqlUserRepository(UserRepository):
@@ -56,21 +61,24 @@ class CqlUserRepository(UserRepository):
         # Raw CQL here because the flow needs was_applied from
         # INSERT ... IF NOT EXISTS, which cqlengine does not surface.
         # Covered by tests/integration/test_auth_db.py.
-        session = get_session()
-        email_claim = session.execute(
+        # claim() re-reads the index after a timeout so an LWT that was
+        # applied server-side is not misreported as "taken" on retry.
+        email_applied = claim(
             f"INSERT INTO {self._keyspace}.users_by_email (email, user_id)"
             " VALUES (%s, %s) IF NOT EXISTS",
             [email, user_id],
+            lambda: _owns(UsersByEmail.objects(email=email).first(), user_id),
         )
-        if not email_claim.was_applied:
+        if not email_applied:
             raise EmailTakenError("Email is already registered.")
-        phone_claim = session.execute(
+        phone_applied = claim(
             f"INSERT INTO {self._keyspace}.users_by_phone (phone, user_id)"
             " VALUES (%s, %s) IF NOT EXISTS",
             [phone, user_id],
+            lambda: _owns(UsersByPhone.objects(phone=phone).first(), user_id),
         )
-        if not phone_claim.was_applied:
-            session.execute(
+        if not phone_applied:
+            cql_run(
                 f"DELETE FROM {self._keyspace}.users_by_email WHERE email = %s"
                 " IF EXISTS",
                 [email],
@@ -271,13 +279,12 @@ class CqlRateLimiter(RateLimiter):
         start = datetime.fromtimestamp(
             epoch - (epoch % window_seconds), tz=timezone.utc
         )
-        session = get_session()
-        session.execute(
+        cql_run(
             f"UPDATE {self._keyspace}.auth_rate_limits SET hits = hits + 1"
             " WHERE bucket = %s AND window_start = %s",
             [bucket, start],
         )
-        row = session.execute(
+        row = cql_run(
             f"SELECT hits FROM {self._keyspace}.auth_rate_limits"
             " WHERE bucket = %s AND window_start = %s",
             [bucket, start],

@@ -11,6 +11,7 @@ from core.realtime import (
     parse_channel,
     parse_client_frame,
 )
+from tests.ws_helpers import pinned_loop
 from tests.unit.realtime_fakes import (
     FakeChatRooms,
     FakeMembership,
@@ -65,31 +66,34 @@ def test_typing_relays_to_chat_channel_members() -> None:
     try:
         token_a = service.issue_ticket(alice).token
         token_b = service.issue_ticket(bob).token
-        with client.websocket_connect(f"/ws?ticket={token_a}") as sock_a:
-            sock_a.receive_json()  # ready.v1
-            sock_a.send_json(
-                {"type": "subscribe.v1",
-                 "data": {"channel": f"chat:{org}"}}
-            )
-            assert sock_a.receive_json()["type"] == "subscribed.v1"
-            with client.websocket_connect(f"/ws?ticket={token_b}") as sock_b:
-                sock_b.receive_json()  # ready.v1
-                sock_b.send_json(
+        # Both sockets must share one loop (as in production): across two
+        # TestClient portals the relay only lands at the next timer wakeup.
+        with pinned_loop(client):
+            with client.websocket_connect(f"/ws?ticket={token_a}") as sock_a:
+                sock_a.receive_json()  # ready.v1
+                sock_a.send_json(
                     {"type": "subscribe.v1",
                      "data": {"channel": f"chat:{org}"}}
                 )
-                assert sock_b.receive_json()["type"] == "subscribed.v1"
-                sock_a.send_json(
-                    {"type": "typing.v1",
-                     "data": {"channel": f"chat:{org}"}}
-                )
-                event = sock_b.receive_json()
-                assert event["type"] == "event.v1"
-                assert event["data"]["channel"] == f"chat:{org}"
-                assert event["data"]["payload"] == {
-                    "action": "typing",
-                    "user_id": str(alice),
-                }
+                assert sock_a.receive_json()["type"] == "subscribed.v1"
+                with client.websocket_connect(f"/ws?ticket={token_b}") as sock_b:
+                    sock_b.receive_json()  # ready.v1
+                    sock_b.send_json(
+                        {"type": "subscribe.v1",
+                         "data": {"channel": f"chat:{org}"}}
+                    )
+                    assert sock_b.receive_json()["type"] == "subscribed.v1"
+                    sock_a.send_json(
+                        {"type": "typing.v1",
+                         "data": {"channel": f"chat:{org}"}}
+                    )
+                    event = sock_b.receive_json()
+                    assert event["type"] == "event.v1"
+                    assert event["data"]["channel"] == f"chat:{org}"
+                    assert event["data"]["payload"] == {
+                        "action": "typing",
+                        "user_id": str(alice),
+                    }
     finally:
         clear_overrides()
 

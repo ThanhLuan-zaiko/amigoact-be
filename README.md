@@ -74,6 +74,12 @@ Mọi cấu hình nằm trong `core/config.py` (dùng `pydantic-settings`), đ�
 | `SCYLLA_PORT` | Cổng CQL ScyllaDB | `9042` |
 | `SCYLLA_DATACENTER` | Datacenter ScyllaDB (khớp replication trong `schemas.cql`) | `datacenter1` |
 | `SCYLLA_KEYSPACE` | Keyspace chính | `amigoact` |
+| `SCYLLA_USERNAME` / `SCYLLA_PASSWORD` | Đăng nhập Scylla (để trống khi dev) | rỗng |
+| `SCYLLA_CONNECT_TIMEOUT_SECONDS` | Timeout kết nối Scylla (giây) | `15` |
+| `SCYLLA_REQUEST_TIMEOUT_SECONDS` | Timeout mỗi truy vấn (giây) | `30` |
+| `CHAT_MESSAGE_KEY` | Khóa AES base64 32 byte mã hóa tin nhắn; trống = suy ra từ `JWT_SECRET` (chỉ dev) | rỗng |
+| `WORKER_THREADS` | Số thread xử lý endpoint đồng bộ | `200` |
+| `SLOW_REQUEST_MS` | Ngưỡng (ms) ghi log request chậm | `500` |
 | `JWT_SECRET` | Khóa ký JWT access (production tối thiểu 32 byte) | `dev-only-change-me` |
 | `JWT_ACCESS_TTL_SECONDS` | Tuổi thọ JWT access (giây) | `900` |
 | `REFRESH_TOKEN_TTL_DAYS` | Tuổi thọ refresh token (ngày) | `14` |

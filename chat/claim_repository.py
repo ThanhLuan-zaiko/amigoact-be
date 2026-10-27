@@ -5,10 +5,10 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from cassandra.cqlengine.connection import get_session
 
 from chat.interfaces import AttachmentClaimStore
 from chat.model import OrgChatAttachmentClaim
+from core.cql import run as cql_run
 
 
 class CqlClaimStore(AttachmentClaimStore):
@@ -22,8 +22,7 @@ class CqlClaimStore(AttachmentClaimStore):
     def claim_attachment(
         self, media_id: UUID, room_id: UUID, message_id: UUID, now: datetime
     ) -> bool:
-        session = get_session()
-        outcome = session.execute(
+        outcome = cql_run(
             f"INSERT INTO {self._keyspace}.chat_attachment_claims"
             " (media_id, room_id, message_id, created_at)"
             " VALUES (%s, %s, %s, %s) IF NOT EXISTS",

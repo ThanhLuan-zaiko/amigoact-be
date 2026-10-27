@@ -9,7 +9,6 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from cassandra.cqlengine.connection import get_session
 
 from certificates.interfaces import CertificateStore, TemplateStore
 from certificates.model import (
@@ -21,6 +20,7 @@ from certificates.model import (
     CertificatesByStudent,
 )
 from core.exceptions import CertificateExistsError
+from core.cql import run as cql_run
 
 
 class CqlCertificateStore(CertificateStore):
@@ -41,7 +41,7 @@ class CqlCertificateStore(CertificateStore):
         template_id: UUID | None = None,
     ) -> Certificate:
         """Claim serial via LWT, then fan out to both read paths."""
-        claim = get_session().execute(
+        claim = cql_run(
             f"INSERT INTO {self._keyspace}.certificates_by_serial"
             " (serial_no, certificate_id, activity_id, student_id, status)"
             " VALUES (%s, %s, %s, %s, %s) IF NOT EXISTS",

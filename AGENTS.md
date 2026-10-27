@@ -14,6 +14,8 @@ Source of truth for AI agents and contributors. Follow it strictly; add a rule h
 ## Data and security
 - Primary keys: UUIDv7 (`uuid_utils.uuid7()`) stored as `uuid`. Never `uuid4` or integer PKs.
 - No string-built CQL, no `ALLOW FILTERING`. Use LWT only where correctness needs it.
+- Raw CQL goes through `core/cql.py`: `run()` (prepared, cached per query) and `claim()` for `IF NOT EXISTS` with an ownership re-read after timeouts. Never call `session.execute` directly in features.
+- Cluster settings come only from `core/database.cluster_options()`. Process-local caches use `core.cql.TtlCache` (short TTL, cleared on every write).
 - Schema changes go through `migrate/` modules: idempotent, non-destructive, `--dry-run` first.
 - Access token: JWT, 5–15 min, `Authorization: Bearer`. Refresh token: opaque 256-bit value in an `HttpOnly` cookie, stored as a SHA-256 hash, rotated on every use, family revoked on reuse.
 - Authentication is not authorization: check ownership or role in the service layer on every access.

@@ -43,8 +43,17 @@ TEST_ADMIN_EMAIL = "root@amigoact.test"
 TABLE_PK: dict[str, list[str]] = {}
 
 # Counter tables must not be row-deleted: increments on tombstoned counters
-# return inconsistent values, so they still get a real TRUNCATE.
+# return inconsistent values. TRUNCATE costs ~4s each on Scylla, so they are
+# truncated once per session and isolated per test instead: every counter
+# key is unique per test (post ids are fresh uuid7s, rate-limit buckets get
+# COUNTER_SALT), so each test still starts from logically empty counters.
 COUNTER_TABLES: set[str] = set()
+COUNTER_SALT: dict[str, str] = {"value": ""}
+
+
+def counter_bucket(name: str) -> str:
+    """The stored rate-limit bucket for `name` in the current test."""
+    return f"{COUNTER_SALT['value']}|{name}"
 
 
 def _test_settings() -> Settings:
@@ -79,17 +88,13 @@ def test_db() -> str:
     from cassandra.cluster import Cluster
     from cassandra.cqlengine import connection
     from cassandra.cqlengine.management import sync_table
-    from cassandra.io.asyncioreactor import AsyncioConnection
 
+    from core.database import DDL_TIMEOUT, cluster_options
     from tests.sync_models import SYNC_MODELS
 
-    cluster = Cluster(
-        ["127.0.0.1"],
-        port=9042,
-        protocol_version=4,
-        connection_class=AsyncioConnection,
-        connect_timeout=10.0,
-    )
+    # Schema sync is DDL-heavy (schema agreement per table): long budget.
+    options = cluster_options(request_timeout=DDL_TIMEOUT)
+    cluster = Cluster(["127.0.0.1"], port=9042, **options)
     session = cluster.connect()
     try:
         session.execute(
@@ -105,7 +110,9 @@ def test_db() -> str:
     try:
         for model in targets:
             model.__keyspace__ = TEST_KEYSPACE
-        connection.setup(["127.0.0.1"], TEST_KEYSPACE, protocol_version=4)
+        connection.setup(
+            ["127.0.0.1"], TEST_KEYSPACE, **cluster_options(request_timeout=DDL_TIMEOUT)
+        )
         for model in targets:
             sync_table(model)
         # Counter tables have no cqlengine model; mirror schemas.cql here.
@@ -137,6 +144,8 @@ def test_db() -> str:
                 for column in table.columns.values()
             )
         )
+        for table in COUNTER_TABLES:
+            raw.execute(f"TRUNCATE {TEST_KEYSPACE}.{table}")
         yield TEST_KEYSPACE
     finally:
         for model, keyspace in saved.items():
@@ -156,7 +165,7 @@ def _pin_default_keyspace() -> None:
 
 
 @pytest.fixture()
-def clean_tables(test_db: str) -> str:
+def clean_tables(test_db: str, monkeypatch: pytest.MonkeyPatch) -> str:
     """Empty every table that actually holds rows.
 
     TRUNCATE is a schema operation (~0.4s per table, serialized cluster-
@@ -173,22 +182,30 @@ def clean_tables(test_db: str) -> str:
         raise RuntimeError("test_db ran but no table metadata was captured")
     from cassandra.cqlengine.connection import get_session
 
+    import uuid
+
+    from auth.repository import CqlRateLimiter
+
+    COUNTER_SALT["value"] = uuid.uuid4().hex
+    original_hit = CqlRateLimiter.hit
+
+    def salted_hit(self, bucket: str, window_seconds: int) -> int:  # noqa: ANN001
+        return original_hit(self, counter_bucket(bucket), window_seconds)
+
+    monkeypatch.setattr(CqlRateLimiter, "hit", salted_hit)
+
     session = get_session()
     probes = {
         table: session.execute_async(
             f"SELECT * FROM {TEST_KEYSPACE}.{table} LIMIT 1"
         )
         for table in TABLE_PK
+        if table not in COUNTER_TABLES
     }
     deletes = []
     key_reads = []
     for table, probe in probes.items():
         if not probe.result().current_rows:
-            continue
-        if table in COUNTER_TABLES:
-            # Never row-delete counters (increments on tombstoned counters
-            # resurrect stale shards); a dirty probe means a real TRUNCATE.
-            session.execute(f"TRUNCATE {TEST_KEYSPACE}.{table}")
             continue
         columns = TABLE_PK[table]
         key_reads.append(

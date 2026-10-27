@@ -6,10 +6,10 @@ import re
 from datetime import datetime
 from uuid import UUID
 
-from cassandra.cqlengine.connection import get_session
 
 from realtime.interfaces import WsTicketStore
 from realtime.model import WsTicket
+from core.cql import run as cql_run
 
 _KEYSPACE_RE = re.compile(r"^[a-z0-9_]+$")
 
@@ -48,7 +48,7 @@ class CqlWsTicketStore(WsTicketStore):
         # Single use: raw LWT because cqlengine cannot express an atomic
         # read-and-delete. Second consumer loses the race -> None.
         keyspace = _checked_keyspace(self._keyspace)
-        applied = get_session().execute(
+        applied = cql_run(
             f"DELETE FROM {keyspace}.ws_tickets"
             " WHERE ticket_hash = %s IF EXISTS",
             [ticket_hash],

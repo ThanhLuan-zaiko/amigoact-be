@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+
+import anyio.to_thread
 import logging
 from contextlib import asynccontextmanager
 from typing import Any
@@ -10,6 +12,7 @@ from typing import Any
 from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.routing import APIRoute, APIWebSocketRoute
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
@@ -24,6 +27,7 @@ from core.exceptions import (
 from core.guard_middleware import GuardMiddleware
 from core.idempotency_middleware import IdempotencyMiddleware
 from core.no_store_middleware import NoStoreErrorsMiddleware
+from core.timing_middleware import TimingMiddleware
 from core.realtime import ConnectionManager
 
 logger = logging.getLogger("amigoact")
@@ -50,13 +54,20 @@ def _describe_routes(app: FastAPI) -> list[str]:
 async def lifespan(app: FastAPI):
     """Startup: check ScyllaDB (from .env) and log routes. Never fail boot."""
     settings = get_settings()
+    # Sync endpoints run in AnyIO's pool (default 40 threads); a slow DB
+    # would otherwise queue every request behind a few blocked threads.
+    anyio.to_thread.current_default_thread_limiter().total_tokens = (
+        settings.worker_threads
+    )
     status = await asyncio.to_thread(
         check_scylla_connection,
         settings.scylla_hosts_list,
         settings.scylla_port,
         settings.scylla_keyspace,
-        10.0,
+        settings.scylla_connect_timeout_seconds,
         settings.scylla_datacenter,
+        settings.scylla_username,
+        settings.scylla_password,
     )
     app.state.db_status = {
         "ok": status.ok,
@@ -93,6 +104,11 @@ async def lifespan(app: FastAPI):
             settings.scylla_hosts_list,
             settings.scylla_keyspace,
             settings.scylla_datacenter,
+            port=settings.scylla_port,
+            username=settings.scylla_username,
+            password=settings.scylla_password,
+            connect_timeout=settings.scylla_connect_timeout_seconds,
+            request_timeout=settings.scylla_request_timeout_seconds,
         )
         from activities.seed import seed_categories
         from profiles.seed import seed_skills
@@ -125,8 +141,12 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-# Outermost: 404/410 are HTTP-cacheable by default; API errors must never be.
+# Compress JSON bodies over 1 KB (feeds, directories, chat history).
+app.add_middleware(GZipMiddleware, minimum_size=1024)
+# 404/410 are HTTP-cacheable by default; API errors must never be.
 app.add_middleware(NoStoreErrorsMiddleware)
+# Outermost: measures the whole stack, including the middlewares above.
+app.add_middleware(TimingMiddleware, slow_ms=get_settings().slow_request_ms)
 
 from activities.category_router import (  # noqa: E402
     router as activity_category_router,

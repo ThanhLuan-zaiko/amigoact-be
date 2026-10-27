@@ -9,7 +9,6 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from cassandra.cqlengine.connection import get_session
 
 from activities.interfaces import OrgTagStore
 from activities.model import ActivitiesByTag, ActivitiesTrashByOrg, Activity
@@ -21,6 +20,7 @@ from activities.tag_model import (
     TrashedTagEdgesByOrg,
 )
 from core.exceptions import TagDeletedError
+from core.cql import run as cql_run
 
 DIRECTORY_BUCKET = "all"
 _MAX_ACTIVITY_TAGS = 10
@@ -72,8 +72,7 @@ class CqlOrgTagStore(OrgTagStore):
         now: datetime,
     ) -> tuple[TagByOrg, bool]:
         """Race-safe create: losers read back the winner's row."""
-        session = get_session()
-        applied = session.execute(
+        applied = cql_run(
             f"INSERT INTO {self._keyspace}.tags_by_org"
             " (org_id, slug, tag_id, name, created_at, updated_at)"
             " VALUES (%s, %s, %s, %s, %s, %s) IF NOT EXISTS",
@@ -128,8 +127,7 @@ class CqlOrgTagStore(OrgTagStore):
                 created_at=row.created_at,
                 updated_at=now,
             )
-        session = get_session()
-        applied = session.execute(
+        applied = cql_run(
             f"INSERT INTO {self._keyspace}.tags_by_org"
             " (org_id, slug, tag_id, name, created_at, updated_at)"
             " VALUES (%s, %s, %s, %s, %s, %s) IF NOT EXISTS",
