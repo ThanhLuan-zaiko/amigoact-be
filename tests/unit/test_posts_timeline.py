@@ -57,6 +57,9 @@ class Env:
         self.member = _uid()
         self.users.add(self.member, "mem@x.com", "Member")
         self.members.put(self.org_id, self.member, "active", NOW)
+        self.access.perms[(self.org_id, self.member)] = {
+            "post:create", "post:publish", "comment:create",
+        }
 
     def announcement(self, title: str = "News"):  # noqa: ANN202
         return self.svc.create_post(
@@ -190,12 +193,13 @@ def test_member_without_announce_permission_stays_member_scoped() -> None:
             visibility="public",
         )
     # ...but taking an own public post private is always allowed.
-    env.access.perms[(env.org_id, env.member)] = {"post:announce"}
+    writer = env.access.perms[(env.org_id, env.member)]
+    env.access.perms[(env.org_id, env.member)] = writer | {"post:announce"}
     public = env.svc.create_post(
         env.org_id, env.member, "discussion", "", "open", [],
         visibility="public",
     )
-    del env.access.perms[(env.org_id, env.member)]
+    env.access.perms[(env.org_id, env.member)] = writer
     snap2 = env.svc.update_post(
         env.org_id, public.post_id, env.member, "", "open",
         visibility="members",

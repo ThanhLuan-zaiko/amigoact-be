@@ -9,7 +9,7 @@ from tests.integration.test_workspace_db import _org_with_member
 
 async def test_post_tag_contract(client: AsyncClient) -> None:
     """Chips are {name, slug}; four names are 422; a dead slug is 410."""
-    org_id, owner_h, member_h, _ = await _org_with_member(client, "rg-ptag")
+    org_id, owner_h, member_h, _ = await _org_with_member(client, "rg-ptag", writer=True)
     base = f"/orgs/{org_id}/posts"
     made = await client.post(
         base,

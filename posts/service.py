@@ -177,6 +177,13 @@ class PostService(BoardServiceBase):
         realtime fan-out and no announcement notifications until publish.
         """
         org = self._guard.require_member(org_id, actor_id, "post.create")
+        self._guard.require(
+            org_id, org.owner_id, actor_id, "post:create", "post.create"
+        )
+        if status != "draft":
+            self._guard.require(
+                org_id, org.owner_id, actor_id, "post:publish", "post.create"
+            )
         audience = visibility or (
             "public" if kind == "announcement" else "members"
         )
@@ -233,15 +240,16 @@ class PostService(BoardServiceBase):
         tags: list[str] | None = None,
         touch_tags: bool = False,
     ) -> PostSnapshot:
-        """Only the author edits (drafts too); managers moderate by delete.
+        """The author edits (drafts too); post:edit-any edits published ones.
 
         blocks=None keeps the legacy title/body edit. The kind may only
         change while the post is still a draft.
         """
         org = self._guard.require_member(org_id, actor_id, "post.update")
         row = visible_post_or_404(self._posts, org_id, post_id, actor_id)
-        self._guard.require_author(
-            org_id, row.author_id, actor_id, "post.update", post_id
+        self._guard.require_author_or_any(
+            org_id, org.owner_id, row.author_id, actor_id, "post.update",
+            post_id, "post:edit-any",
         )
         current_kind = row.kind or "discussion"
         next_kind = kind or current_kind
@@ -268,7 +276,7 @@ class PostService(BoardServiceBase):
                     org_id, org.owner_id, actor_id, "post.update", post_id
                 )
         canonical = (
-            self._canonical_tags(org_id, actor_id, tags or [])
+            self._canonical_tags(org_id, row.author_id, tags or [])
             if touch_tags
             else None
         )
@@ -291,7 +299,7 @@ class PostService(BoardServiceBase):
         if visibility_changed:
             self._posts.set_visibility(row, next_visibility, now)
         if touch_tags:
-            self._write_tags(org_id, post_id, actor_id, canonical, now)
+            self._write_tags(org_id, post_id, row.author_id, canonical, now)
         self._guard.record(org_id, actor_id, "post.update", post_id)
         if not is_draft(row):
             self._emit(org_id, "post.updated", post_id, actor_id)

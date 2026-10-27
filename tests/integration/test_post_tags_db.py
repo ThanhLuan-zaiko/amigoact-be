@@ -23,7 +23,7 @@ async def test_member_tags_filter_rename_trash_and_restore(
     client: AsyncClient,
 ) -> None:
     """A discussion claims catalog tags, filters, and follows curation."""
-    org_id, owner_h, member_h, _ = await _org_with_member(client, "pt-live")
+    org_id, owner_h, member_h, _ = await _org_with_member(client, "pt-live", writer=True)
     base = f"/orgs/{org_id}/posts"
     made = await client.post(
         base,
@@ -125,7 +125,7 @@ async def test_restore_skips_a_post_already_at_the_cap(
     client: AsyncClient,
 ) -> None:
     """A post filled with other tags while one was trashed stays full."""
-    org_id, owner_h, member_h, _ = await _org_with_member(client, "pt-cap")
+    org_id, owner_h, member_h, _ = await _org_with_member(client, "pt-cap", writer=True)
     base = f"/orgs/{org_id}/posts"
     made = await client.post(
         base,
@@ -155,7 +155,7 @@ async def test_publishing_a_revision_adopts_its_tags(
     client: AsyncClient,
 ) -> None:
     """The live post takes the revision's tags; the draft edges go away."""
-    org_id, owner_h, member_h, _ = await _org_with_member(client, "pt-rev")
+    org_id, owner_h, member_h, _ = await _org_with_member(client, "pt-rev", writer=True)
     base = f"/orgs/{org_id}/posts"
     made = await client.post(
         base,

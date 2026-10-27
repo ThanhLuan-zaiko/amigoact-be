@@ -30,8 +30,11 @@ from tests.unit.workspace_fakes import (
 )
 
 
+WRITER = {"post:create", "post:publish", "comment:create"}
+
+
 class Env:
-    """One org with owner, plain member and post:manage manager."""
+    """One org with owner, writer member and post:manage manager."""
 
     def __init__(self) -> None:
         self.posts, self.comments = FakePostStore(), FakeCommentStore()
@@ -53,12 +56,13 @@ class Env:
         )
         self.member = self.add_member("mem@x.com")
         self.manager = self.add_member("mgr@x.com")
-        self.access.perms[(self.org_id, self.manager)] = {"post:manage"}
+        self.access.perms[(self.org_id, self.manager)] |= {"post:manage"}
 
     def add_member(self, email: str) -> UUID:
         uid = _uid()
         self.users.add(uid, email, f"Name {email}")
         self.members.put(self.org_id, uid, "active", NOW)
+        self.access.perms[(self.org_id, uid)] = set(WRITER)
         return uid
 
     def draft(self, author: UUID, title: str = "Draft", body: str = "b"):  # noqa: ANN201

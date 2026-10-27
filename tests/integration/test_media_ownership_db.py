@@ -105,7 +105,7 @@ async def test_deleting_message_removes_its_file(client: AsyncClient) -> None:
 
 
 async def test_board_uploads_are_post_media_not_gallery(client: AsyncClient) -> None:
-    org_id, owner_h, member_h, _ = await _org_with_member(client, "own-board")
+    org_id, owner_h, member_h, _ = await _org_with_member(client, "own-board", writer=True)
     base = f"/orgs/{org_id}/posts"
 
     cover = await client.post(

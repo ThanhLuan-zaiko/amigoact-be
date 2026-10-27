@@ -19,8 +19,14 @@ PERMISSIONS: dict[str, str] = {
     "activity:create": "Create activities inside the org.",
     "activity:manage": "Publish, edit, staff, and cancel activities.",
     "activity:delete": "Trash, restore and permanently delete activities.",
+    "post:create": "Write drafts and discussions and manage own posts.",
+    "post:publish": "Publish posts onto the org board.",
+    "post:edit-any": "Edit posts written by other members.",
+    "post:delete-any": "Trash, restore and delete posts of other members.",
     "post:announce": "Publish announcements on the org board.",
     "post:manage": "Pin, edit or remove any org post or comment.",
+    "comment:create": "Comment on org board posts.",
+    "comment:delete-any": "Remove comments written by other members.",
     "chat:manage": "Full chat control: implies the three chat:* codes below.",
     "chat:moderate": "Pin messages and remove chat messages of other members.",
     "chat:channel": "Create, edit and archive channels and manage their rosters.",
@@ -45,6 +51,10 @@ IMPLIED_PERMISSIONS: dict[str, frozenset[str]] = {
         }
     ),
     "activity:manage": frozenset({"activity:delete"}),
+    # Roles that predate the post split keep moderating unchanged.
+    "post:manage": frozenset(
+        {"post:edit-any", "post:delete-any", "comment:delete-any"}
+    ),
 }
 
 # Permissions a custom org role may carry. media:upload stays out:
@@ -62,6 +72,9 @@ BASELINE_PERMISSIONS: frozenset[str] = frozenset(
         "member:invite",
         "activity:view",
         "activity:create",
+        "post:create",
+        "post:publish",
+        "comment:create",
         "post:announce",
     }
 )
@@ -96,8 +109,14 @@ SYSTEM_ROLES: dict[str, dict[str, object]] = {
             "activity:view",
             "activity:create",
             "activity:manage",
+            "post:create",
+            "post:publish",
+            "post:edit-any",
+            "post:delete-any",
             "post:announce",
             "post:manage",
+            "comment:create",
+            "comment:delete-any",
             "chat:manage",
             "tag:manage",
         },

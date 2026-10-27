@@ -31,6 +31,9 @@ from tests.unit.workspace_fakes import (
 )
 
 
+WRITER = {"post:create", "post:publish", "comment:create"}
+
+
 def _service():
     posts, comments = FakePostStore(), FakeCommentStore()
     orgs, members, users = FakeOrgs(), FakeMembers(), FakeUsers()
@@ -85,9 +88,10 @@ def test_announcement_requires_permission() -> None:
     (svc, _, _, members, users, access, _, _, _, org_id,
      owner) = _service()
     member = _member(members, users, org_id)
+    access.perms[(org_id, member)] = set(WRITER)
     with pytest.raises(ForbiddenError):
         svc.create_post(org_id, member, "announcement", "T", "b", [])
-    access.perms[(org_id, member)] = {"post:announce"}
+    access.perms[(org_id, member)] = WRITER | {"post:announce"}
     snap = svc.create_post(
         org_id, member, "announcement", "T", "b", []
     )
@@ -134,7 +138,7 @@ def test_kind_filter_pages_without_skipping() -> None:
     (svc, _, _, members, users, access, _, _, _, org_id,
      owner) = _service()
     member = _member(members, users, org_id)
-    access.perms[(org_id, member)] = {"post:announce"}
+    access.perms[(org_id, member)] = WRITER | {"post:announce"}
     ann1 = svc.create_post(org_id, member, "announcement", "A", "b", [])
     svc.create_post(org_id, owner, "discussion", "", "d1", [])
     ann2 = svc.create_post(org_id, member, "announcement", "B", "b", [])
@@ -150,6 +154,7 @@ def test_pinned_rail_and_permissions() -> None:
     (svc, _, _, members, users, access, _, _, _, org_id,
      owner) = _service()
     member = _member(members, users, org_id)
+    access.perms[(org_id, member)] = set(WRITER)
     snap = svc.create_post(org_id, member, "discussion", "", "pin me", [])
     with pytest.raises(ForbiddenError):
         svc.set_pinned(org_id, snap.post_id, member, True)
@@ -162,13 +167,62 @@ def test_pinned_rail_and_permissions() -> None:
 
 
 def test_update_only_by_author() -> None:
-    (svc, _, _, members, users, _, _, _, _, org_id, owner) = _service()
+    (svc, _, _, members, users, access, _, _, _, org_id,
+     owner) = _service()
     member = _member(members, users, org_id)
+    access.perms[(org_id, member)] = set(WRITER)
     snap = svc.create_post(org_id, owner, "discussion", "", "v1", [])
     with pytest.raises(ForbiddenError):
         svc.update_post(org_id, snap.post_id, member, "t", "v2")
     edited = svc.update_post(org_id, snap.post_id, owner, "t", "v2")
     assert edited.body == "v2" and edited.edited_at is not None
+
+
+def test_member_without_post_create_cannot_write() -> None:
+    (svc, _, _, members, users, access, _, _, _, org_id,
+     _) = _service()
+    member = _member(members, users, org_id)
+    # An event-coordinator style role: other modules, nothing for posts.
+    access.perms[(org_id, member)] = {"activity:view", "activity:create"}
+    with pytest.raises(ForbiddenError):
+        svc.create_post(
+            org_id, member, "discussion", "", "x", [], status="draft"
+        )
+    assert ("post.create", None, "denied") in access.audit
+
+
+def test_publishing_needs_post_publish_but_drafts_do_not() -> None:
+    (svc, _, _, members, users, access, _, _, _, org_id,
+     _) = _service()
+    member = _member(members, users, org_id)
+    access.perms[(org_id, member)] = {"post:create"}
+    draft = svc.create_post(
+        org_id, member, "discussion", "T", "b", [], status="draft"
+    )
+    assert draft.status == "draft"
+    with pytest.raises(ForbiddenError):
+        svc.create_post(org_id, member, "discussion", "", "live", [])
+    access.perms[(org_id, member)] = {"post:create", "post:publish"}
+    assert svc.create_post(
+        org_id, member, "discussion", "", "live", []
+    ).status != "draft"
+
+
+def test_edit_any_lets_a_moderator_edit_other_authors() -> None:
+    (svc, _, _, members, users, access, _, _, _, org_id,
+     owner) = _service()
+    editor = _member(members, users, org_id)
+    access.perms[(org_id, editor)] = {"post:edit-any"}
+    snap = svc.create_post(org_id, owner, "discussion", "", "v1", [])
+    assert svc.update_post(
+        org_id, snap.post_id, editor, "t", "v2"
+    ).body == "v2"
+    # post:manage implies it for roles that predate the split.
+    legacy = _member(members, users, org_id, "old@x.com")
+    access.perms[(org_id, legacy)] = {"post:manage"}
+    assert svc.update_post(
+        org_id, snap.post_id, legacy, "t", "v3"
+    ).body == "v3"
 
 
 def test_update_with_blocks_replaces_article_and_media() -> None:

@@ -104,6 +104,7 @@ def test_comment_delete_author_manager_and_denied() -> None:
     member = _member(members, users, org_id)
     manager = _member(members, users, org_id, "mgr@x.com")
     access.perms[(org_id, manager)] = {"post:manage"}
+    access.perms[(org_id, member)] = {"comment:create"}
     post_id = _post(posts_svc, org_id, owner)
     comment = svc.add_comment(org_id, post_id, owner, "x")
     with pytest.raises(ForbiddenError):
@@ -113,6 +114,18 @@ def test_comment_delete_author_manager_and_denied() -> None:
     own = svc.add_comment(org_id, post_id, member, "mine")
     svc.delete_comment(org_id, post_id, own.comment_id, member)
     assert comments.count(post_id) == 0
+
+
+def test_comment_needs_comment_create_permission() -> None:
+    (svc, posts_svc, _, _, members, users, access, _,
+     org_id, owner, _) = _service()
+    member = _member(members, users, org_id)
+    access.perms[(org_id, member)] = {"activity:view"}
+    post_id = _post(posts_svc, org_id, owner)
+    with pytest.raises(ForbiddenError):
+        svc.add_comment(org_id, post_id, member, "hi")
+    access.perms[(org_id, member)] = {"comment:create"}
+    assert svc.add_comment(org_id, post_id, member, "hi").body == "hi"
 
 
 def test_comment_guards() -> None:

@@ -53,7 +53,10 @@ class PostUploads:
         mime: str,
         content: bytes,
     ) -> PostUploadSnapshot:
-        self._guard.require_member(org_id, actor_id, "post.upload")
+        org = self._guard.require_member(org_id, actor_id, "post.upload")
+        self._guard.require(
+            org_id, org.owner_id, actor_id, "post:create", "post.upload"
+        )
         prepared = prepare_upload(
             mime, content, self._max_image_bytes, self._max_video_bytes
         )

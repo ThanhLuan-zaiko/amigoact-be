@@ -68,7 +68,9 @@ class PostLifecycleService(BoardServiceBase):
         status), so the page total never loads trashed canonical rows.
         """
         org = self._guard.require_member(org_id, viewer_id, "post.trash")
-        manager = self._guard.can_manage(org_id, org.owner_id, viewer_id)
+        manager = self._guard.holds(
+            org_id, org.owner_id, viewer_id, "post:delete-any"
+        )
         rows = self._posts.list_trash(org_id, SCAN_LIMIT)
         ids = [
             row.post_id
@@ -115,10 +117,11 @@ class PostLifecycleService(BoardServiceBase):
         The revision is a normal draft row copying the post's content;
         it shows on the author's draft shelf until publish folds it back.
         """
-        self._guard.require_member(org_id, actor_id, "post.revise")
+        org = self._guard.require_member(org_id, actor_id, "post.revise")
         row = visible_post_or_404(self._posts, org_id, post_id, actor_id)
         self._guard.require_author(
-            org_id, row.author_id, actor_id, "post.revise", post_id
+            org_id, org.owner_id, row.author_id, actor_id, "post.revise",
+            post_id,
         )
         if is_draft(row) or getattr(row, "revision_of", None) is not None:
             raise InvalidPostStateError(
@@ -160,7 +163,8 @@ class PostLifecycleService(BoardServiceBase):
         org = self._guard.require_member(org_id, actor_id, "post.publish")
         row = visible_post_or_404(self._posts, org_id, post_id, actor_id)
         self._guard.require_author(
-            org_id, row.author_id, actor_id, "post.publish", post_id
+            org_id, org.owner_id, row.author_id, actor_id, "post.publish",
+            post_id, "post:publish",
         )
         if not is_draft(row):
             raise InvalidPostStateError("Post is already published.")
@@ -211,10 +215,11 @@ class PostLifecycleService(BoardServiceBase):
         Open revisions fold in first so the post comes down carrying the
         newest edits and no duplicate draft rows remain.
         """
-        self._guard.require_member(org_id, actor_id, "post.unpublish")
+        org = self._guard.require_member(org_id, actor_id, "post.unpublish")
         row = visible_post_or_404(self._posts, org_id, post_id, actor_id)
         self._guard.require_author(
-            org_id, row.author_id, actor_id, "post.unpublish", post_id
+            org_id, org.owner_id, row.author_id, actor_id, "post.unpublish",
+            post_id,
         )
         if is_draft(row):
             raise InvalidPostStateError("Post is already a draft.")
@@ -261,9 +266,9 @@ class PostLifecycleService(BoardServiceBase):
         """Author or manager moves a live post or draft to the trash."""
         org = self._guard.require_member(org_id, actor_id, "post.delete")
         row = visible_post_or_404(self._posts, org_id, post_id, actor_id)
-        self._guard.require_author_or_manage(
+        self._guard.require_author_or_any(
             org_id, org.owner_id, row.author_id, actor_id, "post.delete",
-            post_id,
+            post_id, "post:delete-any",
         )
         was_draft = is_draft(row)
         now = utcnow()
@@ -282,9 +287,9 @@ class PostLifecycleService(BoardServiceBase):
         """Return a trashed post to its feed (published) or drafts."""
         org = self._guard.require_member(org_id, actor_id, "post.restore")
         row = self._own_or_public(org_id, post_id, actor_id)
-        self._guard.require_author_or_manage(
+        self._guard.require_author_or_any(
             org_id, org.owner_id, row.author_id, actor_id, "post.restore",
-            post_id,
+            post_id, "post:delete-any",
         )
         if not is_trashed(row):
             raise InvalidPostStateError("Post is not in the trash.")
@@ -303,9 +308,9 @@ class PostLifecycleService(BoardServiceBase):
         """
         org = self._guard.require_member(org_id, actor_id, "post.purge")
         row = self._own_or_public(org_id, post_id, actor_id)
-        self._guard.require_author_or_manage(
+        self._guard.require_author_or_any(
             org_id, org.owner_id, row.author_id, actor_id, "post.purge",
-            post_id,
+            post_id, "post:delete-any",
         )
         was_live = not is_draft(row) and not is_trashed(row)
         asset_ids = [link.asset_id for link in self._posts.list_media(post_id)]

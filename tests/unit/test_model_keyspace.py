@@ -14,6 +14,8 @@ from pathlib import Path
 
 from cassandra.cqlengine import models as cql_models
 
+from tests.conftest import TEST_KEYSPACE
+
 ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -54,6 +56,11 @@ def test_models_resolve_to_connection_keyspace(monkeypatch) -> None:
                 and issubclass(value, cql_models.Model)
                 and value.__module__ == name
             ):
+                # The session DB fixture pins the test keyspace on models
+                # until the run ends; undo that so only a keyspace the
+                # model itself declares can fail this check.
+                if value.__dict__.get("__keyspace__") == TEST_KEYSPACE:
+                    monkeypatch.setattr(value, "__keyspace__", None)
                 assert value._get_keyspace() == "ks_probe", value.__name__
                 checked += 1
     assert checked > 100

@@ -8,6 +8,7 @@ from core.exceptions import ForbiddenError
 from orgs.interfaces import MemberRepository, OrgRepository
 from orgs.member_helpers import is_active_member, live_org
 from rbac.catalog import PERMISSIONS
+from rbac.implied import holds
 from rbac.interfaces import AccessControl
 
 
@@ -34,12 +35,30 @@ class BoardGuard:
         self._access.record(org_id, user_id, action, "post", None, "denied")
         raise ForbiddenError("Only org members can do this.")
 
-    def can_manage(self, org_id: UUID, org_owner: UUID, user_id: UUID) -> bool:
+    def holds(
+        self, org_id: UUID, org_owner: UUID, user_id: UUID, code: str
+    ) -> bool:
+        """Owner, or an active member holding `code` (umbrellas included)."""
         if org_owner == user_id:
             return True
-        return is_active_member(
-            self._members, org_id, user_id
-        ) and self._access.has_permission(org_id, user_id, "post:manage")
+        return is_active_member(self._members, org_id, user_id) and holds(
+            self._access, org_id, user_id, code
+        )
+
+    def require(
+        self, org_id: UUID, org_owner: UUID, user_id: UUID, code: str,
+        action: str, target_id: UUID | None = None,
+    ) -> None:
+        """Forbid unless the caller holds the permission `code`."""
+        if self.holds(org_id, org_owner, user_id, code):
+            return
+        self._access.record(
+            org_id, user_id, action, "post", target_id, "denied"
+        )
+        raise ForbiddenError("You do not have permission to do this.")
+
+    def can_manage(self, org_id: UUID, org_owner: UUID, user_id: UUID) -> bool:
+        return self.holds(org_id, org_owner, user_id, "post:manage")
 
     def require_manage(
         self, org_id: UUID, org_owner: UUID, user_id: UUID, action: str,
@@ -52,32 +71,31 @@ class BoardGuard:
         )
         raise ForbiddenError("Only org managers can do this.")
 
-    def require_author_or_manage(
+    def require_author_or_any(
         self, org_id: UUID, org_owner: UUID, author_id: UUID, user_id: UUID,
-        action: str, target_id: UUID,
+        action: str, target_id: UUID, any_code: str,
     ) -> None:
-        if author_id != user_id:
-            self.require_manage(org_id, org_owner, user_id, action, target_id)
+        """Own posts need post:create; other people's need `any_code`."""
+        code = "post:create" if author_id == user_id else any_code
+        self.require(org_id, org_owner, user_id, code, action, target_id)
 
     def require_author(
-        self, org_id: UUID, author_id: UUID, user_id: UUID, action: str,
-        target_id: UUID,
+        self, org_id: UUID, org_owner: UUID, author_id: UUID, user_id: UUID,
+        action: str, target_id: UUID, code: str = "post:create",
     ) -> None:
-        if author_id == user_id:
-            return
-        self._access.record(
-            org_id, user_id, action, "post", target_id, "denied"
-        )
-        raise ForbiddenError("Only the author can edit this post.")
+        """Only the author, and only while they still hold `code`."""
+        if author_id != user_id:
+            self._access.record(
+                org_id, user_id, action, "post", target_id, "denied"
+            )
+            raise ForbiddenError("Only the author can edit this post.")
+        self.require(org_id, org_owner, user_id, code, action, target_id)
 
     def require_announce(
         self, org_id: UUID, org_owner: UUID, user_id: UUID, action: str,
         target_id: UUID | None = None,
     ) -> None:
-        if org_owner == user_id or (
-            is_active_member(self._members, org_id, user_id)
-            and self._access.has_permission(org_id, user_id, "post:announce")
-        ):
+        if self.holds(org_id, org_owner, user_id, "post:announce"):
             return
         self._access.record(
             org_id, user_id, action, "post", target_id, "denied"

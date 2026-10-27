@@ -29,10 +29,17 @@ def _headers(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
+WRITER_PERMISSIONS = {"post:create", "post:publish", "comment:create"}
+
+
 async def _org_with_member(
-    client: AsyncClient, slug: str
+    client: AsyncClient, slug: str, *, writer: bool = False
 ) -> tuple[str, dict[str, str], dict[str, str], str]:
-    """Invite-flow org: owner + one accepted member + headers."""
+    """Invite-flow org: owner + one accepted member + headers.
+
+    `writer` lifts the member baseline so plain members may write posts
+    and comment, which new orgs no longer allow by default.
+    """
     owner = await _token(client, f"{slug}-own@x.com", "0912347001")
     owner_h = _headers(owner)
     created = await client.post(
@@ -60,12 +67,19 @@ async def _org_with_member(
         f"/orgs/{org_id}/members/me/accept", headers=member_h
     )
     assert accepted.status_code == 200, accepted.text
+    if writer:
+        lifted = await client.put(
+            f"/orgs/{org_id}/roles/member-defaults",
+            json={"permissions": sorted(WRITER_PERMISSIONS)},
+            headers=owner_h,
+        )
+        assert lifted.status_code == 200, lifted.text
     return org_id, owner_h, member_h, invited.json()["user_id"]
 
 
 async def test_board_flow_with_roles(client: AsyncClient) -> None:
     org_id, owner_h, member_h, _ = await _org_with_member(
-        client, "ws-board"
+        client, "ws-board", writer=True
     )
     outsider = await _token(client, "ws-board-out@x.com", "0912347003")
     outsider_h = _headers(outsider)

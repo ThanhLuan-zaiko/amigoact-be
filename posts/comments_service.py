@@ -18,11 +18,13 @@ from posts.interfaces import (
     PostStore,
 )
 from posts.model import OrgPostComment
+from rbac.implied import holds
 from rbac.interfaces import AccessControl
 
 
 class CommentService:
-    """Thread rules: members comment, authors or post:manage moderate."""
+    """Thread rules: comment:create to comment, authors or
+    comment:delete-any (implied by post:manage) to remove."""
 
     def __init__(
         self,
@@ -55,20 +57,21 @@ class CommentService:
         )
         raise ForbiddenError("Only org members can do this.")
 
-    def _require_manage(
-        self, org_id: UUID, org_owner: UUID, user_id: UUID, action: str,
-        target_id: UUID | None = None,
+    def _require(
+        self, org_id: UUID, org_owner: UUID, user_id: UUID, code: str,
+        action: str, target_id: UUID | None = None,
     ) -> None:
+        """Owner, or an active member holding `code` (umbrellas included)."""
         if org_owner == user_id:
             return
-        if is_active_member(
-            self._members, org_id, user_id
-        ) and self._access.has_permission(org_id, user_id, "post:manage"):
+        if is_active_member(self._members, org_id, user_id) and holds(
+            self._access, org_id, user_id, code
+        ):
             return
         self._access.record(
             org_id, user_id, action, "post", target_id, "denied"
         )
-        raise ForbiddenError("Only org managers can do this.")
+        raise ForbiddenError("You do not have permission to do this.")
 
     def _emit(self, org_id: UUID, action: str, post_id: UUID,
               actor_id: UUID) -> None:
@@ -111,7 +114,11 @@ class CommentService:
     def add_comment(
         self, org_id: UUID, post_id: UUID, actor_id: UUID, body: str
     ) -> CommentSnapshot:
-        self._require_member(org_id, actor_id, "comment.create")
+        org = self._require_member(org_id, actor_id, "comment.create")
+        self._require(
+            org_id, org.owner_id, actor_id, "comment:create",
+            "comment.create", post_id,
+        )
         post = post_or_404(self._posts, org_id, post_id)
         row = self._comments.add(post_id, uuid7(), actor_id, body, utcnow())
         self._access.record(
@@ -131,8 +138,9 @@ class CommentService:
         if row is None:
             raise NotFoundError("Comment not found.")
         if row.author_id != actor_id:
-            self._require_manage(
-                org_id, org.owner_id, actor_id, "comment.delete", post_id
+            self._require(
+                org_id, org.owner_id, actor_id, "comment:delete-any",
+                "comment.delete", post_id,
             )
         self._comments.remove(row)
         self._access.record(

@@ -21,7 +21,7 @@ async def _upload(
 
 
 async def test_article_lifecycle(client: AsyncClient) -> None:
-    org_id, owner_h, member_h, _ = await _org_with_member(client, "ws-art")
+    org_id, owner_h, member_h, _ = await _org_with_member(client, "ws-art", writer=True)
     base = f"/orgs/{org_id}/posts"
     image = await _upload(
         client, org_id, member_h, "a.png", b"\x89PNG" + b"1" * 120,
@@ -115,7 +115,7 @@ async def test_revision_round_trip_keeps_one_board_entry(
 ) -> None:
     """Editing a live post goes through a private revision draft; publish
     folds it back so the feed keeps a single entry (same post_id)."""
-    org_id, owner_h, member_h, _ = await _org_with_member(client, "ws-rev")
+    org_id, owner_h, member_h, _ = await _org_with_member(client, "ws-rev", writer=True)
     base = f"/orgs/{org_id}/posts"
     made = await client.post(
         base, json={"title": "Live", "body": "v1"}, headers=member_h
@@ -155,7 +155,7 @@ async def test_revision_round_trip_keeps_one_board_entry(
 
 
 async def test_trash_cascades_to_open_revision(client: AsyncClient) -> None:
-    org_id, owner_h, member_h, _ = await _org_with_member(client, "ws-rev2")
+    org_id, owner_h, member_h, _ = await _org_with_member(client, "ws-rev2", writer=True)
     base = f"/orgs/{org_id}/posts"
     made = await client.post(base, json={"body": "v1"}, headers=member_h)
     post_id = made.json()["post_id"]
@@ -171,7 +171,7 @@ async def test_trash_cascades_to_open_revision(client: AsyncClient) -> None:
 
 
 async def test_unpublish_and_trash_permissions(client: AsyncClient) -> None:
-    org_id, owner_h, member_h, _ = await _org_with_member(client, "ws-art2")
+    org_id, owner_h, member_h, _ = await _org_with_member(client, "ws-art2", writer=True)
     base = f"/orgs/{org_id}/posts"
     made = await client.post(
         base, json={"title": "Hi", "body": "Plain"}, headers=owner_h
@@ -195,7 +195,7 @@ async def test_public_announcements_guest_surface(client: AsyncClient) -> None:
     """Guests read published announcements on the org profile; drafts,
     revisions, discussions and trash never leave the member board."""
     slug = "ws-pub"
-    org_id, owner_h, member_h, _ = await _org_with_member(client, slug)
+    org_id, owner_h, member_h, _ = await _org_with_member(client, slug, writer=True)
     base = f"/orgs/{org_id}/posts"
     announcement = await client.post(
         base,
@@ -261,7 +261,7 @@ async def test_visibility_axis_decoupled_from_kind(
     """Public discussions reach guests; members-only announcements and
     member-authored public posts stay on the board; flips cross over."""
     slug = "ws-vis"
-    org_id, owner_h, member_h, _ = await _org_with_member(client, slug)
+    org_id, owner_h, member_h, _ = await _org_with_member(client, slug, writer=True)
     base = f"/orgs/{org_id}/posts"
 
     public = await client.post(
