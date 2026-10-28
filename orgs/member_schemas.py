@@ -13,9 +13,9 @@ from orgs.schemas import BucketCount
 
 _EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
-MemberStatus = Literal["active", "invited", "suspended", "left", "revoked"]
+MemberStatus = Literal["active", "applied", "invited", "suspended", "left", "revoked"]
 MemberSort = Literal["newest", "name", "role"]
-JoinPolicy = Literal["invite", "open"]
+JoinPolicy = Literal["invite", "open", "review"]
 
 
 def validate_member_email(value: str) -> str:

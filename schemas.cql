@@ -231,10 +231,29 @@ CREATE TABLE IF NOT EXISTS org_types (
     sort_order int
 );
 
+CREATE TABLE IF NOT EXISTS membership_forms (
+    org_id uuid,
+    position int,
+    question_id uuid,
+    label text,
+    field_type text, // text | textarea | choice | consent
+    required boolean,
+    PRIMARY KEY ((org_id), position, question_id)
+);
+
+CREATE TABLE IF NOT EXISTS membership_applications (
+    org_id uuid,
+    user_id uuid,
+    answers text, // JSON {question_id: answer}, written on apply
+    submitted_at timestamp,
+    rejected_at timestamp, // set on reject; drives the re-apply cooldown
+    PRIMARY KEY ((org_id), user_id)
+);
+
 CREATE TABLE IF NOT EXISTS organization_members (
     org_id uuid,
     user_id uuid,
-    status text, // active | invited | suspended | left | revoked
+    status text, // active | applied | invited | suspended | left | revoked
     invited_by uuid, // (deployed keyspaces: ALTER TABLE organization_members ADD invited_by uuid)
     joined_at timestamp,
     PRIMARY KEY ((org_id), user_id)
@@ -243,7 +262,7 @@ CREATE TABLE IF NOT EXISTS organization_members (
 CREATE TABLE IF NOT EXISTS members_by_user (
     user_id uuid,
     org_id uuid,
-    status text, // active | invited | suspended | left | revoked
+    status text, // active | applied | invited | suspended | left | revoked
     invited_by uuid, // (deployed keyspaces: ALTER TABLE members_by_user ADD invited_by uuid)
     joined_at timestamp,
     PRIMARY KEY ((user_id), org_id)

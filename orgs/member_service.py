@@ -12,7 +12,10 @@ from core.exceptions import (
     MemberNotFoundError,
     OwnerImmutableError,
 )
+from core.exceptions_applications import ApplicationRequiredError
+from auth.interfaces import RateLimiter
 from core.security import utcnow
+from orgs.application_interfaces import ApplicationStore, MembershipFormStore
 from orgs.interfaces import (
     MediaRepository,
     MemberEvents,
@@ -20,6 +23,7 @@ from orgs.interfaces import (
     OrgRepository,
     UserDirectory,
 )
+from orgs.member_applications import MemberApplicationsMixin
 from orgs.member_helpers import (
     is_active_member,
     is_admin,
@@ -52,8 +56,9 @@ class MemberService(
     MemberModerationMixin,
     MemberMatchingMixin,
     MemberVolunteerMixin,
+    MemberApplicationsMixin,
 ):
-    """Invite/accept/decline/join/leave/suspend/remove/role for orgs."""
+    """Invite/accept/decline/join/leave/suspend/remove/role/apply for orgs."""
 
     def __init__(
         self,
@@ -65,6 +70,10 @@ class MemberService(
         notifications: NotificationPort | None = None,
         profiles: ProfileStore | None = None,
         media: MediaRepository | None = None,
+        *,
+        forms: MembershipFormStore,
+        applications: ApplicationStore,
+        limiter: RateLimiter | None = None,
     ) -> None:
         self._orgs = orgs
         self._members = members
@@ -74,6 +83,9 @@ class MemberService(
         self._notifications = notifications
         self._profiles = profiles
         self._media = media
+        self._forms = forms
+        self._applications = applications
+        self._limiter = limiter
 
     def _emit(
         self,
@@ -198,6 +210,8 @@ class MemberService(
         """Open orgs admit anyone instantly; invite orgs reject here."""
         org = live_org(self._orgs, org_id)
         policy = getattr(org, "join_policy", None) or "invite"
+        if policy == "review":
+            raise ApplicationRequiredError("This org reviews applications; apply instead.")
         if policy != "open":
             self._access.record(
                 org_id, user_id, "member.join", "member", user_id, "denied"

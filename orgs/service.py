@@ -33,7 +33,7 @@ if TYPE_CHECKING:
     from orgs.model import Organization
 
 _ORG_KINDS = ORG_KINDS
-_JOIN_POLICIES = ("invite", "open")
+_JOIN_POLICIES = ("invite", "open", "review")
 
 
 @dataclass(frozen=True)

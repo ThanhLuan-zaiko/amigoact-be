@@ -13,7 +13,7 @@ from uuid import UUID
 
 from orgs.listing import fold_search_text
 
-_MEMBER_ORDER = ("active", "invited", "suspended", "left", "revoked")
+_MEMBER_ORDER = ("active", "applied", "invited", "suspended", "left", "revoked")
 
 
 def _role_rank(roles: list[str]) -> int:

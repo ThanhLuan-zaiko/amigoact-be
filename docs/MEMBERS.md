@@ -10,6 +10,7 @@ thành viên của một tổ chức. Phần phân quyền dựa trên hạ tầ
 
 | Trạng thái | Ý nghĩa | Chuyển tiếp hợp lệ |
 |---|---|---|
+| `applied` | Ứng viên đã nộp hồ sơ theo biểu mẫu, chờ quản lý duyệt | `approve` → `active`; `reject` → `left`; ứng viên tự rút → `left` |
 | `invited` | Đã được mời, chờ chấp nhận | `accept` → `active`; `decline`/`remove` → `left`; `revoke` → `revoked` |
 | `active` | Thành viên chính thức | `suspend` → `suspended`; `leave`/`remove` → `left` |
 | `suspended` | Tạm khóa (mất quyền truy cập) | `reactivate` → `active`; `remove` → `left` |
@@ -28,8 +29,26 @@ ghi, đúng ý đồ audit của `schemas.cql`. Riêng thu hồi lời mời ghi
 |---|---|
 | `invite` (mặc định) | Chỉ owner/admin mời mới vào được; `POST /join` trả `403 INVITE_ONLY` |
 | `open` | Bất kỳ ai đăng nhập đều `POST /join` → `active` ngay |
+| `review` | Ứng viên trả lời biểu mẫu rồi `POST /apply` → `applied`; `POST /join` trả `403 APPLICATION_REQUIRED` |
 
 Người tạo chọn khi tạo tổ chức; chỉ owner đổi được về sau qua `PATCH /orgs/{id}`.
+
+Với `review`, biểu mẫu là danh sách câu hỏi lưu trong `membership_forms` (theo `org_id`,
+sắp theo vị trí). Câu trả lời của mỗi ứng viên nằm trong `membership_applications`
+(một dòng theo `(org_id, user_id)`, nộp lại thì ghi đè). Việc nộp giữ trạng thái
+`applied` trên `organization_members` và `members_by_user`, nên hộp thư, danh sách
+thành viên và thẻ thống kê đều thấy trạng thái mới. Ứng viên không thấy các dòng
+`applied` của người khác; chỉ người có `member:invite` mới đọc được hồ sơ.
+Ứng viên đang có lời mời (`invited`) phải phản hồi lời mời trước. Thông báo cho
+owner khi có hồ sơ mới; người nộp được báo khi được duyệt hoặc bị từ chối.
+
+Chống spam nộp hồ sơ gồm bốn lớp. Sau khi bị từ chối, người nộp phải chờ 7 ngày
+(`membership_applications.rejected_at`, đọc trong `_check_cooldown`); tự rút hồ sơ
+thì nộp lại ngay vì không có dấu từ chối. Mỗi người nộp tối đa 5 lần nộp trong một
+giờ, kể cả lần bị từ chối (bucket `membership_apply:{uid}`). Owner nhận tối đa một
+thông báo "có hồ sơ mới" trong 15 phút (bucket `membership_notify:{org}`); danh sách
+chờ duyệt vẫn cập nhật realtime cho từng hồ sơ. Giới hạn đếm qua `RateLimiter` có
+sẵn trên ScyllaDB, không dùng bộ nhớ tiến trình.
 
 ### 1.3 Bảng dữ liệu (query-first)
 
@@ -54,7 +73,13 @@ Tất cả endpoint yêu cầu Bearer token. Lỗi trả về envelope `{code, m
 | `PATCH /orgs/{id}/members/{uid}` `{role?|status?}` | role: owner; status: owner/admin | `200` |
 | `DELETE /orgs/{id}/members/{uid}` | owner/admin; self = rời | `204`, status `left` |
 | `DELETE /orgs/{id}/members/{uid}/invitation` | quyền `member:invite` | `204`, status `revoked`; `400 INVALID_MEMBER_STATE` nếu không còn chờ |
-| `POST /orgs/{id}/members/join` | ai cũng được | `open`: `201 active`; `invite`: `403 INVITE_ONLY` |
+| `POST /orgs/{id}/members/join` | ai cũng được | `open`: `201 active`; `invite`: `403 INVITE_ONLY`; `review`: `403 APPLICATION_REQUIRED` |
+| `GET /orgs/{id}/membership-form` | đã đăng nhập | `200` danh sách câu hỏi theo thứ tự hiển thị |
+| `PUT /orgs/{id}/membership-form` `{questions}` | `member:invite` hoặc owner | `200` thay toàn bộ biểu mẫu; đơn đã nộp giữ nguyên câu trả lời |
+| `POST /orgs/{id}/members/apply` `{answers}` | ai cũng được, chính sách `review` | `201` + `Location`, trạng thái `applied`; `403 NOT_ACCEPTING_APPLICATIONS` nếu không phải `review`; `400 ANSWER_REQUIRED`; `409 ALREADY_APPLIED` / `INVITE_PENDING` / `ALREADY_MEMBER` / `APPLICATION_COOLDOWN`; `429 TOO_MANY_REQUESTS` khi vượt giới hạn tốc độ |
+| `GET /orgs/{id}/members/{uid}/application` | `member:invite` hoặc owner | `200` câu trả lời kèm nhãn câu hỏi hiện tại |
+| `POST /orgs/{id}/members/{uid}/approve` | `member:invite` hoặc owner | `200` `applied → active`; `400 INVALID_MEMBER_STATE` nếu không còn chờ |
+| `POST /orgs/{id}/members/{uid}/reject` | `member:invite` hoặc owner | `200` `applied → left`; người nộp chờ 7 ngày rồi mới nộp lại (trước đó `409 APPLICATION_COOLDOWN`) |
 | `POST /orgs/{id}/members/me/accept` | người được mời | `200` `invited → active` |
 | `POST /orgs/{id}/members/me/decline` | người được mời | `200` `invited → left` |
 | `GET /orgs/memberships/mine?status=` | bản thân | hộp thư lời mời + org của tôi |

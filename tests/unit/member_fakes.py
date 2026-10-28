@@ -18,6 +18,7 @@ from orgs.interfaces import (
 )
 from orgs.member_service import MemberService
 from rbac.interfaces import AccessControl
+from tests.unit.application_fakes import FakeApplications, FakeForms
 
 NOW = datetime.now(timezone.utc)
 
@@ -235,7 +236,8 @@ def _service(
     users.add(owner, "owner@example.com", "Owner")
     members.put(org_id, owner, "active", NOW)
     service = MemberService(
-        orgs, members, users, access, FakeEvents(), media=media
+        orgs, members, users, access, FakeEvents(), media=media,
+        forms=FakeForms(), applications=FakeApplications(),
     )
     return service, orgs, members, users, access, org_id, owner
 

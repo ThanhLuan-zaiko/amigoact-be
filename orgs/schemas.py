@@ -21,7 +21,7 @@ _WEBSITE_SHAPE = re.compile(
 OrgKind = Literal["organization", "club", "group", "business"]
 MediaRole = Literal["gallery", "cover", "logo"]
 OrgSort = Literal["newest", "name", "members"]
-JoinPolicy = Literal["invite", "open"]
+JoinPolicy = Literal["invite", "open", "review"]
 
 
 def validate_slug(value: str) -> str:

@@ -10,6 +10,7 @@ from core.exceptions import (
     MemberNotFoundError,
 )
 from orgs.member_service import MemberService
+from tests.unit.application_fakes import FakeApplications, FakeForms
 from tests.unit.member_fakes import (
     NOW,
     FakeAccess,
@@ -119,7 +120,10 @@ def test_revoke_publishes_roster_and_inbox_events() -> None:
     orgs.add(org_id, owner)
     users.add(owner, "owner@example.com", "Owner")
     members.put(org_id, owner, "active", NOW)
-    service = MemberService(orgs, members, users, access, events)
+    service = MemberService(
+        orgs, members, users, access, events,
+        forms=FakeForms(), applications=FakeApplications(),
+    )
 
     target = _new_user(users, "r@example.com")
     members.put(org_id, target, "invited", NOW)

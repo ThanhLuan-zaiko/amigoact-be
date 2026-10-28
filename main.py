@@ -173,6 +173,7 @@ from chat.safety_router import router as chat_safety_router  # noqa: E402
 from chat.write_router import router as chat_write_router  # noqa: E402
 from hours.router import router as hours_router  # noqa: E402
 from notifications.router import router as notifications_router  # noqa: E402
+from orgs.application_router import router as application_router  # noqa: E402
 from orgs.members_router import router as members_router  # noqa: E402
 from orgs.public_router import router as orgs_public_router  # noqa: E402
 from orgs.router import router as orgs_router  # noqa: E402
@@ -195,6 +196,7 @@ app.include_router(auth_router)
 app.include_router(orgs_router)
 app.include_router(orgs_public_router)  # after orgs: /orgs/mine beats {slug}
 app.include_router(members_router)
+app.include_router(application_router)
 app.include_router(structure_router)
 app.include_router(apikeys_router)
 app.include_router(rbac_router)

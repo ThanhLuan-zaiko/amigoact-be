@@ -43,6 +43,8 @@ SYNC_MODELS = [
     org_models.OrganizationsPublic,
     org_models.OrganizationMember,
     org_models.MemberByUser,
+    org_models.MembershipForm,
+    org_models.MembershipApplication,
     org_models.MediaAsset,
     org_models.MediaByOwner,
     org_models.MediaByHash,

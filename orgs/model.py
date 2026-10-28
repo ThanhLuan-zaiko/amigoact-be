@@ -114,6 +114,31 @@ class MemberByUser(models.Model):
     joined_at = columns.DateTime(required=True)
 
 
+class MembershipForm(models.Model):
+    """One question on an org's membership application form."""
+
+    __table_name__ = "membership_forms"
+
+    org_id = columns.UUID(primary_key=True, partition_key=True)
+    position = columns.Integer(primary_key=True, clustering_order="ASC")
+    question_id = columns.UUID(primary_key=True, clustering_order="ASC")
+    label = columns.Text(required=True)
+    field_type = columns.Text(required=True, default="text")
+    required = columns.Boolean(required=True, default=False)
+
+
+class MembershipApplication(models.Model):
+    """One applicant's answers, kept per org for the reviewer."""
+
+    __table_name__ = "membership_applications"
+
+    org_id = columns.UUID(primary_key=True, partition_key=True)
+    user_id = columns.UUID(primary_key=True, clustering_order="ASC")
+    answers = columns.Text(required=True, default="{}")
+    submitted_at = columns.DateTime(required=True)
+    rejected_at = columns.DateTime(required=False)
+
+
 class MediaAsset(models.Model):
     """Binary metadata; bytes live in MediaStore (local now, cloud later)."""
 

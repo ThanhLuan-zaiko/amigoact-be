@@ -7,6 +7,7 @@ import pytest
 
 from core.exceptions import ForbiddenError
 from orgs.member_service import MemberService
+from tests.unit.application_fakes import FakeApplications, FakeForms
 from tests.unit.member_fakes import (
     FakeAccess,
     FakeEvents,
@@ -32,7 +33,7 @@ def _svc() -> tuple[
     users.add(owner, "owner@example.com", "Owner")
     members.put(org_id, owner, "active", NOW)
     service = MemberService(
-        orgs, members, users, access, FakeEvents(), profiles=profiles
+        orgs, members, users, access, FakeEvents(), profiles=profiles, forms=FakeForms(), applications=FakeApplications()
     )
     return service, orgs, members, users, access, profiles, org_id, owner
 

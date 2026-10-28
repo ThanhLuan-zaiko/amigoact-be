@@ -241,6 +241,11 @@ def get_member_service(
     """Build one MemberService; user lookup adapts the auth repository."""
     from orgs.media_repository import CqlMediaRepository
     from orgs.member_events import WsMemberEvents
+    from auth.repository import CqlRateLimiter
+    from orgs.application_repository import (
+        CqlApplicationStore,
+        CqlMembershipFormStore,
+    )
     from orgs.member_repository import CqlMemberRepository
     from orgs.member_service import MemberService
     from orgs.repository import CqlOrgRepository
@@ -257,6 +262,9 @@ def get_member_service(
         notifications=notifications,
         profiles=CqlProfileStore(),
         media=CqlMediaRepository(),
+        forms=CqlMembershipFormStore(),
+        applications=CqlApplicationStore(),
+        limiter=CqlRateLimiter(settings.scylla_keyspace),
     )
 
 
