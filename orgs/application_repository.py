@@ -6,7 +6,11 @@ from datetime import datetime
 from uuid import UUID
 
 from orgs.application_interfaces import ApplicationStore, MembershipFormStore
-from orgs.model import MembershipApplication, MembershipForm
+from orgs.model import (
+    MembershipApplication,
+    MembershipForm,
+    MembershipFormSettings,
+)
 
 
 class CqlMembershipFormStore(MembershipFormStore):
@@ -16,12 +20,12 @@ class CqlMembershipFormStore(MembershipFormStore):
         return list(MembershipForm.objects(org_id=org_id).all())
 
     def replace_form(
-        self, org_id: UUID, rows: list[tuple[UUID, str, str, bool]]
+        self, org_id: UUID, rows: list[tuple[UUID, str, str, bool, str, bool]]
     ) -> None:
         # Full-key deletes: each row is removed by its complete primary key.
         for old in self.list_form(org_id):
             old.delete()
-        for position, (question_id, label, field_type, required) in enumerate(rows):
+        for position, (question_id, label, field_type, required, options, allow_other) in enumerate(rows):
             MembershipForm.create(
                 org_id=org_id,
                 position=position,
@@ -29,7 +33,17 @@ class CqlMembershipFormStore(MembershipFormStore):
                 label=label,
                 field_type=field_type,
                 required=required,
+                options=options,
+                allow_other=allow_other,
             )
+
+    def get_settings(self, org_id: UUID) -> MembershipFormSettings | None:
+        return MembershipFormSettings.objects(org_id=org_id).first()
+
+    def put_settings(self, org_id: UUID, title: str, description: str) -> None:
+        MembershipFormSettings.create(
+            org_id=org_id, title=title, description=description
+        )
 
 
 class CqlApplicationStore(ApplicationStore):

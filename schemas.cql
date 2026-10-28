@@ -238,7 +238,15 @@ CREATE TABLE IF NOT EXISTS membership_forms (
     label text,
     field_type text, // text | textarea | choice | consent
     required boolean,
+    options text, // JSON list of choices, only for choice; null on older rows
+    allow_other boolean, // choice only: applicant may type an answer of their own
     PRIMARY KEY ((org_id), position, question_id)
+);
+
+CREATE TABLE IF NOT EXISTS membership_form_settings (
+    org_id uuid PRIMARY KEY,
+    title text, // shown above the questions; empty means the default heading
+    description text
 );
 
 CREATE TABLE IF NOT EXISTS membership_applications (

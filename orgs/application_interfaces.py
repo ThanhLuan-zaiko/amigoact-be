@@ -6,11 +6,11 @@ from abc import ABC, abstractmethod
 from datetime import datetime
 from uuid import UUID
 
-from orgs.model import MembershipApplication, MembershipForm
+from orgs.model import MembershipApplication, MembershipForm, MembershipFormSettings
 
 
 class MembershipFormStore(ABC):
-    """Question list an org asks applicants to answer."""
+    """Question list an org asks applicants to answer, plus its heading."""
 
     @abstractmethod
     def list_form(self, org_id: UUID) -> list[MembershipForm]:
@@ -18,9 +18,17 @@ class MembershipFormStore(ABC):
 
     @abstractmethod
     def replace_form(
-        self, org_id: UUID, rows: list[tuple[UUID, str, str, bool]]
+        self, org_id: UUID, rows: list[tuple[UUID, str, str, bool, str, bool]]
     ) -> None:
-        """Replace the whole list; rows are (question_id, label, type, required)."""
+        """Replace the whole list; rows are (question_id, label, type, required, options_json, allow_other)."""
+
+    @abstractmethod
+    def get_settings(self, org_id: UUID) -> MembershipFormSettings | None:
+        """Heading row, or None when the org never set one."""
+
+    @abstractmethod
+    def put_settings(self, org_id: UUID, title: str, description: str) -> None:
+        """Upsert the heading shown above the questions."""
 
 
 class ApplicationStore(ABC):

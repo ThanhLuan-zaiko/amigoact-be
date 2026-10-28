@@ -44,14 +44,14 @@ def test_form_put_is_manager_only_and_get_is_open_to_signed_in_users() -> None:
 
 def test_form_rejects_unknown_field_type() -> None:
     service, _, _, _, _, org_id, owner = _service("review")
-    body = {"questions": [{"label": "File?", "field_type": "file"}]}
+    body = {"questions": [{"label": "Video?", "field_type": "video"}]}
     response = _client(service, owner).put(f"/orgs/{org_id}/membership-form", json=body)
     assert response.status_code == 422
 
 
 def test_apply_returns_201_with_location_and_applied_status() -> None:
     service, _, _, users, _, org_id, owner = _service("review")
-    service.replace_membership_form(org_id, owner, [("Why?", "text", True)])
+    service.replace_membership_form(org_id, owner, [("Why?", "text", True, [], False)])
     applicant = _new_user(users, "a@example.com")
     client = _client(service, applicant)
     question_id = str(service.list_membership_form(org_id)[0].question_id)
@@ -66,7 +66,7 @@ def test_apply_returns_201_with_location_and_applied_status() -> None:
 
 def test_apply_error_codes_match_contract() -> None:
     service, _, _, users, _, org_id, owner = _service("review")
-    service.replace_membership_form(org_id, owner, [("Why?", "text", True)])
+    service.replace_membership_form(org_id, owner, [("Why?", "text", True, [], False)])
     applicant = _new_user(users, "a@example.com")
     client = _client(service, applicant)
     path = f"/orgs/{org_id}/members/apply"
@@ -80,8 +80,8 @@ def test_apply_error_codes_match_contract() -> None:
     assert (again.status_code, again.json()["code"]) == (409, "ALREADY_APPLIED")
 
 
-def test_invite_org_answers_apply_with_not_accepting() -> None:
-    service, _, _, users, _, org_id, _ = _service("invite")
+def test_open_org_answers_apply_with_not_accepting() -> None:
+    service, _, _, users, _, org_id, _ = _service("open")
     applicant = _new_user(users, "a@example.com")
     response = _client(service, applicant).post(
         f"/orgs/{org_id}/members/apply", json={"answers": {}}
@@ -94,7 +94,7 @@ def test_invite_org_answers_apply_with_not_accepting() -> None:
 
 def test_review_reads_answers_then_approves_and_rejects() -> None:
     service, _, _, users, _, org_id, owner = _service("review")
-    service.replace_membership_form(org_id, owner, [("Why?", "text", False)])
+    service.replace_membership_form(org_id, owner, [("Why?", "text", False, [], False)])
     applicant = _new_user(users, "a@example.com")
     question_id = str(service.list_membership_form(org_id)[0].question_id)
     _client(service, applicant).post(
@@ -106,7 +106,7 @@ def test_review_reads_answers_then_approves_and_rejects() -> None:
     read = reviewer.get(f"{base}/application")
     assert read.status_code == 200
     assert read.json()["answers"] == [
-        {"question_id": question_id, "label": "Why?", "answer": "Kids"}
+        {"question_id": question_id, "label": "Why?", "answer": "Kids", "is_other": False, "file": None}
     ]
 
     early = reviewer.post(f"/orgs/{org_id}/members/{_uid()}/approve")

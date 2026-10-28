@@ -13,6 +13,7 @@ from orgs.application_interfaces import ApplicationStore, MembershipFormStore
 class FakeForms(MembershipFormStore):
     def __init__(self) -> None:
         self.rows: dict[UUID, list] = {}
+        self.settings: dict[UUID, SimpleNamespace] = {}
 
     def list_form(self, org_id):  # noqa: ANN001, ANN202
         return list(self.rows.get(org_id, []))
@@ -25,9 +26,17 @@ class FakeForms(MembershipFormStore):
                 label=label,
                 field_type=field_type,
                 required=required,
+                options=options,
+                allow_other=allow_other,
             )
-            for position, (question_id, label, field_type, required) in enumerate(rows)
+            for position, (question_id, label, field_type, required, options, allow_other) in enumerate(rows)
         ]
+
+    def get_settings(self, org_id):  # noqa: ANN001, ANN202
+        return self.settings.get(org_id)
+
+    def put_settings(self, org_id, title, description):  # noqa: ANN001, ANN202
+        self.settings[org_id] = SimpleNamespace(title=title, description=description)
 
 
 class FakeApplications(ApplicationStore):

@@ -125,6 +125,18 @@ class MembershipForm(models.Model):
     label = columns.Text(required=True)
     field_type = columns.Text(required=True, default="text")
     required = columns.Boolean(required=True, default=False)
+    options = columns.Text()
+    allow_other = columns.Boolean(default=False)
+
+
+class MembershipFormSettings(models.Model):
+    """Heading shown above an org's application questions."""
+
+    __table_name__ = "membership_form_settings"
+
+    org_id = columns.UUID(primary_key=True, partition_key=True)
+    title = columns.Text()
+    description = columns.Text()
 
 
 class MembershipApplication(models.Model):

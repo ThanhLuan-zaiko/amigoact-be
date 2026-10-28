@@ -28,6 +28,7 @@ from core.media import media_kind, normalize_image
 ORG_OWNER = "organization"
 CHAT_OWNER = "chat"
 POST_OWNER = "post"
+MEMBERSHIP_OWNER = "membership"
 GALLERY_ROLES = ("gallery", "cover", "logo")
 BRAND_ROLES = ("cover", "logo")
 ATTACHMENT_ROLE = "attachment"
@@ -58,6 +59,25 @@ class PreparedUpload:
     mime: str
     content: bytes
     file_hash: str
+
+
+def prepare_evidence_upload(mime: str, content: bytes, max_bytes: int) -> PreparedUpload:
+    """Applicant evidence: one PDF or one image, never video."""
+    clean = mime.split(";")[0].strip().lower()
+    if clean == "application/pdf":
+        if len(content) > max_bytes:
+            raise MediaTooLargeError("File exceeds the size limit.")
+        if not content.startswith(b"%PDF"):
+            raise UnsupportedMediaError("File is not a valid PDF.")
+        return PreparedUpload(
+            kind="document",
+            mime=clean,
+            content=content,
+            file_hash=hashlib.sha256(content).hexdigest(),
+        )
+    if media_kind(clean) != "image":
+        raise UnsupportedMediaError("Only PDF or image files are allowed.")
+    return prepare_upload(clean, content, max_bytes, max_bytes)
 
 
 def prepare_upload(

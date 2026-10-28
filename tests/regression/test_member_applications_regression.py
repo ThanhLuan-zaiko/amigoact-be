@@ -88,8 +88,8 @@ async def test_review_org_apply_then_approve(client: AsyncClient) -> None:
     )
 
 
-async def test_invite_org_refuses_applications(client: AsyncClient) -> None:
-    """Invite-only orgs keep answering apply with a 403 contract code."""
+async def test_invite_org_accepts_applications(client: AsyncClient) -> None:
+    """Invite orgs still take volunteer applications; only open orgs refuse."""
     owner_headers = _headers(await _token(client, "aiown@example.com", "0912347203"))
     created = await client.post(
         "/orgs",
@@ -100,10 +100,8 @@ async def test_invite_org_refuses_applications(client: AsyncClient) -> None:
     org_id = created.json()["id"]
 
     applicant_headers = _headers(await _token(client, "aiapp@example.com", "0912347204"))
-    refused = await client.post(
+    accepted = await client.post(
         f"/orgs/{org_id}/members/apply", json={"answers": {}}, headers=applicant_headers
     )
-    assert (refused.status_code, refused.json()["code"]) == (
-        403,
-        "NOT_ACCEPTING_APPLICATIONS",
-    )
+    assert accepted.status_code == 201, accepted.text
+    assert accepted.json()["status"] == "applied"

@@ -15,12 +15,12 @@ def test_form_replace_keeps_display_order(clean_tables: str) -> None:
     first, second = uuid7(), uuid7()
     store.replace_form(
         org_id,
-        [(first, "Why?", "textarea", True), (second, "Phone?", "text", False)],
+        [(first, "Why?", "textarea", True, "[]", False), (second, "Phone?", "text", False, "[]", False)],
     )
     rows = store.list_form(org_id)
     assert [(row.label, row.position) for row in rows] == [("Why?", 0), ("Phone?", 1)]
 
-    store.replace_form(org_id, [(second, "Phone?", "text", False)])
+    store.replace_form(org_id, [(second, "Phone?", "text", False, "[]", False)])
     rows = store.list_form(org_id)
     assert [(row.question_id, row.position) for row in rows] == [(second, 0)]
 

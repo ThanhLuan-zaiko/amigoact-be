@@ -74,9 +74,11 @@ Tất cả endpoint yêu cầu Bearer token. Lỗi trả về envelope `{code, m
 | `DELETE /orgs/{id}/members/{uid}` | owner/admin; self = rời | `204`, status `left` |
 | `DELETE /orgs/{id}/members/{uid}/invitation` | quyền `member:invite` | `204`, status `revoked`; `400 INVALID_MEMBER_STATE` nếu không còn chờ |
 | `POST /orgs/{id}/members/join` | ai cũng được | `open`: `201 active`; `invite`: `403 INVITE_ONLY`; `review`: `403 APPLICATION_REQUIRED` |
-| `GET /orgs/{id}/membership-form` | đã đăng nhập | `200` danh sách câu hỏi theo thứ tự hiển thị |
-| `PUT /orgs/{id}/membership-form` `{questions}` | `member:invite` hoặc owner | `200` thay toàn bộ biểu mẫu; đơn đã nộp giữ nguyên câu trả lời |
-| `POST /orgs/{id}/members/apply` `{answers}` | ai cũng được, chính sách `review` | `201` + `Location`, trạng thái `applied`; `403 NOT_ACCEPTING_APPLICATIONS` nếu không phải `review`; `400 ANSWER_REQUIRED`; `409 ALREADY_APPLIED` / `INVITE_PENDING` / `ALREADY_MEMBER` / `APPLICATION_COOLDOWN`; `429 TOO_MANY_REQUESTS` khi vượt giới hạn tốc độ |
+| `GET /orgs/{id}/membership-form` | đã đăng nhập | `200` `{title, description, questions}`; câu hỏi `choice` có `options` (tối đa 20 phương án, không có `|`) và `allow_other` (thêm lựa chọn "Khác": người nộp tự nhập đáp án; tổng số lựa chọn kể cả "Khác" tối thiểu 2); các kiểu khác `options` rỗng và `allow_other` false |
+| `PUT /orgs/{id}/membership-form` `{title, description, questions}` | `member:invite` hoặc owner | `200` thay toàn bộ biểu mẫu và tiêu đề (`title` tối đa 120, `description` tối đa 1000); đơn đã nộp giữ nguyên câu trả lời; đáp án `choice` ngoài danh sách phương án bị bỏ qua |
+| `POST /orgs/{id}/membership-applications/files` (multipart `file`) | đã đăng nhập, chính sách `invite` hoặc `review`, chưa là thành viên | `201` `{media_id, name, mime, size_bytes}`; chỉ PDF hoặc ảnh, tối đa 10 MB (`415 UNSUPPORTED_MEDIA`, `413 MEDIA_TOO_LARGE`); file chỉ nằm trong `media/orgs/` và không vào feed, không qua `/media` công khai |
+| `GET /orgs/{id}/members/{uid}/application-files/{media_id}` | `member:invite` hoặc owner | `200` tải file; chỉ file mà đơn của `uid` thực sự tham chiếu mới tải được |
+| `POST /orgs/{id}/members/apply` `{answers}` | ai cũng được, chính sách `invite` hoặc `review` | `201` + `Location`, trạng thái `applied`; `403 NOT_ACCEPTING_APPLICATIONS` nếu là chính sách `open`; `400 ANSWER_REQUIRED`; `409 ALREADY_APPLIED` / `INVITE_PENDING` / `ALREADY_MEMBER` / `APPLICATION_COOLDOWN`; `429 TOO_MANY_REQUESTS` khi vượt giới hạn tốc độ |
 | `GET /orgs/{id}/members/{uid}/application` | `member:invite` hoặc owner | `200` câu trả lời kèm nhãn câu hỏi hiện tại |
 | `POST /orgs/{id}/members/{uid}/approve` | `member:invite` hoặc owner | `200` `applied → active`; `400 INVALID_MEMBER_STATE` nếu không còn chờ |
 | `POST /orgs/{id}/members/{uid}/reject` | `member:invite` hoặc owner | `200` `applied → left`; người nộp chờ 7 ngày rồi mới nộp lại (trước đó `409 APPLICATION_COOLDOWN`) |

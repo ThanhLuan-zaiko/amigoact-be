@@ -27,18 +27,33 @@ from core.exceptions_applications import (
 from core.ids import uuid7
 from core.security import utcnow
 from orgs.member_helpers import live_org, member_snapshot
+from orgs.membership_files import is_attached
 from orgs.member_listing import MemberSnapshot
 
 if TYPE_CHECKING:
     from notifications.interfaces import NotificationPort
     from orgs.application_interfaces import ApplicationStore, MembershipFormStore
-    from orgs.interfaces import MemberRepository, OrgRepository, UserDirectory
+    from orgs.interfaces import (
+        MediaRepository,
+        MemberRepository,
+        OrgRepository,
+        UserDirectory,
+    )
     from auth.interfaces import RateLimiter
     from orgs.model import MembershipApplication, MembershipForm, Organization
     from rbac.interfaces import AccessControl
 
-FIELD_TYPES = ("text", "textarea", "choice", "consent")
+FIELD_TYPES = ("text", "textarea", "choice", "consent", "file")
+
+
+def _valid_choice(question, text: str) -> bool:  # noqa: ANN001
+    """An option from the list, or any non-empty text when the question allows "Khác"."""
+    if text in json.loads(question.options or "[]"):
+        return True
+    return bool(text) and bool(getattr(question, "allow_other", False))
 MAX_ANSWER_CHARS = 2000
+# Open orgs admit instantly; invite and review orgs both take applications.
+APPLY_POLICIES = ("invite", "review")
 # A rejected applicant waits this long before applying again; a withdrawal does not.
 APPLY_COOLDOWN = timedelta(days=7)
 # Per applicant: refused attempts count too, so a retry loop hits the same wall.
@@ -60,7 +75,7 @@ class MemberApplicationsMixin:
         _forms: MembershipFormStore
         _applications: ApplicationStore
         _limiter: RateLimiter | None
-        _media: object | None
+        _media: MediaRepository | None
 
         def _require_manager(
             self, org: Organization, actor_id: UUID, permission: str,
@@ -85,26 +100,53 @@ class MemberApplicationsMixin:
         self,
         org_id: UUID,
         actor_id: UUID,
-        questions: list[tuple[str, str, bool]],
+        questions: list[tuple[str, str, bool, list[str], bool]],
+        title: str = "",
+        description: str = "",
     ) -> list[MembershipForm]:
-        """Managers replace the whole form; tuples are (label, type, required)."""
+        """Managers replace the whole form; tuples are (label, type, required, options, allow_other)."""
         org = live_org(self._orgs, org_id)
         self._require_manager(org, actor_id, "member:invite", "member.form")
         rows = []
-        for label, field_type, required in questions:
+        for label, field_type, required, options, allow_other in questions:
             if field_type not in FIELD_TYPES:
                 raise ValueError(f"Unknown field type {field_type}.")
-            rows.append((uuid7(), label.strip(), field_type, required))
+            is_choice = field_type == "choice"
+            kept = options if is_choice else []
+            rows.append(
+                (uuid7(), label.strip(), field_type, required, json.dumps(kept), is_choice and allow_other)
+            )
         self._forms.replace_form(org_id, rows)
+        self._forms.put_settings(org_id, title.strip(), description.strip())
         self._audit(org_id, actor_id, "member.form", None)
         return self._forms.list_form(org_id)
+
+    def check_can_stage_evidence(self, org_id: UUID, user_id: UUID) -> None:
+        """Only applicants to a review or invite org may stage evidence files."""
+        org = live_org(self._orgs, org_id)
+        if (getattr(org, "join_policy", None) or "invite") not in APPLY_POLICIES:
+            raise ApplicationNotOpenError("This org does not take applications.")
+        if user_id == org.owner_id:
+            raise AlreadyMemberError("The owner is already a member.")
+        row = self._members.get(org_id, user_id)
+        state = None if row is None else (getattr(row, "status", "active") or "active")
+        if state in ("active", "suspended"):
+            raise AlreadyMemberError("This user is already a member.")
+
+    def membership_form_heading(self, org_id: UUID) -> tuple[str, str]:
+        """Title and description shown above the questions; blank when unset."""
+        live_org(self._orgs, org_id)
+        stored = self._forms.get_settings(org_id)
+        if stored is None:
+            return "", ""
+        return stored.title or "", stored.description or ""
 
     def apply_to_org(
         self, org_id: UUID, user_id: UUID, answers: dict[str, str]
     ) -> MemberSnapshot:
         """Applicant submits the form: nothing or left -> applied."""
         org = live_org(self._orgs, org_id)
-        if getattr(org, "join_policy", None) != "review":
+        if (getattr(org, "join_policy", None) or "invite") not in APPLY_POLICIES:
             raise ApplicationNotOpenError("This org does not take applications.")
         if user_id == org.owner_id:
             raise AlreadyMemberError("The owner is already a member.")
@@ -122,7 +164,7 @@ class MemberApplicationsMixin:
             self._check_cooldown(org_id, user_id, now)
         # Answers first: a visible "applied" row always has its submission.
         self._applications.put(
-            org_id, user_id, self._answers_json(org_id, answers), now
+            org_id, user_id, self._answers_json(org_id, user_id, answers), now
         )
         if row is None:
             self._members.put(org_id, user_id, "applied", now)
@@ -192,15 +234,33 @@ class MemberApplicationsMixin:
         if now - rejected_at < APPLY_COOLDOWN:
             raise ApplicationCooldownError("Wait for the cooldown after a rejection.")
 
-    def _answers_json(self, org_id: UUID, answers: dict[str, str]) -> str:
+    def _own_evidence(self, org_id: UUID, user_id: UUID, text: str) -> bool:
+        """True when `text` is a media id of an evidence file this user staged for the org."""
+        if self._media is None:
+            return False
+        try:
+            media_id = UUID(text)
+        except ValueError:
+            return False
+        return is_attached(self._media.get_asset(media_id), org_id, user_id)
+
+    def _answers_json(self, org_id: UUID, user_id: UUID, answers: dict[str, str]) -> str:
         """Keep only known questions, enforce required ones, cap each answer."""
         questions = self._forms.list_form(org_id)
-        known = {str(q.question_id) for q in questions}
-        clean = {
-            key: str(value).strip()[:MAX_ANSWER_CHARS]
-            for key, value in answers.items()
-            if key in known
-        }
+        known = {str(q.question_id): q for q in questions}
+        clean = {}
+        for key, value in answers.items():
+            question = known.get(key)
+            if question is None:
+                continue
+            text = str(value).strip()[:MAX_ANSWER_CHARS]
+            # A choice answer must be an offered option, or free text when "Khác" is allowed.
+            if question.field_type == "choice" and not _valid_choice(question, text):
+                continue
+            # A file answer must name an evidence file this applicant staged for this org.
+            if question.field_type == "file" and not self._own_evidence(org_id, user_id, text):
+                continue
+            clean[key] = text
         for question in questions:
             if question.required and not clean.get(str(question.question_id)):
                 raise AnswerRequiredError("A required answer is missing.")

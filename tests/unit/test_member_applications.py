@@ -27,8 +27,8 @@ from orgs import member_applications
 from tests.unit.application_fakes import FakeLimiter, FakeNotifications
 from tests.unit.member_fakes import NOW, _make_admin, _new_user, _service, _uid
 
-OPTIONAL_NOTE = [("Note?", "text", False)]
-REQUIRED_WHY = [("Why?", "textarea", True), ("Phone?", "text", False)]
+OPTIONAL_NOTE = [("Note?", "text", False, [], False)]
+REQUIRED_WHY = [("Why?", "textarea", True, [], False), ("Phone?", "text", False, [], False)]
 
 
 def _publish(service, org_id, owner, questions=None):  # noqa: ANN001, ANN202
@@ -36,8 +36,8 @@ def _publish(service, org_id, owner, questions=None):  # noqa: ANN001, ANN202
     return service.replace_membership_form(org_id, owner, questions or OPTIONAL_NOTE)
 
 
-def test_invite_org_refuses_applications() -> None:
-    service, _, _, users, _, org_id, _ = _service("invite")
+def test_open_org_refuses_applications() -> None:
+    service, _, _, users, _, org_id, _ = _service("open")
     applicant = _new_user(users, "a@example.com")
     with pytest.raises(ApplicationNotOpenError):
         service.apply_to_org(org_id, applicant, {})
@@ -173,7 +173,7 @@ def test_form_edit_is_manager_only_and_keeps_order() -> None:
     members.put(org_id, plain, "active", NOW)
     with pytest.raises(ForbiddenError):
         service.replace_membership_form(org_id, plain, OPTIONAL_NOTE)
-    rows = _publish(service, org_id, owner, [("Q1", "text", True), ("Q2", "choice", False)])
+    rows = _publish(service, org_id, owner, [("Q1", "text", True, [], False), ("Q2", "choice", False, [], False)])
     assert [row.label for row in rows] == ["Q1", "Q2"]
     assert [row.field_type for row in service.list_membership_form(org_id)] == [
         "text",
