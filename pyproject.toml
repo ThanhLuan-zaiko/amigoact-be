@@ -5,9 +5,11 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
+    "argon2-cffi>=25.1.0",
     "fastapi[standard]>=0.162.0",
     "psycopg[binary]>=3.3.6",
     "pydantic-settings>=2.16.2",
+    "pyjwt>=2.10.0",
     "sqlalchemy>=2.1.6",
 ]
 
@@ -16,11 +18,12 @@ requires = ["uv_build>=0.12.23,<0.13.0"]
 build-backend = "uv_build"
 
 [tool.uv.build-backend]
-module-name = "connector"
+module-name = "src"
 module-root = ""
 
 [tool.mypy]
 plugins = ["pydantic.mypy"]
+explicit_package_bases = true
 
 [dependency-groups]
 dev = [

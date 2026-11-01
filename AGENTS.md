@@ -4,8 +4,8 @@ Instructions for AI coding agents working in `amigoact-be`. These rules override
 
 ## Project structure
 
-- Do not put code in a `src/` folder. Keep Python packages at the repo root, for example `connector/`.
-- CI gate 07 fails if a `src/` folder exists.
+- Application code lives in the `src/` package. Imports use the package name, for example `from src.config import get_settings`.
+- `scripts/`, `tests/`, and `main.py` stay at the repo root.
 
 ## Language
 
@@ -37,8 +37,18 @@ Put scratch work in the session scratchpad directory, not in the repository. CI 
 - `DATABASE_URL` is read only from `.env`, which is gitignored. Settings never read OS environment variables.
 - The project uses its own database `amigoact` on the PostgreSQL server. Never point `DATABASE_URL` at a database shared with other applications, because a reset drops the whole `public` schema of that database.
 - Do not write a connection string, password, or sample connection value into code, tests, `.env.example`, or CI files. `.env.example` keeps `DATABASE_URL=` empty.
-- CI writes `.env` from the `CI_POSTGRES_PASSWORD` secret and starts a throwaway PostgreSQL service.
-- App code lives in `connector/`. `config.py` loads settings, `database.py` creates the engine, and `app.py` checks the connection at startup.
+- CI writes `.env` from the `CI_POSTGRES_PASSWORD` secret with a random `JWT_SECRET`, starts a throwaway PostgreSQL service, and loads `schema.sql` into it.
+- App code lives in `src/`. `config.py` loads settings, `database.py` creates the engine, and `app.py` checks the connection at startup.
+
+## Authentication
+
+- Details are in `docs/authentication.md`.
+- Code lives in `src/auth/`. Passwords use Argon2id (`passwords.py`). Primary keys are UUIDv7 from `uuid.uuid7()`.
+- Access tokens are short-lived HS256 JWTs signed with `JWT_SECRET` from `.env`. Each request also checks that the session is not revoked, so logout takes effect immediately.
+- Refresh tokens are opaque and rotate on every use. Only their SHA-256 hash is stored. `auth_sessions.session_id` equals `auth_refresh_tokens.family_id`. Reusing a rotated token after the grace window ends the session.
+- API errors use `detail` as a stable code from `src/auth/errors.py`. The frontend translates the codes.
+- Without `SMTP_HOST`, emails with their secret links go to the application log. Always set `SMTP_HOST` in production.
+- Rate limits use the client IP. Behind a proxy, set uvicorn `--forwarded-allow-ips` to the proxy address so `X-Forwarded-For` is trusted only from there.
 
 ## Database reset
 
@@ -54,7 +64,7 @@ Put scratch work in the session scratchpad directory, not in the repository. CI 
 uv sync                      # install locked dependencies
 uv add <package>             # add a dependency; commit pyproject.toml and uv.lock together
 uv run main.py               # run the app entry point
-uv run uvicorn connector.app:app --reload --port 8100   # run the API; the log shows whether the database connected
+uv run uvicorn src.app:app --reload --port 8100   # run the API; the log shows whether the database connected
 uv run ruff check .          # lint
 uv run ruff format --check . # format check (run `uv run ruff format .` to fix)
 uv run mypy <files>          # type check
@@ -62,6 +72,11 @@ uv run pytest                # tests
 uv run python scripts/reset_database.py   # dry run only: shows the target and tables, changes nothing
 uv lock --check              # verify the lockfile is in sync
 ```
+
+## Documentation
+
+- Write detailed documentation in `docs/`, one file per topic. Keep `README.md` short: setup, commands, and links to `docs/`.
+- When behavior changes, update the matching file in `docs/` in the same change.
 
 ## Testing rules for API endpoints
 
@@ -85,7 +100,7 @@ uv lock --check              # verify the lockfile is in sync
 | 04 | Format (`ruff format --check`) |
 | 05 | Type check (`mypy`) |
 | 06 | Tests (`pytest`, runs once test files exist; CI starts PostgreSQL) |
-| 07 | No `src/` folder, and every `.py` file is at most 350 lines |
+| 07 | Every `.py` file is at most 350 lines |
 | 08 | English only: no non-ASCII in code, config, or SQL |
 | 09 | Smoke run (`uv run main.py`) |
 | 10 | No junk files tracked |

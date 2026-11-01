@@ -8,8 +8,8 @@ import sys
 
 from sqlalchemy import create_engine, make_url
 
-from connector.config import get_settings
-from connector.reset import (
+from src.config import get_settings
+from src.reset import (
     SCHEMA_FILE,
     database_name,
     list_public_tables,

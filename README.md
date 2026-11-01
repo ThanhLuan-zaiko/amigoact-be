@@ -1,6 +1,6 @@
 # AmigoACT - Backend
 
-Backend API cho hệ thống quản lý đăng ký và ghi nhận thành tích tình nguyện của Đoàn trường hoặc các tổ chức. Dự án đang ở giai đoạn đầu: hiện mới có phần kết nối cơ sở dữ liệu PostgreSQL.
+Backend API cho hệ thống quản lý đăng ký và ghi nhận thành tích tình nguyện của Đoàn trường hoặc các tổ chức. Dự án đang ở giai đoạn đầu: hiện đã có kết nối PostgreSQL và các chức năng tài khoản dùng JWT.
 
 ## Yêu cầu
 
@@ -15,12 +15,14 @@ uv sync
 cp .env.example .env
 ```
 
-Mở file `.env` và điền `DATABASE_URL` theo định dạng chuỗi kết nối của SQLAlchemy với driver `psycopg`. Ứng dụng chỉ đọc giá trị này từ `.env`, không đọc từ biến môi trường của hệ điều hành. File `.env` đã được đưa vào `.gitignore`, không được commit.
+Mở file `.env` và điền `DATABASE_URL` theo định dạng chuỗi kết nối của SQLAlchemy với driver `psycopg`, cùng `JWT_SECRET` là một chuỗi ngẫu nhiên dài ít nhất 32 ký tự. Ứng dụng chỉ đọc các giá trị này từ `.env`, không đọc từ biến môi trường của hệ điều hành. File `.env` đã được đưa vào `.gitignore`, không được commit.
+
+Nếu chưa đặt `SMTP_HOST`, email tài khoản (kèm liên kết bí mật) sẽ được ghi vào log để tiện phát triển. Môi trường production bắt buộc phải đặt `SMTP_HOST`.
 
 ## Chạy ứng dụng
 
 ```bash
-uv run uvicorn connector.app:app --reload --port 8100
+uv run uvicorn src.app:app --reload --port 8100
 ```
 
 Khi khởi động, log sẽ cho biết kết nối cơ sở dữ liệu có thành công hay không:
@@ -37,6 +39,12 @@ uv run python scripts/reset_database.py
 ```
 
 Lệnh này chỉ đọc và không thay đổi gì. Để xóa toàn bộ dữ liệu và nạp lại schema, chạy với `--apply`. Script sẽ yêu cầu gõ lại tên database để xác nhận. Thao tác này chỉ tác động tới database trong `.env` và không thể hoàn tác.
+
+## Tài liệu
+
+Tài liệu chi tiết nằm trong thư mục [`docs/`](docs):
+
+- [Xác thực và tài khoản](docs/authentication.md): API, quy tắc dữ liệu, cấu hình và triển khai.
 
 ## Kiểm thử
 
@@ -57,7 +65,7 @@ Các test tích hợp cần PostgreSQL đang chạy và `.env` hợp lệ.
 ```bash
 uv run ruff check .
 uv run ruff format --check .
-uv run mypy connector scripts tests main.py
+uv run mypy src scripts tests main.py
 uv lock --check
 ```
 
@@ -67,7 +75,8 @@ Mỗi push và pull request đều chạy 13 gate CI trong `.github/workflows/ci
 
 ```
 amigoact-be/
-├── connector/       code của ứng dụng: config.py, database.py, app.py, reset.py
+├── src/             code của ứng dụng: config.py, database.py, app.py, reset.py
+├── docs/            tài liệu chi tiết
 ├── scripts/         script tiện ích, ví dụ reset_database.py
 ├── tests/           unit, integration, regression
 ├── .github/         CI và các mẫu issue, pull request
@@ -76,7 +85,7 @@ amigoact-be/
 └── pyproject.toml   cấu hình dự án và thư viện
 ```
 
-Không đặt code trong thư mục `src/`. Quy tắc phát triển chi tiết nằm trong [AGENTS.md](AGENTS.md).
+Code của ứng dụng nằm trong thư mục `src/`. Quy tắc phát triển chi tiết nằm trong [AGENTS.md](AGENTS.md).
 
 ## Đóng góp
 

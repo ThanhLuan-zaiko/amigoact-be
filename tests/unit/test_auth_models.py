@@ -1,8 +1,8 @@
 from sqlalchemy.dialects.postgresql import CITEXT
 
-from connector.models import auth  # noqa: F401  registers the auth tables
-from connector.models.auth import User
-from connector.models.base import Base
+from src.models import auth  # noqa: F401  registers the auth tables
+from src.models.auth import User
+from src.models.base import Base
 
 AUTH_TABLES = {
     "users",

@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from connector.config import Settings
+from src.config import Settings
 
 
 def test_settings_read_database_url_from_env_file(tmp_path: Path) -> None:

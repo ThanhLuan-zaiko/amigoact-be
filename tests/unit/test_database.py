@@ -1,4 +1,4 @@
-from connector.database import create_database_engine
+from src.database import create_database_engine
 
 
 def test_engine_uses_postgresql_dialect() -> None:

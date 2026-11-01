@@ -1,9 +1,9 @@
 from sqlalchemy import inspect
 
-from connector.config import get_settings
-from connector.database import create_database_engine
-from connector.models import auth  # noqa: F401  registers the auth tables
-from connector.models.base import Base
+from src.config import get_settings
+from src.database import create_database_engine
+from src.models import auth  # noqa: F401  registers the auth tables
+from src.models.base import Base
 
 AUTH_TABLES = [
     "users",

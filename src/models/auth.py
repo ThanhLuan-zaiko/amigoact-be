@@ -7,7 +7,7 @@ from sqlalchemy import ForeignKey, func
 from sqlalchemy.dialects.postgresql import CITEXT
 from sqlalchemy.orm import Mapped, mapped_column
 
-from connector.models.base import Base
+from src.models.base import Base
 
 
 class User(Base):

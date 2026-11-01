@@ -1,6 +1,6 @@
 import pytest
 
-from connector.reset import database_name
+from src.reset import database_name
 
 
 def test_database_name_returns_the_name_in_the_url() -> None:
