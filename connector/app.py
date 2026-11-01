@@ -10,7 +10,9 @@ from connector.config import get_settings
 from connector.database import check_connection, create_database_engine
 
 logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)-5s %(message)s",
+    datefmt="%H:%M:%S",
 )
 logger = logging.getLogger("connector")
 
@@ -20,14 +22,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     engine = create_database_engine(get_settings().database_url)
     try:
         check_connection(engine)
-    except Exception:
-        logger.exception(
-            "Database connection FAILED. Check DATABASE_URL in .env and that PostgreSQL is running."
-        )
+    except Exception as exc:
+        logger.error("Database connection failed: %s", exc)
         engine.dispose()
         raise
     logger.info(
-        "Database connection OK: %s", engine.url.render_as_string(hide_password=True)
+        "Database connected: %s", engine.url.render_as_string(hide_password=True)
     )
     app.state.engine = engine
     try:

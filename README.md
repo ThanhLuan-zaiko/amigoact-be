@@ -20,17 +20,17 @@ Mở file `.env` và điền `DATABASE_URL` theo định dạng chuỗi kết n�
 ## Chạy ứng dụng
 
 ```bash
-uv run fastapi dev connector/app.py
+uv run uvicorn connector.app:app --reload --port 8100
 ```
 
 Khi khởi động, log sẽ cho biết kết nối cơ sở dữ liệu có thành công hay không:
 
-- `Database connection OK: ...` nghĩa là kết nối thành công. Mật khẩu được che trong log.
-- `Database connection FAILED ...` kèm traceback nghĩa là không kết nối được. Hãy kiểm tra `DATABASE_URL` trong `.env` và xem PostgreSQL đã chạy chưa.
+- `Database connected: ...` nghĩa là kết nối thành công. Mật khẩu được che trong log.
+- `Database connection failed: ...` nghĩa là không kết nối được. Hãy kiểm tra `DATABASE_URL` trong `.env` và xem PostgreSQL đã chạy chưa.
 
 ## Cơ sở dữ liệu
 
-Schema nằm trong [`schema.sql`](schema.sql). Để xem database đích và danh sách bảng hiện có, chạy:
+Schema nằm trong [`schema.sql`](schema.sql). Dự án dùng một database riêng (`amigoact`), không dùng chung với ứng dụng khác, vì reset sẽ xóa toàn bộ schema `public` của database trong `.env`. Để xem database đích và danh sách bảng hiện có, chạy:
 
 ```bash
 uv run python scripts/reset_database.py

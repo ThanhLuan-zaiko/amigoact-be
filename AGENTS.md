@@ -35,6 +35,7 @@ Put scratch work in the session scratchpad directory, not in the repository. CI 
 ## Database configuration
 
 - `DATABASE_URL` is read only from `.env`, which is gitignored. Settings never read OS environment variables.
+- The project uses its own database `amigoact` on the PostgreSQL server. Never point `DATABASE_URL` at a database shared with other applications, because a reset drops the whole `public` schema of that database.
 - Do not write a connection string, password, or sample connection value into code, tests, `.env.example`, or CI files. `.env.example` keeps `DATABASE_URL=` empty.
 - CI writes `.env` from the `CI_POSTGRES_PASSWORD` secret and starts a throwaway PostgreSQL service.
 - App code lives in `connector/`. `config.py` loads settings, `database.py` creates the engine, and `app.py` checks the connection at startup.
@@ -53,7 +54,7 @@ Put scratch work in the session scratchpad directory, not in the repository. CI 
 uv sync                      # install locked dependencies
 uv add <package>             # add a dependency; commit pyproject.toml and uv.lock together
 uv run main.py               # run the app entry point
-uv run fastapi dev connector/app.py         # run the API; the log shows whether the database connected
+uv run uvicorn connector.app:app --reload --port 8100   # run the API; the log shows whether the database connected
 uv run ruff check .          # lint
 uv run ruff format --check . # format check (run `uv run ruff format .` to fix)
 uv run mypy <files>          # type check
