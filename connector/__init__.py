@@ -1,0 +1,1 @@
+"""AmigoACT backend package."""
