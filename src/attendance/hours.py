@@ -32,6 +32,7 @@ from src.models.attendance import (
 )
 from src.models.auth import User
 from src.models.organizations import Organization
+from src.notifications.events import activity_data, notify
 
 ENTRY_LIMIT = 100
 ATTENDANCE_SOURCE = "attendance"
@@ -115,6 +116,12 @@ def award_registration(
         )
     )
     record_change(db, registration, ATTENDED, actor_id, "attendance_confirmed")
+    notify(
+        db,
+        registration.student_id,
+        "hours_awarded",
+        {**activity_data(db, activity.id), "hours": float(hours)},
+    )
     db.flush()
 
 

@@ -101,13 +101,14 @@ jobs:
           fi
       - if: steps.detect.outputs.has_tests == 'true'
         run: uv sync --locked
-      - name: Write .env with the CI database URL and a throwaway JWT secret
+      - name: Write .env with the CI database URL and throwaway secrets
         if: steps.detect.outputs.has_tests == 'true'
         env:
           CI_POSTGRES_PASSWORD: ${{ secrets.CI_POSTGRES_PASSWORD }}
         run: |
           printf 'DATABASE_URL=postgresql+psycopg://ci:%s@localhost:5432/amigoact_test\n' "$CI_POSTGRES_PASSWORD" > .env
           printf 'JWT_SECRET=%s\n' "$(openssl rand -hex 32)" >> .env
+          printf 'CHAT_ENCRYPTION_KEY=%s\n' "$(openssl rand -base64 32)" >> .env
       - name: Load schema.sql into the CI database
         if: steps.detect.outputs.has_tests == 'true'
         env:

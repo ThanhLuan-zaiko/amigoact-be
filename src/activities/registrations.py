@@ -10,7 +10,7 @@ from datetime import UTC, datetime
 from fastapi import status
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session, aliased
+from sqlalchemy.orm import Session
 
 from src.activities.queries import held_seats, waitlist_position
 from src.activities.rules import (
@@ -26,22 +26,21 @@ from src.activities.rules import (
     initial_status,
     registration_is_open,
     requires_approval,
-    times_overlap,
 )
 from src.activities.schemas import (
     RegistrationResult,
 )
 from src.activities.service import load_activity
+from src.activities.shift_checks import reject_overlap, resolve_slot
 from src.auth.errors import api_error
 from src.auth.rate_limit import enforce_rate_limit
 from src.models.activities import (
     Activity,
-    ActivitySchedule,
     ActivitySlot,
     Registration,
     RegistrationStatusHistory,
 )
-from src.validation import validation_failure
+from src.notifications.events import notify_volunteer
 
 REGISTER_LIMIT = 60
 REGISTER_WINDOW = 60 * 60
@@ -127,53 +126,9 @@ def promote_waitlist(
             actor_id,
             "promoted_from_waitlist",
         )
-
-
-def _resolve_slot(
-    db: Session, activity: Activity, shift_id: uuid.UUID | None
-) -> ActivitySlot | None:
-    # Joined to the slots, because attendance can add a schedule that is not a shift.
-    has_shifts = db.scalar(
-        select(ActivitySlot.slot_id)
-        .join(ActivitySchedule, ActivitySchedule.id == ActivitySlot.schedule_id)
-        .where(ActivitySchedule.activity_id == activity.id)
-        .limit(1)
-    )
-    if has_shifts and shift_id is None:
-        raise validation_failure({"shift_id": "shift_required"})
-    if shift_id is None:
-        return None
-    slot = db.scalar(
-        select(ActivitySlot)
-        .join(ActivitySchedule, ActivitySchedule.id == ActivitySlot.schedule_id)
-        .where(
-            ActivitySlot.slot_id == shift_id,
-            ActivitySchedule.activity_id == activity.id,
+        notify_volunteer(
+            db, registration, "registration_promoted", status=registration.status
         )
-    )
-    if slot is None:
-        raise api_error(status.HTTP_404_NOT_FOUND, "shift_not_found")
-    return slot
-
-
-def _reject_overlap(
-    db: Session, activity_id: uuid.UUID, user_id: uuid.UUID, slot: ActivitySlot
-) -> None:
-    """One person cannot be in two shifts of the same activity at the same time."""
-    other = aliased(ActivitySlot)
-    rows = db.execute(
-        select(other.start_at, other.end_at)
-        .join(Registration, Registration.slot_id == other.slot_id)
-        .where(
-            Registration.activity_id == activity_id,
-            Registration.student_id == user_id,
-            Registration.status.in_(ACTIVE_REGISTRATION),
-            other.slot_id != slot.slot_id,
-        )
-    ).all()
-    for start_at, end_at in rows:
-        if times_overlap(slot.start_at, slot.end_at, start_at, end_at):
-            raise api_error(status.HTTP_409_CONFLICT, "shift_overlap")
 
 
 def _existing_registration(
@@ -212,7 +167,7 @@ def register(
     ):
         raise api_error(status.HTTP_409_CONFLICT, "registration_closed")
 
-    slot = _resolve_slot(db, activity, shift_id)
+    slot = resolve_slot(db, activity, shift_id)
     slot_id = slot.slot_id if slot else None
     existing = _existing_registration(db, activity.id, user_id, slot_id)
     if existing is not None and existing.status in (*ACTIVE_REGISTRATION, "attended"):
@@ -220,7 +175,7 @@ def register(
     if existing is not None and existing.status == REJECTED:
         raise api_error(status.HTTP_409_CONFLICT, "registration_rejected")
     if slot is not None:
-        _reject_overlap(db, activity.id, user_id, slot)
+        reject_overlap(db, activity.id, user_id, slot)
 
     new_status = initial_status(
         capacity=slot.capacity if slot else activity.max_participants,
@@ -314,6 +269,7 @@ def approve_registration(
     registration.review_note = note
     registration.reviewed_by = actor_id
     registration.reviewed_at = datetime.now(UTC)
+    notify_volunteer(db, registration, "registration_approved", note=note)
     db.commit()
 
 
@@ -332,6 +288,7 @@ def reject_registration(
     registration.review_note = note
     registration.reviewed_by = actor_id
     registration.reviewed_at = datetime.now(UTC)
+    notify_volunteer(db, registration, "registration_rejected", note=note)
     promote_waitlist(db, activity, registration.slot_id, actor_id)
     sync_slot_count(db, activity.id, registration.slot_id)
     db.commit()

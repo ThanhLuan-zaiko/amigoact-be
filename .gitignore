@@ -16,3 +16,6 @@ wheels/
 
 # Local secrets (database credentials)
 .env
+
+# Uploaded files (MEDIA_DIR)
+/media/

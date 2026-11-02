@@ -15,7 +15,7 @@ uv sync
 cp .env.example .env
 ```
 
-Mở file `.env` và điền `DATABASE_URL` theo định dạng chuỗi kết nối của SQLAlchemy với driver `psycopg`, cùng `JWT_SECRET` là một chuỗi ngẫu nhiên dài ít nhất 32 ký tự. Ứng dụng chỉ đọc các giá trị này từ `.env`, không đọc từ biến môi trường của hệ điều hành. File `.env` đã được đưa vào `.gitignore`, không được commit.
+Mở file `.env` và điền `DATABASE_URL` theo định dạng chuỗi kết nối của SQLAlchemy với driver `psycopg`, cùng `JWT_SECRET` là một chuỗi ngẫu nhiên dài ít nhất 32 ký tự, và `CHAT_ENCRYPTION_KEY` là 32 byte ngẫu nhiên mã hóa base64 (tạo bằng `openssl rand -base64 32`). Mất `CHAT_ENCRYPTION_KEY` thì tin nhắn đã lưu không đọc được nữa. Ứng dụng chỉ đọc các giá trị này từ `.env`, không đọc từ biến môi trường của hệ điều hành. File `.env` đã được đưa vào `.gitignore`, không được commit.
 
 Nếu chưa đặt `SMTP_HOST`, email tài khoản (kèm liên kết bí mật) sẽ được ghi vào log để tiện phát triển. Môi trường production bắt buộc phải đặt `SMTP_HOST`.
 
@@ -49,6 +49,11 @@ Tài liệu chi tiết nằm trong thư mục [`docs/`](docs):
 - [Tổ chức và thành viên](docs/organizations.md): quy tắc nghiệp vụ, API và kiểm tra dữ liệu.
 - [Hoạt động và đăng ký](docs/activities.md): vòng đời hoạt động, ca, danh sách chờ, API và kiểm tra dữ liệu.
 - [Điểm danh và giờ tình nguyện](docs/attendance.md): phiên điểm danh, QR, nhập mã, sổ giờ và khiếu nại.
+- [Chứng nhận](docs/certificates.md): cấp, thu hồi, xác minh công khai theo serial.
+- [Thông báo](docs/notifications.md): loại thông báo, tùy chọn kênh, API và email.
+- [Tải tệp](docs/media.md): tải ảnh, quyền xem, gắn ảnh vào đại diện, logo và ảnh bìa.
+- [Bảng tin](docs/posts.md): bài đăng, bình luận, thẻ, ghim và các danh sách trên trang chủ.
+- [Chat](docs/chat.md): phòng chung, kênh, tin nhắn riêng, và kết nối thời gian thực.
 
 ## Kiểm thử
 

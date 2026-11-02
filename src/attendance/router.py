@@ -2,7 +2,7 @@
 
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Path, Query, status
+from fastapi import APIRouter, Depends, Path, Query, status
 
 from src.activities import service as activity_service
 from src.attendance import appeals, checkin, hours, records, sessions
@@ -25,11 +25,12 @@ from src.attendance.schemas import (
 from src.auth.deps import Client, CurrentPrincipal, Db
 from src.auth.errors import api_error
 from src.models.activities import Registration
+from src.notifications.delivery import deliver_emails
 from src.organizations.access import require_manager
 from src.organizations.service import load_organization
 from src.validation import Uuid7
 
-router = APIRouter(tags=["attendance"])
+router = APIRouter(tags=["attendance"], dependencies=[Depends(deliver_emails)])
 
 Slug = Annotated[str, Path(pattern=r"^[A-Za-z0-9-]{1,80}$")]
 AppealStatus = Literal["pending", "approved", "rejected"]

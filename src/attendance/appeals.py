@@ -15,6 +15,7 @@ from src.auth.errors import api_error
 from src.models.activities import Activity, ActivitySlot, Registration
 from src.models.attendance import AttendanceAppeal, AttendanceRecord
 from src.models.auth import User
+from src.notifications.events import activity_data, notify
 from src.validation import validation_failure
 
 PENDING = "pending"
@@ -193,6 +194,7 @@ def approve_appeal(
     appeal.status = "approved"
     appeal.resolved_by = actor_id
     appeal.resolved_at = datetime.now(UTC)
+    notify(db, appeal.student_id, "appeal_approved", activity_data(db, activity.id))
     db.commit()
 
 
@@ -202,4 +204,10 @@ def reject_appeal(db: Session, appeal: AttendanceAppeal, actor_id: uuid.UUID) ->
     appeal.status = "rejected"
     appeal.resolved_by = actor_id
     appeal.resolved_at = datetime.now(UTC)
+    notify(
+        db,
+        appeal.student_id,
+        "appeal_rejected",
+        activity_data(db, appeal.activity_id),
+    )
     db.commit()

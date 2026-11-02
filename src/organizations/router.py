@@ -2,9 +2,10 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, Path, Query, status
+from fastapi import APIRouter, Depends, Path, Query, status
 
 from src.auth.deps import CurrentPrincipal, Db, OptionalPrincipal
+from src.notifications.delivery import deliver_emails
 from src.organizations import membership, service
 from src.organizations.access import require_manager, require_member, require_owner
 from src.organizations.schemas import (
@@ -21,7 +22,11 @@ from src.organizations.schemas import (
 )
 from src.validation import Uuid7
 
-router = APIRouter(prefix="/organizations", tags=["organizations"])
+router = APIRouter(
+    prefix="/organizations",
+    tags=["organizations"],
+    dependencies=[Depends(deliver_emails)],
+)
 
 Slug = Annotated[str, Path(pattern=r"^[A-Za-z0-9-]{1,80}$")]
 Limit = Annotated[int, Query(ge=1, le=100)]

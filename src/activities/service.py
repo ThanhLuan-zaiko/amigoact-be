@@ -45,6 +45,7 @@ from src.models.activities import (
     RegistrationStatusHistory,
 )
 from src.models.organizations import Organization
+from src.notifications.events import activity_data, notify
 from src.organizations.access import get_access
 from src.validation import validation_failure
 
@@ -270,6 +271,10 @@ def cancel_activity(db: Session, activity: Activity, actor_id: uuid.UUID) -> Non
         )
         registration.status = CANCELLED
         registration.cancelled_at = now
+    # Someone with several shifts hears about the cancellation once.
+    data = activity_data(db, activity.id)
+    for student_id in {registration.student_id for registration in registrations}:
+        notify(db, student_id, "activity_cancelled", data)
     slot_ids = (
         select(ActivitySlot.slot_id)
         .join(ActivitySchedule, ActivitySchedule.id == ActivitySlot.schedule_id)

@@ -1,8 +1,11 @@
 """Application settings read only from the .env file."""
 
+import base64
+import binascii
 from functools import lru_cache
+from pathlib import Path
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import (
     BaseSettings,
     PydanticBaseSettingsSource,
@@ -48,6 +51,41 @@ class AuthSettings(DotenvSettings):
     smtp_username: str = ""
     smtp_password: str = ""
     smtp_from: str = "no-reply@amigoact.local"
+
+
+class MediaSettings(DotenvSettings):
+    """Where uploaded files are kept on the local disk."""
+
+    # Relative paths are resolved from the directory the server starts in.
+    media_dir: Path = Path("media")
+
+
+@lru_cache
+def get_media_settings() -> MediaSettings:
+    return MediaSettings()
+
+
+class ChatSettings(DotenvSettings):
+    """Key that encrypts chat messages. Losing it makes the stored messages unreadable."""
+
+    # Base64 of 32 random bytes, for example from: openssl rand -base64 32
+    chat_encryption_key: str
+
+    @field_validator("chat_encryption_key")
+    @classmethod
+    def _must_be_a_256_bit_key(cls, value: str) -> str:
+        try:
+            raw = base64.b64decode(value, validate=True)
+        except (binascii.Error, ValueError) as exc:
+            raise ValueError("CHAT_ENCRYPTION_KEY must be base64") from exc
+        if len(raw) != 32:
+            raise ValueError("CHAT_ENCRYPTION_KEY must decode to 32 bytes")
+        return value
+
+
+@lru_cache
+def get_chat_settings() -> ChatSettings:
+    return ChatSettings()
 
 
 def get_settings() -> Settings:

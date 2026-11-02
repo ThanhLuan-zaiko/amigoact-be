@@ -44,7 +44,8 @@ REAPPLY_COOLDOWN = timedelta(days=7)
 APPLIED = "applied"
 
 
-def _live() -> tuple[Any, ...]:
+def live_organization() -> tuple[Any, ...]:
+    """Deleted and suspended organizations are hidden from every public read."""
     return (Organization.deleted_at.is_(None), Organization.status == ACTIVE)
 
 
@@ -62,7 +63,9 @@ def _member_count() -> Any:
 
 def load_organization(db: Session, slug: str) -> Organization:
     """Deleted and suspended organizations look like they do not exist."""
-    org = db.scalar(select(Organization).where(Organization.slug == slug, *_live()))
+    org = db.scalar(
+        select(Organization).where(Organization.slug == slug, *live_organization())
+    )
     if org is None:
         raise api_error(status.HTTP_404_NOT_FOUND, "organization_not_found")
     return org
@@ -232,7 +235,7 @@ def _page_of_summaries(
 def list_organizations(
     db: Session, search: str | None, limit: int, offset: int
 ) -> OrganizationPage:
-    query = select(Organization, _member_count()).where(*_live())
+    query = select(Organization, _member_count()).where(*live_organization())
     if search:
         query = query.where(Organization.name.icontains(search, autoescape=True))
     query = query.order_by(Organization.created_at.desc(), Organization.id)
@@ -257,7 +260,7 @@ def list_my_organizations(db: Session, user_id: uuid.UUID) -> list[MyOrganizatio
         .where(
             OrganizationMember.user_id == user_id,
             OrganizationMember.status.in_((ACTIVE, APPLIED)),
-            *_live(),
+            *live_organization(),
         )
         .order_by(Organization.name)
     ).all()

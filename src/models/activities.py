@@ -9,7 +9,7 @@ from sqlalchemy import ForeignKey, Numeric, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
-from src.models import organizations  # noqa: F401  registers the foreign key targets
+from src.models import media, organizations  # noqa: F401  registers the foreign key targets
 from src.models.base import Base
 
 
@@ -34,6 +34,9 @@ class Activity(Base):
     registration_deadline: Mapped[datetime | None]
     hours_awarded: Mapped[Decimal | None] = mapped_column(Numeric(6, 2))
     requirements_json: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    cover_media_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("media_assets.asset_id", ondelete="SET NULL")
+    )
     created_by: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL")
     )

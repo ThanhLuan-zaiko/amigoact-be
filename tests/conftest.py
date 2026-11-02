@@ -5,6 +5,7 @@ import re
 import uuid
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -12,10 +13,14 @@ from sqlalchemy import delete, or_, select
 
 from src.app import app
 from src.auth.mailer import get_mailer
+from src.media.storage import get_media_root
 from src.models.activities import Activity, Registration
 from src.models.attendance import QrScanLog
 from src.models.auth import AuthRateLimit, User
+from src.models.chat import OrgRoomMessage
+from src.models.media import MediaAsset
 from src.models.organizations import Organization
+from src.models.posts import OrgPost, PostComment
 
 PASSWORD = "Correct-Horse-7-Battery"
 
@@ -95,6 +100,7 @@ def api() -> Iterator[ApiContext]:
                             "activity-create",
                             "activity-register",
                             "checkin",
+                            "media-upload",
                         )
                         for user_id in user_ids
                     )
@@ -102,6 +108,17 @@ def api() -> Iterator[ApiContext]:
             )
             connection.execute(
                 delete(QrScanLog).where(QrScanLog.student_id.in_(user_ids))
+            )
+            connection.execute(
+                delete(MediaAsset).where(MediaAsset.uploader_id.in_(user_ids))
+            )
+            # Posts and comments by these users do not cascade from users.
+            connection.execute(
+                delete(PostComment).where(PostComment.author_id.in_(user_ids))
+            )
+            connection.execute(delete(OrgPost).where(OrgPost.author_id.in_(user_ids)))
+            connection.execute(
+                delete(OrgRoomMessage).where(OrgRoomMessage.author_id.in_(user_ids))
             )
             connection.execute(delete(User).where(User.email.like(f"%{tag}%")))
             connection.execute(
@@ -113,6 +130,14 @@ def api() -> Iterator[ApiContext]:
                 )
             )
     app.dependency_overrides.pop(get_mailer)
+
+
+@pytest.fixture
+def media_root(tmp_path: Path) -> Iterator[Path]:
+    """Keep uploads in a temporary folder, never in the repository."""
+    app.dependency_overrides[get_media_root] = lambda: tmp_path
+    yield tmp_path
+    app.dependency_overrides.pop(get_media_root)
 
 
 @pytest.fixture

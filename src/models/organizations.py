@@ -8,7 +8,7 @@ from sqlalchemy import ForeignKey, func
 from sqlalchemy.dialects.postgresql import CITEXT, JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
-from src.models import auth  # noqa: F401  registers users for the foreign keys
+from src.models import auth, media  # noqa: F401  registers the foreign key targets
 from src.models.base import Base
 
 
@@ -29,6 +29,12 @@ class Organization(Base):
     website: Mapped[str | None]
     address: Mapped[str | None]
     city: Mapped[str | None]
+    logo_media_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("media_assets.asset_id", ondelete="SET NULL")
+    )
+    cover_media_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("media_assets.asset_id", ondelete="SET NULL")
+    )
     deleted_at: Mapped[datetime | None]
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     # Kept current by the set_updated_at trigger, not by the ORM.

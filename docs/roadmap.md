@@ -30,8 +30,8 @@ Tính năng nào không nằm trên vòng này thì làm sau. Mỗi giai đoạn
 | 1 | Tổ chức và thành viên | Xong |
 | 2 | Hoạt động và đăng ký | Xong |
 | 3 | Điểm danh và giờ tình nguyện | Xong |
-| 4 | Chứng nhận và thông báo | Đang làm |
-| 5 | Bảng tin, tải tệp, rồi chat | Chưa làm |
+| 4 | Chứng nhận và thông báo | Backend xong, chờ giao diện |
+| 5 | Bảng tin, tải tệp, rồi chat | Đang làm |
 | 6 | Báo cáo, đánh giá, quản trị nền tảng | Chưa làm |
 
 ## Đã xong
@@ -102,14 +102,19 @@ Bảng: `notifications`, `notification_preferences`.
 - Mỗi sự kiện trên đều tạo thông báo cho đúng người, và chuông hiện đúng số chưa đọc.
 - Có đủ test unit, integration và regression cho mọi endpoint mới.
 
+### Trạng thái
+
+- Backend xong: cấp, thu hồi, hoàn tác thu hồi, trang xác minh công khai, chứng nhận của tôi, thông báo trong ứng dụng, tùy chọn theo kênh và theo loại, gửi email. Chi tiết trong `docs/certificates.md` và `docs/notifications.md`.
+- Chưa làm: giao diện (trang xác minh, chuông, trang thông báo, cài đặt thông báo, danh sách chứng nhận). Mẫu chứng nhận đã làm ở bước 2 của giai đoạn 5.
+
 ## Giai đoạn 5: bảng tin, tải tệp, rồi chat
 
 Làm theo thứ tự này, vì bảng tin và chat đều cần tải tệp.
 
-1. **Tải tệp** (`media_assets`, `media_moderation`): ảnh đại diện, logo tổ chức, ảnh bìa hoạt động, file PDF chứng nhận. Cần chọn nơi lưu trữ, giới hạn kích thước và kiểm tra loại tệp.
-2. **Mẫu chứng nhận** (`certificate_templates`): phần còn lại của giai đoạn 4, vì cần ảnh nền.
-3. **Bảng tin** (`org_posts`, `post_tags`, `org_post_media`, `org_post_comments`): bài đăng và bình luận của tổ chức, làm thật trang chủ và trang tạo bài đang là bản nháp giao diện. Mục "Thẻ phổ biến" trên rail lấy dữ liệu từ đây.
-4. **Chat** (`org_room_messages`, `org_dm_pairs`, `org_chat_channels` và các bảng liên quan): cần WebSocket và `ws_tickets`, nên phức tạp nhất và làm cuối. Mục "Tin nhắn" đang trỏ tới trang chưa có.
+1. **Tải tệp** (`media_assets`, `media_moderation`): ảnh đại diện, logo tổ chức, ảnh bìa hoạt động, file PDF chứng nhận. Backend đã có tải ảnh, đọc ảnh và gắn ảnh vào đại diện, logo, ảnh bìa, lưu trên ổ đĩa, xem [`media.md`](media.md). Còn lại: kiểm duyệt, xóa tệp, PDF chứng nhận, giao diện.
+2. **Mẫu chứng nhận** (`certificate_templates`): phần còn lại của giai đoạn 4, vì cần ảnh nền. Backend đã có mẫu và gắn mẫu khi cấp chứng nhận, xem [`certificates.md`](certificates.md). Còn lại: dựng file PDF từ mẫu và giao diện chỉnh vị trí chữ.
+3. **Bảng tin** (`org_posts`, `post_tags`, `org_post_media`, `org_post_comments`): bài đăng và bình luận của tổ chức, làm thật trang chủ và trang tạo bài đang là bản nháp giao diện. Mục "Thẻ phổ biến" trên rail lấy dữ liệu từ đây. Backend đã có bài đăng, nháp, ghim, bình luận, thẻ, ảnh và các danh sách, xem [`posts.md`](posts.md). Còn lại: khối nội dung, thùng rác, giao diện.
+4. **Chat** (`org_room_messages`, `org_dm_pairs`, `org_chat_channels` và các bảng liên quan): cần WebSocket và `ws_tickets`, nên phức tạp nhất và làm cuối. Mục "Tin nhắn" đang trỏ tới trang chưa có. Backend đã có phòng chung, kênh, tin nhắn riêng, tin nhắn, phản ứng, ghim, đọc chưa đọc và WebSocket, xem [`chat.md`](chat.md). Nội dung tin được mã hóa AES-256-GCM bằng khóa trong `.env`. Còn lại: đính kèm tệp, chạy nhiều tiến trình, giao diện.
 
 ## Giai đoạn 6: báo cáo, đánh giá, quản trị nền tảng
 

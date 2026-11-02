@@ -19,6 +19,7 @@ from src.models.organizations import (
     Role,
     UserRole,
 )
+from src.notifications.events import notify, organization_data
 from src.organizations.access import (
     ACTIVE,
     ADMIN_ROLE_CODE,
@@ -231,6 +232,7 @@ def approve_application(db: Session, org: Organization, user_id: uuid.UUID) -> N
     member.status = ACTIVE
     member.joined_at = datetime.now(UTC)
     db.delete(application)
+    notify(db, user_id, "membership_approved", organization_data(org))
     db.commit()
 
 
@@ -240,6 +242,7 @@ def reject_application(db: Session, org: Organization, user_id: uuid.UUID) -> No
     db.delete(member)
     application.answers = None
     application.rejected_at = datetime.now(UTC)
+    notify(db, user_id, "membership_rejected", organization_data(org))
     db.commit()
 
 
