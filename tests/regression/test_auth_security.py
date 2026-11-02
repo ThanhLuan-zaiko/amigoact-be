@@ -90,6 +90,20 @@ def test_reset_token_works_only_once(api: ApiContext) -> None:
     assert again.json()["detail"] == "invalid_or_expired_token"
 
 
+def test_refused_reset_keeps_existing_sessions(api: ApiContext, bearer: Bearer) -> None:
+    # A successful reset ends every session, so a refused one must not.
+    access = api.register()["tokens"]["access_token"]
+    api.client.post("/auth/password/forgot", json={"email": api.email()})
+    token = api.mailer.last_token()
+
+    response = api.client.post(
+        "/auth/password/reset", json={"token": token, "new_password": PASSWORD}
+    )
+
+    assert response.status_code == 400
+    assert api.client.get("/account/me", headers=bearer(access)).status_code == 200
+
+
 def test_expired_reset_token_is_rejected(api: ApiContext) -> None:
     api.register()
     api.client.post("/auth/password/forgot", json={"email": api.email()})

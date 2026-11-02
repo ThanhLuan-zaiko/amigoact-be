@@ -5,9 +5,7 @@ from fastapi import APIRouter, BackgroundTasks, status
 from src.auth import accounts, recovery
 from src.auth.deps import Client, Config, CurrentPrincipal, Db, MailerDep
 from src.auth.schemas import (
-    ChangeEmailRequest,
     ChangePasswordRequest,
-    DeleteAccountRequest,
     ForgotPasswordRequest,
     ProfileUpdateRequest,
     ResetPasswordRequest,
@@ -73,31 +71,3 @@ def update_me(
 ) -> UserResponse:
     user = accounts.update_profile(db, principal.user, payload)
     return UserResponse.model_validate(user)
-
-
-@router.post("/account/me/email", status_code=status.HTTP_202_ACCEPTED)
-def change_email(
-    payload: ChangeEmailRequest,
-    principal: CurrentPrincipal,
-    db: Db,
-    settings: Config,
-    mailer: MailerDep,
-    background: BackgroundTasks,
-) -> None:
-    recovery.request_email_change(
-        db,
-        principal.user,
-        payload.new_email,
-        payload.password,
-        settings,
-        mailer,
-        background,
-    )
-
-
-@router.delete("/account/me", status_code=status.HTTP_204_NO_CONTENT)
-def delete_me(
-    payload: DeleteAccountRequest, principal: CurrentPrincipal, db: Db
-) -> None:
-    accounts.require_password(db, principal.user, payload.password)
-    accounts.delete_account(db, principal.user)

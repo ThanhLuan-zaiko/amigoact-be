@@ -3,10 +3,12 @@ from datetime import UTC, datetime, timedelta
 
 import jwt
 import pytest
+from fastapi import HTTPException
 from pydantic import ValidationError
 
 from src.auth.passwords import hash_password, verify_password
 from src.auth.rate_limit import seconds_until_reset, window_start
+from src.auth.recovery import require_new_password
 from src.auth.schemas import ProfileUpdateRequest, RegisterRequest
 from src.auth.tokens import (
     InvalidAccessTokenError,
@@ -29,6 +31,18 @@ def test_password_hash_uses_argon2id_and_verifies() -> None:
 
 def test_verify_password_is_false_without_a_hash() -> None:
     assert not verify_password(None, "anything")
+
+
+def test_new_password_must_differ_from_the_stored_one() -> None:
+    stored = hash_password("Old-password-1")
+    with pytest.raises(HTTPException) as refused:
+        require_new_password(stored, "Old-password-1")
+    assert refused.value.detail == "same_password"
+    require_new_password(stored, "New-password-2")
+
+
+def test_new_password_check_passes_without_a_stored_hash() -> None:
+    require_new_password(None, "anything")
 
 
 def test_access_token_round_trip() -> None:

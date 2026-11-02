@@ -11,7 +11,7 @@ from src.auth.accounts import HOUR, require_password
 from src.auth.deps import ClientInfo, Principal
 from src.auth.errors import api_error, conflict_from_integrity_error
 from src.auth.mailer import Mailer
-from src.auth.passwords import hash_password
+from src.auth.passwords import hash_password, verify_password
 from src.auth.rate_limit import enforce_rate_limit
 from src.auth.sessions import revoke_user_sessions
 from src.auth.tokens import hash_opaque_token, new_opaque_token
@@ -31,6 +31,12 @@ def _invalid_token() -> HTTPException:
 def _require_impersonal_password(user: User, password: str) -> None:
     if password_is_personal(password, user.email, user.full_name):
         raise api_error(status.HTTP_422_UNPROCESSABLE_CONTENT, "password_personal")
+
+
+def require_new_password(password_hash: str | None, new_password: str) -> None:
+    """Refuse a new password that equals the stored one. Only the hash is known here."""
+    if verify_password(password_hash, new_password):
+        raise api_error(status.HTTP_400_BAD_REQUEST, "same_password")
 
 
 def request_password_reset(
@@ -91,6 +97,7 @@ def reset_password(db: Session, raw_token: str, new_password: str) -> None:
         raise _invalid_token()
 
     _require_impersonal_password(user, new_password)
+    require_new_password(user.password_hash, new_password)
     reset.used_at = now
     user.password_hash = hash_password(new_password)
     # Whoever knew the old password must not stay logged in.
@@ -120,7 +127,7 @@ def queue_email_verification(
     background: BackgroundTasks,
 ) -> None:
     """Add a verification token and queue its email. Commits."""
-    # Only the newest link stays valid, so an old one cannot undo an email change.
+    # Only the newest link stays valid.
     db.execute(
         delete(EmailVerification).where(
             EmailVerification.user_id == user.id,
@@ -159,23 +166,6 @@ def resend_verification(
     if user.email_verified_at is not None:
         raise api_error(status.HTTP_409_CONFLICT, "email_already_verified")
     queue_email_verification(db, user, user.email, settings, mailer, background)
-
-
-def request_email_change(
-    db: Session,
-    user: User,
-    new_email: str,
-    password: str,
-    settings: AuthSettings,
-    mailer: Mailer,
-    background: BackgroundTasks,
-) -> None:
-    """The address changes only after the owner of the new mailbox confirms it."""
-    require_password(db, user, password)
-    enforce_rate_limit(db, f"verify-send:{user.id}", VERIFICATION_SEND_LIMIT, HOUR)
-    if db.scalar(select(User.id).where(User.email == new_email)) is not None:
-        raise api_error(status.HTTP_409_CONFLICT, "email_taken")
-    queue_email_verification(db, user, new_email, settings, mailer, background)
 
 
 def verify_email(db: Session, raw_token: str) -> None:

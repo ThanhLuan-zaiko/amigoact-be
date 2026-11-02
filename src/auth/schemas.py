@@ -114,15 +114,6 @@ class VerifyEmailRequest(BaseModel):
     token: OpaqueToken
 
 
-class ChangeEmailRequest(BaseModel):
-    new_email: EmailStr
-    password: CurrentPassword
-
-
-class DeleteAccountRequest(BaseModel):
-    password: CurrentPassword
-
-
 class ProfileUpdateRequest(BaseModel):
     """Only the fields present in the body change. Null clears an optional field."""
 

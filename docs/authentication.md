@@ -44,10 +44,8 @@ Lỗi nghiệp vụ trả về `detail` là một mã cố định, ví dụ `em
 | `POST /auth/email/resend` | Có | Gửi lại liên kết xác minh |
 | `GET /account/me` | Có | Xem thông tin tài khoản |
 | `PATCH /account/me` | Có | Sửa thông tin. Chỉ các trường có trong body mới thay đổi |
-| `POST /account/me/email` | Có | Đổi email, chỉ có hiệu lực sau khi xác nhận ở email mới |
-| `DELETE /account/me` | Có | Xóa tài khoản, cần mật khẩu |
 
-Xóa tài khoản giữ lại bản ghi để không gãy khóa ngoại, nhưng xóa thông tin cá nhân. Tài khoản đang sở hữu tổ chức sẽ bị từ chối xóa với mã `owns_organizations`.
+Người dùng không thể đổi email hoặc tự xóa tài khoản. Email chỉ được xác định khi đăng ký và xác minh qua `POST /auth/email/verify`.
 
 ## Quy tắc dữ liệu
 
@@ -82,6 +80,7 @@ Mật khẩu cũng bị từ chối nếu:
 - quá phổ biến, ví dụ `Password123!` hoặc `Matkhau123!`
 - là dãy liên tiếp hoặc lặp lại một mẫu ngắn
 - chứa phần tên trong email hoặc họ tên của người dùng
+- trùng với mật khẩu hiện tại, khi đổi mật khẩu hoặc đặt lại mật khẩu (mã `same_password`, HTTP 400)
 
 Các quy tắc này chỉ áp dụng khi đặt mật khẩu mới. Đăng nhập không kiểm tra lại, nên tài khoản có mật khẩu cũ vẫn đăng nhập được.
 

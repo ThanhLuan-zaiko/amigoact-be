@@ -1,9 +1,9 @@
-"""Registration, login, profile changes, and account deletion."""
+"""Registration, login, and profile changes."""
 
 import uuid
 
 from fastapi import status
-from sqlalchemy import delete, select, text
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -12,9 +12,9 @@ from src.auth.errors import api_error, conflict_from_integrity_error, unauthoriz
 from src.auth.passwords import hash_password, needs_rehash, verify_password
 from src.auth.rate_limit import enforce_rate_limit
 from src.auth.schemas import ProfileUpdateRequest, RegisterRequest, TokenResponse
-from src.auth.sessions import revoke_user_sessions, start_session
+from src.auth.sessions import start_session
 from src.config import AuthSettings
-from src.models.auth import EmailVerification, PasswordReset, User
+from src.models.auth import User
 
 MINUTE = 60
 HOUR = 60 * MINUTE
@@ -26,22 +26,6 @@ REGISTER_IP_LIMIT = 20
 REGISTER_WINDOW = HOUR
 PASSWORD_CHECK_LIMIT = 10
 PASSWORD_CHECK_WINDOW = 15 * MINUTE
-
-# Personal fields erased when an account is deleted, besides the ones replaced.
-ERASED_FIELDS = (
-    "phone",
-    "tax_code",
-    "company_name",
-    "legal_rep_name",
-    "legal_rep_id",
-    "legal_rep_position",
-    "date_of_birth",
-    "gender",
-    "address",
-    "avatar_media_id",
-    "password_hash",
-    "email_verified_at",
-)
 
 
 def create_user(db: Session, payload: RegisterRequest, client: ClientInfo) -> User:
@@ -115,24 +99,3 @@ def update_profile(db: Session, user: User, payload: ProfileUpdateRequest) -> Us
         db.rollback()
         raise conflict_from_integrity_error(exc) from exc
     return user
-
-
-def delete_account(db: Session, user: User) -> None:
-    """Soft delete: keep the row for foreign keys, but erase personal data."""
-    owns_organization = db.execute(
-        text("SELECT 1 FROM organizations WHERE owner_id = :user_id LIMIT 1"),
-        {"user_id": user.id},
-    ).first()
-    if owns_organization:
-        raise api_error(status.HTTP_409_CONFLICT, "owns_organizations")
-
-    revoke_user_sessions(db, user.id)
-    db.execute(delete(PasswordReset).where(PasswordReset.user_id == user.id))
-    db.execute(delete(EmailVerification).where(EmailVerification.user_id == user.id))
-    user.status = "deleted"
-    # The .invalid domain can never receive mail, and the id keeps the email unique.
-    user.email = f"deleted-{user.id}@deleted.invalid"
-    user.full_name = "Deleted user"
-    for field in ERASED_FIELDS:
-        setattr(user, field, None)
-    db.commit()

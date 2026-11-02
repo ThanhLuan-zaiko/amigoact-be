@@ -1,9 +1,5 @@
 from collections.abc import Callable
 
-from sqlalchemy import delete, select
-
-from src.app import app
-from src.models.auth import User
 from tests.conftest import PASSWORD, ApiContext
 
 Bearer = Callable[[str], dict[str, str]]
@@ -101,6 +97,41 @@ def test_change_password_rejects_wrong_current_password(
     assert response.json()["detail"] == "invalid_current_password"
 
 
+def test_change_password_rejects_the_current_password(
+    api: ApiContext, bearer: Bearer
+) -> None:
+    headers = bearer(api.register()["tokens"]["access_token"])
+    response = api.client.post(
+        "/auth/password/change",
+        headers=headers,
+        json={"current_password": PASSWORD, "new_password": PASSWORD},
+    )
+    assert response.status_code == 400
+    assert response.json()["detail"] == "same_password"
+    assert login(api, PASSWORD) == 200
+
+
+def test_reset_password_rejects_the_current_password(
+    api: ApiContext, bearer: Bearer
+) -> None:
+    api.register()
+    api.client.post("/auth/password/forgot", json={"email": api.email()})
+    token = api.mailer.last_token()
+
+    response = api.client.post(
+        "/auth/password/reset", json={"token": token, "new_password": PASSWORD}
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "same_password"
+    assert login(api, PASSWORD) == 200
+    # The refused link was not used up, so it still resets to a new password.
+    retry = api.client.post(
+        "/auth/password/reset", json={"token": token, "new_password": NEW_PASSWORD}
+    )
+    assert retry.status_code == 204
+
+
 def test_forgot_and_reset_password(api: ApiContext, bearer: Bearer) -> None:
     access = api.register()["tokens"]["access_token"]
 
@@ -152,62 +183,23 @@ def test_resend_verification_sends_a_new_link(api: ApiContext, bearer: Bearer) -
     assert stale.status_code == 400
 
 
-def test_change_email_applies_only_after_confirmation(
-    api: ApiContext, bearer: Bearer
-) -> None:
+def test_change_email_route_is_removed(api: ApiContext, bearer: Bearer) -> None:
     headers = bearer(api.register()["tokens"]["access_token"])
-    new_email = api.email("new")
-
     response = api.client.post(
         "/account/me/email",
         headers=headers,
-        json={"new_email": new_email, "password": PASSWORD},
+        json={"new_email": api.email("new"), "password": PASSWORD},
     )
-
-    assert response.status_code == 202
-    assert api.mailer.sent[-1][0] == new_email
+    assert response.status_code == 404
     assert api.client.get("/account/me", headers=headers).json()["email"] == api.email()
 
-    api.client.post("/auth/email/verify", json={"token": api.mailer.last_token()})
-    assert api.client.get("/account/me", headers=headers).json()["email"] == new_email
 
-
-def test_change_email_rejects_taken_address(api: ApiContext, bearer: Bearer) -> None:
-    api.register("taken")
-    headers = bearer(api.register("mine")["tokens"]["access_token"])
-    response = api.client.post(
-        "/account/me/email",
-        headers=headers,
-        json={"new_email": api.email("taken"), "password": PASSWORD},
-    )
-    assert response.status_code == 409
-
-
-def test_delete_account_erases_personal_data(api: ApiContext, bearer: Bearer) -> None:
-    body = api.register(phone="+84912345" + str(int(api.tag[:6], 16))[:3].zfill(3))
-    headers = bearer(body["tokens"]["access_token"])
-
-    wrong = api.client.request(
-        "DELETE", "/account/me", headers=headers, json={"password": "wrong password"}
-    )
-    assert wrong.status_code == 400
+def test_delete_account_route_is_removed(api: ApiContext, bearer: Bearer) -> None:
+    headers = bearer(api.register()["tokens"]["access_token"])
 
     response = api.client.request(
         "DELETE", "/account/me", headers=headers, json={"password": PASSWORD}
     )
 
-    assert response.status_code == 204
-    assert api.client.get("/account/me", headers=headers).status_code == 401
-    assert login(api, PASSWORD) == 401
-    with app.state.engine.begin() as connection:
-        row = connection.execute(
-            select(User.status, User.email, User.phone, User.password_hash).where(
-                User.id == body["user"]["id"]
-            )
-        ).one()
-        assert row.status == "deleted"
-        assert api.email() != row.email
-        assert row.phone is None
-        assert row.password_hash is None
-        # The email no longer matches the test tag, so remove the row here.
-        connection.execute(delete(User).where(User.id == body["user"]["id"]))
+    assert response.status_code == 405
+    assert api.client.get("/account/me", headers=headers).status_code == 200
