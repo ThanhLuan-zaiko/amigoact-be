@@ -8,10 +8,13 @@ from fastapi import FastAPI, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
+from src.activities.router import router as activities_router
+from src.attendance.router import router as attendance_router
 from src.auth.account_router import router as account_router
 from src.auth.router import router as auth_router
 from src.config import get_auth_settings, get_settings
 from src.database import check_connection, create_database_engine
+from src.organizations.router import router as organizations_router
 
 logging.basicConfig(
     level=logging.INFO,
@@ -55,3 +58,6 @@ async def validation_error(_request: Request, exc: RequestValidationError) -> Re
 
 app.include_router(auth_router)
 app.include_router(account_router)
+app.include_router(organizations_router)
+app.include_router(activities_router)
+app.include_router(attendance_router)

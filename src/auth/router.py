@@ -1,7 +1,5 @@
 """Routes for registration, login, sessions, and token refresh."""
 
-import uuid
-
 from fastapi import APIRouter, BackgroundTasks, status
 
 from src.auth import accounts, recovery, sessions
@@ -17,6 +15,7 @@ from src.auth.schemas import (
     UserResponse,
 )
 from src.models.auth import AuthSession
+from src.validation import Uuid7
 
 router = APIRouter(tags=["auth"])
 
@@ -81,7 +80,7 @@ def list_sessions(principal: CurrentPrincipal, db: Db) -> list[SessionResponse]:
 
 
 @router.delete("/auth/sessions/{session_id}", status_code=status.HTTP_204_NO_CONTENT)
-def revoke_session(session_id: uuid.UUID, principal: CurrentPrincipal, db: Db) -> None:
+def revoke_session(session_id: Uuid7, principal: CurrentPrincipal, db: Db) -> None:
     session = db.get(AuthSession, session_id)
     if session is None or session.user_id != principal.user.id:
         raise api_error(status.HTTP_404_NOT_FOUND, "session_not_found")

@@ -50,6 +50,25 @@ Put scratch work in the session scratchpad directory, not in the repository. CI 
 - Without `SMTP_HOST`, emails with their secret links go to the application log. Always set `SMTP_HOST` in production.
 - Rate limits use the client IP. Behind a proxy, set uvicorn `--forwarded-allow-ips` to the proxy address so `X-Forwarded-For` is trusted only from there.
 
+## Organizations and validation
+
+- Details are in `docs/organizations.md`. Code lives in `src/organizations/`.
+- Any logged-in user can create an organization and becomes its owner. Volunteers do not have to be students.
+- Shared validators live in `src/validation.py`. Single-line and multi-line text reject control characters, because NUL crashes PostgreSQL. Path IDs use the `Uuid7` type.
+- New request bodies reject unknown fields with `extra="forbid"`. Every validation error needs a stable `type` code that the frontend can translate.
+
+## Activities
+
+- Details are in `docs/activities.md`. Code lives in `src/activities/`.
+- Every seat change locks the activity row first with `load_activity(..., lock=True)`, so the last seat cannot be taken twice. Every registration status change writes a `registration_status_history` row.
+- Rules that need the database report errors with `validation_failure` from `src/validation.py`, in the same shape as schema errors.
+
+## Attendance and hours
+
+- Details are in `docs/attendance.md`. Code lives in `src/attendance/`.
+- A scanned QR counts at once. A typed code waits for a manager. Use `is_verified` instead of checking `verified_by` alone.
+- `volunteer_hour_ledger` is append-only: a correction is a new `adjustment` row. Hours are summed from the ledger.
+
 ## Database reset
 
 - Never reset, drop, truncate, or delete database data on your own. Run `scripts/reset_database.py --apply` only when the user explicitly asks for a reset in the current message.

@@ -24,6 +24,7 @@ from src.auth.validators import (
     normalize_tax_code,
     password_is_personal,
 )
+from src.validation import single_line
 
 MIN_BIRTH_YEAR = 1900
 
@@ -33,21 +34,27 @@ NewPassword = Annotated[
 ]
 CurrentPassword = Annotated[str, Field(min_length=1, max_length=128)]
 FullName = Annotated[
-    str, StringConstraints(strip_whitespace=True, min_length=1, max_length=120)
+    str,
+    StringConstraints(strip_whitespace=True, min_length=1, max_length=120),
+    AfterValidator(single_line),
 ]
 Phone = Annotated[str, Field(max_length=30), AfterValidator(normalize_phone)]
 TaxCode = Annotated[str, Field(max_length=30), AfterValidator(normalize_tax_code)]
 LegalId = Annotated[str, Field(max_length=30), AfterValidator(normalize_legal_id)]
 ShortText = Annotated[
-    str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)
+    str,
+    StringConstraints(strip_whitespace=True, min_length=1, max_length=200),
+    AfterValidator(single_line),
 ]
 Address = Annotated[
-    str, StringConstraints(strip_whitespace=True, min_length=1, max_length=500)
+    str,
+    StringConstraints(strip_whitespace=True, min_length=1, max_length=500),
+    AfterValidator(single_line),
 ]
 OpaqueToken = Annotated[str, Field(min_length=1, max_length=256)]
 
 
-def _field_errors(title: str, errors: dict[str, tuple[str, str]]) -> ValidationError:
+def field_errors(title: str, errors: dict[str, tuple[str, str]]) -> ValidationError:
     """Build an error that points at specific fields from a model validator."""
     return ValidationError.from_exception_data(
         title,
@@ -83,7 +90,7 @@ class RegisterRequest(BaseModel):
         if password_is_personal(self.password, self.email, self.full_name):
             errors["password"] = ("password_personal", "Password is too personal")
         if errors:
-            raise _field_errors("RegisterRequest", errors)
+            raise field_errors("RegisterRequest", errors)
         return self
 
 
@@ -142,7 +149,7 @@ class ProfileUpdateRequest(BaseModel):
     @model_validator(mode="after")
     def reject_null_full_name(self) -> Self:
         if "full_name" in self.model_fields_set and self.full_name is None:
-            raise _field_errors(
+            raise field_errors(
                 "ProfileUpdateRequest",
                 {"full_name": ("required", "Full name cannot be empty")},
             )

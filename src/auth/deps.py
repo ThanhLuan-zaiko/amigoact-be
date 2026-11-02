@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Annotated
 
-from fastapi import Depends, Request, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
@@ -77,3 +77,20 @@ def get_principal(
 
 
 CurrentPrincipal = Annotated[Principal, Depends(get_principal)]
+
+
+def get_optional_principal(
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)],
+    db: Db,
+    settings: Config,
+) -> Principal | None:
+    """Treat a missing or stale token as an anonymous visitor on public routes."""
+    if credentials is None:
+        return None
+    try:
+        return get_principal(credentials, db, settings)
+    except HTTPException:
+        return None
+
+
+OptionalPrincipal = Annotated[Principal | None, Depends(get_optional_principal)]

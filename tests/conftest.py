@@ -8,11 +8,14 @@ from dataclasses import dataclass, field
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import delete, or_
+from sqlalchemy import delete, or_, select
 
 from src.app import app
 from src.auth.mailer import get_mailer
+from src.models.activities import Activity, Registration
+from src.models.attendance import QrScanLog
 from src.models.auth import AuthRateLimit, User
+from src.models.organizations import Organization
 
 PASSWORD = "Correct-Horse-7-Battery"
 
@@ -68,7 +71,38 @@ def api() -> Iterator[ApiContext]:
     with TestClient(app, client=(ip, 50000)) as client:
         yield ApiContext(client, mailer, tag)
         # Remove only the rows this test created. CASCADE clears tokens and sessions.
+        # Organizations go first, because owner_id does not cascade.
         with app.state.engine.begin() as connection:
+            user_ids = connection.scalars(
+                select(User.id).where(User.email.like(f"%{tag}%"))
+            ).all()
+            # Registrations go before their shifts, because slot_id is RESTRICT.
+            org_ids = select(Organization.id).where(Organization.owner_id.in_(user_ids))
+            activity_ids = select(Activity.id).where(Activity.org_id.in_(org_ids))
+            connection.execute(
+                delete(Registration).where(Registration.activity_id.in_(activity_ids))
+            )
+            connection.execute(
+                delete(Organization).where(Organization.owner_id.in_(user_ids))
+            )
+            connection.execute(
+                delete(AuthRateLimit).where(
+                    AuthRateLimit.bucket.in_(
+                        f"{prefix}:{user_id}"
+                        for prefix in (
+                            "org-create",
+                            "org-join",
+                            "activity-create",
+                            "activity-register",
+                            "checkin",
+                        )
+                        for user_id in user_ids
+                    )
+                )
+            )
+            connection.execute(
+                delete(QrScanLog).where(QrScanLog.student_id.in_(user_ids))
+            )
             connection.execute(delete(User).where(User.email.like(f"%{tag}%")))
             connection.execute(
                 delete(AuthRateLimit).where(

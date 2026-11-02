@@ -44,7 +44,11 @@ Lệnh này chỉ đọc và không thay đổi gì. Để xóa toàn bộ dữ 
 
 Tài liệu chi tiết nằm trong thư mục [`docs/`](docs):
 
+- [Lộ trình phát triển](docs/roadmap.md): kế hoạch theo giai đoạn và các quyết định sản phẩm.
 - [Xác thực và tài khoản](docs/authentication.md): API, quy tắc dữ liệu, cấu hình và triển khai.
+- [Tổ chức và thành viên](docs/organizations.md): quy tắc nghiệp vụ, API và kiểm tra dữ liệu.
+- [Hoạt động và đăng ký](docs/activities.md): vòng đời hoạt động, ca, danh sách chờ, API và kiểm tra dữ liệu.
+- [Điểm danh và giờ tình nguyện](docs/attendance.md): phiên điểm danh, QR, nhập mã, sổ giờ và khiếu nại.
 
 ## Kiểm thử
 
