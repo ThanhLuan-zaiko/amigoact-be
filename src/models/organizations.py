@@ -29,6 +29,13 @@ class Organization(Base):
     website: Mapped[str | None]
     address: Mapped[str | None]
     city: Mapped[str | None]
+    # Legal details. Only a platform admin moves legal_status away from 'none'.
+    legal_name: Mapped[str | None]
+    tax_code: Mapped[str | None]
+    license_number: Mapped[str | None]
+    legal_rep_name: Mapped[str | None]
+    legal_rep_position: Mapped[str | None]
+    legal_status: Mapped[str] = mapped_column(server_default="none")
     logo_media_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("media_assets.asset_id", ondelete="SET NULL")
     )

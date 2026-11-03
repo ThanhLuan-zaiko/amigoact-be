@@ -31,6 +31,16 @@ Role `admin` được tạo cùng tổ chức, nên không cần dữ liệu kh�
 
 Chủ sở hữu không rời được tổ chức và không bị xóa. Hiện chưa có chức năng chuyển quyền sở hữu và xóa tổ chức.
 
+### Thông tin pháp lý và ảnh
+
+- Thông tin pháp lý không bắt buộc: tên pháp lý (`legal_name`), mã số thuế (`tax_code`), số giấy phép hoặc quyết định thành lập (`license_number`), người đại diện pháp luật (`legal_rep_name`) và chức vụ (`legal_rep_position`). Người tạo và quản trị viên điền được cả khi tạo lẫn khi sửa.
+- Số giấy tờ tùy thân của người đại diện không thu thập ở tổ chức. Nó chỉ có ở hồ sơ tài khoản.
+- `legal_status` chỉ đọc, gồm `none`, `pending`, `verified`. Mới tạo luôn là `none`. Gửi `legal_status` trong body bị từ chối bằng `extra_forbidden`, nên người dùng không tự xác nhận được. Quy trình xác minh của quản trị nền tảng chưa có.
+- Logo và ảnh bìa gửi bằng `logo_asset_id` và `cover_asset_id`, là ID của ảnh đã tải lên qua `POST /media`. Chỉ người tải lên mới gắn được ảnh của mình. Ảnh không tồn tại, ảnh riêng của người khác, hoặc ảnh chưa tải xong đều trả về 404 `media_not_found`. Khi tạo, nếu ảnh không hợp lệ thì tổ chức không được tạo.
+- Gắn ảnh làm ảnh thành `public`. Gửi `null` để gỡ ảnh. Khi không gửi trường ảnh, ảnh giữ nguyên.
+- Phản hồi chi tiết trả về `logo_url` và `cover_url` dạng `/media/{id}/file`, hoặc `null`. Danh sách không có hai trường này, để không phải truy vấn thêm cho mỗi dòng.
+- Thông tin pháp lý và ảnh công khai với mọi người, vì `GET /organizations/{slug}` không cần đăng nhập.
+
 ## API
 
 | Method | Đường dẫn | Quyền |
@@ -66,6 +76,10 @@ Bộ kiểm tra dùng chung nằm trong [`src/validation.py`](../src/validation.
 | `website` | `http` hoặc `https`, có tên miền, không chứa tài khoản hay khoảng trắng, tối đa 300 ký tự | `website_invalid`, `string_too_long` |
 | `address` | Tối đa 500 ký tự, một dòng | `string_too_long`, `text_invalid` |
 | `city` | Tối đa 120 ký tự, một dòng | `string_too_long`, `text_invalid` |
+| `legal_name`, `license_number`, `legal_rep_name`, `legal_rep_position` | Tối đa 200 ký tự, một dòng, không được để trống | `string_too_long`, `text_invalid` |
+| `tax_code` | 10 chữ số, hoặc 13 chữ số với chi nhánh, lưu dạng `NNNNNNNNNN-NNN` | `tax_code_invalid` |
+| `logo_asset_id`, `cover_asset_id` | UUIDv7 của ảnh đã tải lên, hoặc `null` | `uuid_invalid`, `media_not_found` (404) |
+| `legal_status` | Chỉ đọc, không gửi được | `extra_forbidden` |
 | `message` | Tối đa 1000 ký tự, được xuống dòng | `string_too_long`, `text_invalid` |
 | `role` | `admin`, `member` | `literal_error` |
 | Trường lạ, ví dụ `owner_id` | Bị từ chối | `extra_forbidden` |

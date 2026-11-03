@@ -23,6 +23,7 @@ from src.models.organizations import (
     UserRole,
 )
 from src.organizations.access import ACTIVE, ADMIN_ROLE_CODE, get_access, resolve_role
+from src.organizations.pictures import attach_picture, picture_url
 from src.organizations.schemas import (
     MyOrganization,
     OrganizationCreateRequest,
@@ -42,6 +43,8 @@ ADMIN_ROLE_NAME = "Admin"
 ADMIN_ROLE_POSITION = 100
 REAPPLY_COOLDOWN = timedelta(days=7)
 APPLIED = "applied"
+# Request field -> column. These are not copied over as they are: the asset is checked first.
+PICTURE_FIELDS = {"logo_asset_id": "logo_media_id", "cover_asset_id": "cover_media_id"}
 
 
 def live_organization() -> tuple[Any, ...]:
@@ -149,6 +152,14 @@ def organization_detail(
         website=org.website,
         address=org.address,
         city=org.city,
+        legal_name=org.legal_name,
+        tax_code=org.tax_code,
+        license_number=org.license_number,
+        legal_rep_name=org.legal_rep_name,
+        legal_rep_position=org.legal_rep_position,
+        legal_status=org.legal_status,
+        logo_url=picture_url(org.logo_media_id),
+        cover_url=picture_url(org.cover_media_id),
         owner_name=owner.full_name if owner else "",
         activity_count=_activity_count(db, org.id),
         volunteer_hours=_volunteer_hours(db, org.id),
@@ -169,6 +180,16 @@ def _insert_with_unique_slug(
             org_type=payload.org_type,
             join_policy=payload.join_policy,
             owner_id=owner_id,
+            email=payload.email,
+            phone=payload.phone,
+            website=payload.website,
+            address=payload.address,
+            city=payload.city,
+            legal_name=payload.legal_name,
+            tax_code=payload.tax_code,
+            license_number=payload.license_number,
+            legal_rep_name=payload.legal_rep_name,
+            legal_rep_position=payload.legal_rep_position,
         )
         db.add(org)
         try:
@@ -188,6 +209,9 @@ def create_organization(
     """Create the organization with its owner as the first active member."""
     enforce_rate_limit(db, f"org-create:{owner_id}", CREATE_LIMIT, CREATE_WINDOW)
     org = _insert_with_unique_slug(db, payload, owner_id)
+    # Attach after the insert: a slug retry rolls back, which would undo the public flag.
+    org.logo_media_id = attach_picture(db, payload.logo_asset_id, owner_id)
+    org.cover_media_id = attach_picture(db, payload.cover_asset_id, owner_id)
     db.add(
         OrganizationMember(
             org_id=org.id,
@@ -211,10 +235,19 @@ def create_organization(
 
 
 def update_organization(
-    db: Session, org: Organization, payload: OrganizationUpdateRequest
+    db: Session,
+    org: Organization,
+    payload: OrganizationUpdateRequest,
+    user_id: uuid.UUID,
 ) -> Organization:
     for field in payload.model_fields_set:
-        setattr(org, field, getattr(payload, field))
+        if field not in PICTURE_FIELDS:
+            setattr(org, field, getattr(payload, field))
+    # A picture field maps to its column. Sending null clears it.
+    for field, column in PICTURE_FIELDS.items():
+        if field in payload.model_fields_set:
+            asset_id = getattr(payload, field)
+            setattr(org, column, attach_picture(db, asset_id, user_id))
     db.commit()
     return org
 

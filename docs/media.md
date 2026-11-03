@@ -38,6 +38,7 @@ Hiện chỉ nhận ảnh JPEG, PNG và WEBP, tối đa 5 MB mỗi tệp. Ảnh 
 
 - `POST /media` trả về 201 với `id`, `url` (dạng `/media/{id}/file`), `mime`, `size_bytes`, `visibility` và `created_at`.
 - Các đường dẫn gắn ảnh nhận `{ "asset_id": "<uuid>" }`. Gửi `null` để gỡ ảnh hiện tại. Trả về 204.
+- Tạo và sửa tổ chức cũng nhận `logo_asset_id` và `cover_asset_id` trong body, nên ảnh có thể gắn ngay lúc tạo mà không cần gọi thêm.
 - `GET /media/{id}/file` trả về nội dung ảnh, kèm `X-Content-Type-Options: nosniff`. Ảnh công khai có `Cache-Control: public`, ảnh riêng có `private`.
 - Tệp riêng của người khác, tệp chưa tải xong và tệp không tồn tại đều trả về 404 `media_not_found`. Không phân biệt các trường hợp để khỏi lộ tệp nào đang tồn tại.
 
@@ -70,5 +71,5 @@ Thư mục `media/` nằm trong `.gitignore`. Tệp test dùng thư mục tạm,
 - Kiểm duyệt ảnh (`media_moderation`). Sẽ làm cùng quản trị nền tảng ở giai đoạn 6.
 - Xóa tệp và dọn tệp không được gắn vào đâu. Hiện tệp chỉ được thêm, không xóa. Mỗi tệp đã lưu thì tồn tại mãi.
 - Đọc kích thước ảnh (`width`, `height`) và tạo ảnh thu nhỏ (`thumb_url`).
-- Trả về `avatar`, `logo`, `cover` trong response của người dùng, tổ chức và hoạt động. Hiện chỉ có đường gắn ảnh, chưa có đường đọc ID ảnh.
+- Trả về `avatar` trong response của người dùng và ảnh bìa trong response của hoạt động. Tổ chức đã trả về `logo_url` và `cover_url` (xem [`organizations.md`](organizations.md)), nhưng chưa có đường đọc ID ảnh cho hai phần còn lại.
 - Object storage (S3 hoặc GCS).

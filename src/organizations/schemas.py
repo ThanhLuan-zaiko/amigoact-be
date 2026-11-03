@@ -16,8 +16,8 @@ from pydantic import (
 )
 from pydantic_core import PydanticCustomError
 
-from src.auth.schemas import Address, Phone, field_errors
-from src.validation import multi_line, single_line
+from src.auth.schemas import Address, Phone, ShortText, TaxCode, field_errors
+from src.validation import Uuid7, multi_line, single_line
 
 OrgRole = Literal["owner", "admin", "member"]
 OrgType = Literal["organization", "club", "group", "business"]
@@ -88,10 +88,24 @@ class StrictRequest(BaseModel):
 
 
 class OrganizationCreateRequest(StrictRequest):
+    """Pictures are uploads from POST /media, sent by their asset id."""
+
     name: OrganizationName
     description: Description | None = None
     org_type: OrgType = "organization"
     join_policy: JoinPolicy = "invite"
+    email: EmailStr | None = None
+    phone: Phone | None = None
+    website: Website | None = None
+    address: Address | None = None
+    city: City | None = None
+    legal_name: ShortText | None = None
+    tax_code: TaxCode | None = None
+    license_number: ShortText | None = None
+    legal_rep_name: ShortText | None = None
+    legal_rep_position: ShortText | None = None
+    logo_asset_id: Uuid7 | None = None
+    cover_asset_id: Uuid7 | None = None
 
 
 class OrganizationUpdateRequest(StrictRequest):
@@ -106,6 +120,13 @@ class OrganizationUpdateRequest(StrictRequest):
     website: Website | None = None
     address: Address | None = None
     city: City | None = None
+    legal_name: ShortText | None = None
+    tax_code: TaxCode | None = None
+    license_number: ShortText | None = None
+    legal_rep_name: ShortText | None = None
+    legal_rep_position: ShortText | None = None
+    logo_asset_id: Uuid7 | None = None
+    cover_asset_id: Uuid7 | None = None
 
     @model_validator(mode="after")
     def reject_null_required_fields(self) -> Self:
@@ -159,6 +180,15 @@ class OrganizationDetail(OrganizationSummary):
     website: str | None
     address: str | None
     city: str | None
+    legal_name: str | None
+    tax_code: str | None
+    license_number: str | None
+    legal_rep_name: str | None
+    legal_rep_position: str | None
+    legal_status: str
+    # Relative path of the picture, served by GET /media/{id}/file. Null when unset.
+    logo_url: str | None
+    cover_url: str | None
     owner_name: str
     # Published activities and approved hours, for the header.
     activity_count: int

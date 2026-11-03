@@ -76,7 +76,7 @@ def update_organization(
     user_id = principal.user.id
     org = service.load_organization(db, slug)
     require_manager(db, org, user_id)
-    service.update_organization(db, org, payload)
+    service.update_organization(db, org, payload, user_id)
     return service.organization_detail(db, org, user_id)
 
 
