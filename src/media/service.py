@@ -3,7 +3,6 @@
 import hashlib
 import re
 import uuid
-from datetime import UTC, datetime
 from pathlib import Path
 
 from fastapi import status
@@ -71,7 +70,7 @@ def store_upload(
     if existing is not None and existing.uploader_id == user_id:
         return existing
     asset_id = uuid.uuid7()
-    key = storage.new_storage_key(user_id, asset_id, kind.extension, datetime.now(UTC))
+    key = storage.new_storage_key(asset_id, kind.extension)
     storage.write_file(root, key, data)
     asset = MediaAsset(
         asset_id=asset_id,

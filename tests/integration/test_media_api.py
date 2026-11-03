@@ -1,4 +1,3 @@
-import re
 import uuid
 from pathlib import Path
 
@@ -26,8 +25,7 @@ def test_upload_stores_a_private_file_under_a_generated_name(
     row = db_row(MediaAsset, uuid.UUID(body["id"]))
     assert row.uploader_id == uuid.UUID(user_id)
     assert row.upload_status == "active"
-    stored = rf"users/{user_id}/by-date/\d{{4}}/\d{{2}}/\d{{2}}/{body['id']}\.png"
-    assert re.fullmatch(stored, row.storage_key)
+    assert row.storage_key == f"{body['id']}.png"
     assert (media_root / row.storage_key).read_bytes() == PNG
 
 

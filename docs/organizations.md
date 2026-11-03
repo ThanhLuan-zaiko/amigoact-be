@@ -147,7 +147,7 @@ Việc đăng hoạt động cũng khóa tổ chức, giống như xóa, và ki�
 - Không xóa gì khác: thành viên, vai trò, hoạt động, bài đăng, giờ tình nguyện và các tệp đều giữ nguyên.
 - Logo, ảnh bìa và ảnh bộ sưu tập chuyển sang `private`, nên người khác không tải được qua `/media/{id}/file`. Ngoại lệ: ảnh còn được dùng ở chỗ khác, ví dụ làm ảnh đại diện của chính chủ sở hữu, thì vẫn công khai. Chủ sở hữu luôn xem được ảnh của mình.
 - Tổ chức đã xóa không còn được tính trong giới hạn 5 tổ chức, nên xóa mềm trả lại một chỗ cho chủ sở hữu.
-- Chứng nhận đã cấp vẫn hiện tên tổ chức và vẫn xác minh được, vì đó là lịch sử của sinh viên.
+- Chứng nhận đã cấp vẫn hiện tên tổ chức và vẫn xác minh được, vì đó là lịch sử của sinh viên. Xóa vĩnh viễn thì không làm được khi còn chứng nhận, xem bên dưới.
 
 ### Thùng rác và khôi phục
 
@@ -155,6 +155,7 @@ Việc đăng hoạt động cũng khóa tổ chức, giống như xóa, và ki�
 | ---- | ---- | ---- |
 | GET | `/organizations/mine/deleted` | Đã đăng nhập: chỉ liệt kê tổ chức của chính mình đã xóa |
 | POST | `/organizations/mine/deleted/{org_id}/restore` | Chủ sở hữu, chỉ với tổ chức đang ở thùng rác |
+| DELETE | `/organizations/mine/deleted/{org_id}` | Chủ sở hữu, chỉ với tổ chức đang ở thùng rác. Xóa vĩnh viễn, xem bên dưới |
 
 Khôi phục trả về 200 với chi tiết tổ chức. Khi khôi phục:
 
@@ -162,7 +163,26 @@ Khôi phục trả về 200 với chi tiết tổ chức. Khi khôi phục:
 - Chủ sở hữu phải còn dưới giới hạn 5 tổ chức đang hoạt động, nếu không trả về 409 `organization_limit_reached`.
 - Logo, ảnh bìa và bộ sưu tập được công khai lại.
 
-Thùng rác không tự xóa. Chưa có xóa cứng qua API. Tệp không còn được dùng sau khi xóa sẽ được dọn bằng script, xem [`media.md`](media.md#dọn-tệp-không-còn-dùng).
+Thùng rác không tự xóa. Tệp không còn được dùng sau khi xóa sẽ được dọn bằng script, xem [`media.md`](media.md#dọn-tệp-không-còn-dùng).
+
+### Xóa vĩnh viễn
+
+`DELETE /organizations/mine/deleted/{org_id}` xóa hẳn tổ chức khỏi thùng rác. Chỉ chủ sở hữu, và chỉ khi tổ chức đang ở thùng rác. Tổ chức đang hoạt động trả về 404 `organization_not_found`, và người khác cũng nhận 404. Thành công trả về 204. Code nằm trong [`src/organizations/purge.py`](../src/organizations/purge.py).
+
+Việc xóa là một lệnh xóa dòng trong `organizations`, để cơ sở dữ liệu tự cascade. Những gì mất theo:
+
+- Hoạt động của tổ chức, kèm đăng ký, điểm danh, đơn, bài đăng, chat và thành viên.
+- Bộ sưu tập và liên kết ảnh. Các tệp ảnh vẫn còn ở trạng thái `private`, và script dọn tệp sẽ xóa những tệp không còn được dùng.
+
+Ba loại bản ghi chặn việc xóa vĩnh viễn, và backend trả về 409 khi gặp:
+
+| Mã | Lý do |
+| ---- | ---- |
+| `organization_has_open_activities` | Còn hoạt động ở trạng thái `published`. Soft delete đã chặn từ trước, đây là kiểm tra lại |
+| `organization_has_certificates` | Đã cấp chứng nhận cho hoạt động của tổ chức. Chứng nhận là bằng chứng của sinh viên, nên không được xóa theo hoạt động |
+| `organization_has_pending_hours` | Còn giờ tình nguyện đang chờ duyệt của tổ chức. Sau khi xóa không ai duyệt được |
+
+Giờ tình nguyện đã duyệt không bị xóa. `volunteer_hour_ledger` là append-only, nên các dòng này được giữ lại, và `org_id` cùng `activity_id` của chúng về `NULL` theo khóa ngoại `ON DELETE SET NULL`. Sinh viên vẫn thấy tổng giờ, chỉ không còn liên kết tới tổ chức.
 
 ## Mã lỗi nghiệp vụ
 
@@ -170,6 +190,8 @@ Thùng rác không tự xóa. Chưa có xóa cứng qua API. Tệp không còn �
 | ---- | ---- |
 | `organization_not_found` | 404 |
 | `organization_forbidden` | 403 |
+| `organization_has_certificates` | 409 |
+| `organization_has_pending_hours` | 409 |
 | `already_member`, `already_applied` | 409 |
 | `application_cooldown` | 409 |
 | `membership_suspended` | 403 |

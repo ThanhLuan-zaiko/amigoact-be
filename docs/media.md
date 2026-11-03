@@ -18,7 +18,8 @@ Nhận ảnh JPEG, PNG, WEBP tối đa 5 MB và video MP4, WEBM tối đa 50 MB.
 
 - Loại tệp được xác định từ vài byte đầu, không dựa vào tên file hay `Content-Type` do trình duyệt gửi. Tệp không phải ảnh thì bị từ chối dù tên có đuôi `.png`.
 - Tên gốc chỉ được lưu để hiển thị, không bao giờ dùng để đặt tên file. Ký tự điều khiển, kể cả NUL, bị bỏ đi. Tên dài hơn 255 ký tự bị cắt.
-- File được lưu trên ổ đĩa của server, trong thư mục `MEDIA_DIR` (mặc định `media`, tính từ thư mục khởi động server). Tên file do server sinh từ UUID, không lấy từ tên người gửi, nên không thể đoán hay đưa đường dẫn ra ngoài thư mục này. Cách sắp xếp thư mục xem mục [Cây thư mục](#cây-thư-mục).
+- File được lưu trên ổ đĩa của server, trong thư mục `MEDIA_DIR` (mặc định `media`, tính từ thư mục khởi động server). Mỗi file nằm thẳng trong thư mục đó, tên là `<asset_id>.<đuôi>`. Tên do server sinh từ UUID, không lấy từ tên người gửi, nên không thể đoán hay đưa đường dẫn ra ngoài thư mục này. Xem [Bố cục thư mục](#bố-cục-thư-mục).
+- Mỗi file được lưu đúng một lần. Ai đang dùng file, và dùng ở đâu, được ghi trong database bằng khóa ngoại trỏ tới `media_assets`, không ghi trong tên hay cấu trúc thư mục.
 - Mỗi tệp mới có quyền `private`. Chỉ người tải lên mới xem được.
 - Gắn ảnh vào đại diện, logo, ảnh bìa tổ chức hoặc ảnh bìa hoạt động thì ảnh chuyển thành `public`. Ai có đường link cũng xem được. Gỡ ảnh khỏi chỗ đó không đổi lại thành `private`.
 - Chỉ người tải lên mới được gắn tệp của mình. Gắn vào tổ chức hoặc hoạt động còn cần quyền quản lý.
@@ -42,41 +43,38 @@ Nhận ảnh JPEG, PNG, WEBP tối đa 5 MB và video MP4, WEBM tối đa 50 MB.
 - `GET /media/{id}/file` trả về nội dung ảnh, kèm `X-Content-Type-Options: nosniff`. Ảnh công khai có `Cache-Control: public`, ảnh riêng có `private`.
 - Tệp riêng của người khác, tệp chưa tải xong và tệp không tồn tại đều trả về 404 `media_not_found`. Không phân biệt các trường hợp để khỏi lộ tệp nào đang tồn tại.
 
-## Cây thư mục
+## Bố cục thư mục
 
-Gốc là `MEDIA_DIR`. Thư mục đầu tiên là tài khoản đã tải file lên, nên nhìn cây là biết file của ai:
+Gốc là `MEDIA_DIR`, và mọi file nằm thẳng trong gốc:
 
 ```
 media/
-  users/<user_id>/
-    by-date/<yyyy>/<mm>/<dd>/<asset_id>.<đuôi>        file thật, lưu một lần
-    avatar/<asset_id>.<đuôi>                          ảnh đại diện của người này
-    organizations/<org_id>/logo/<asset_id>.<đuôi>
-    organizations/<org_id>/cover/<asset_id>.<đuôi>
-    organizations/<org_id>/gallery/<asset_id>.<đuôi>
-    activities/<activity_id>/cover/<asset_id>.<đuôi>
+  0196a1b2-3c4d-7e8f-9a0b-1c2d3e4f5a6b.png
+  0196a1b2-3c4e-7f10-8b1c-2d3e4f5a6b7c.webp
+  0196a1b3-0001-7a2b-9c3d-4e5f6a7b8c9d.mp4
 ```
 
-- `by-date` chứa mọi file người này đã tải lên, theo ngày tải. Đây là bản duy nhất của file.
-- Các thư mục khác chứa liên kết cứng (hard link) tới file trong `by-date`. Một file dùng ở nhiều chỗ thì có nhiều liên kết, mỗi chỗ một liên kết. Nếu hệ thống file không hỗ trợ liên kết cứng thì file được sao chép.
-- Gỡ một chỗ dùng chỉ xóa liên kết của chỗ đó. File thật không bị xóa.
-- Tên thư mục chỉ là chữ thường, dấu gạch ngang hoặc UUID. Mọi tên khác bị từ chối, nên không thể đưa đường dẫn ra ngoài cây.
-- Liên kết chỉ là bản hiển thị theo thư mục. Nguồn sự thật vẫn là bảng trong database.
+- Tên file là `<asset_id>.<đuôi>`, trong đó `asset_id` là UUIDv7 của dòng trong `media_assets`. Cột `storage_key` của dòng đó chứa đúng tên này.
+- Không có thư mục theo người, theo ngày hay theo tổ chức. Không có liên kết cứng. Tổ chức, hồ sơ, hoạt động dùng ảnh nào thì database cho biết, nên cây trên đĩa không phải nguồn sự thật.
+- Gỡ một chỗ dùng không xóa file. File chỉ bị xóa khi không còn khóa ngoại nào trỏ tới và đã qua thời gian chờ, xem [Dọn tệp không còn dùng](#dọn-tệp-không-còn-dùng).
+- Code đường dẫn nằm trong [`src/media/storage.py`](../src/media/storage.py). Khóa không khớp `<uuid>.<đuôi>` bị từ chối, nên không thể đưa đường dẫn ra ngoài thư mục gốc.
 
-Đã nối liên kết cho: ảnh đại diện, logo, ảnh bìa và bộ sưu tập của tổ chức (kể cả lúc tạo), ảnh bìa hoạt động. Chưa nối: ảnh bài viết và ảnh nền mẫu chứng nhận. Các file này vẫn nằm trong `by-date`, chỉ chưa có liên kết.
+### Chuyển từ bố cục cũ
 
-Code: [`src/media/placement.py`](../src/media/placement.py) và [`src/media/storage.py`](../src/media/storage.py).
-
-### Backfill
-
-File tải lên trước khi có cây thư mục nằm phẳng trong `media/` và chưa có liên kết. Chạy script để chuyển chúng vào `by-date` và tạo lại các liên kết còn thiếu:
+Bố cục trước đây lưu file theo người tải lên, theo ngày, và thêm liên kết cứng vào thư mục của từng tổ chức hoặc hồ sơ. Để chuyển các file cũ sang bố cục phẳng, dùng script:
 
 ```bash
-uv run python scripts/backfill_media_tree.py          # chỉ báo cáo, không đổi gì
-uv run python scripts/backfill_media_tree.py --apply  # chuyển file và ghi liên kết
+uv run python scripts/migrate_media_layout.py          # chỉ báo cáo, không đổi gì
+uv run python scripts/migrate_media_layout.py --apply  # chuyển file, ghi khóa mới, xóa liên kết cũ
 ```
 
-Script đọc `.env` như các script khác. Với `--apply`, mọi thay đổi trong database được ghi trong một transaction. Nếu commit lỗi, file đã chuyển được đưa về chỗ cũ. Chạy lại an toàn: liên kết đã có thì bỏ qua.
+Chạy khi đã tắt server, vì việc chuyển file không được khóa với upload đang diễn ra. Script đọc `.env` như các script khác.
+
+- Mỗi dòng có `storage_key` theo bố cục cũ (`users/<user>/by-date/...` hoặc tên 32 ký tự hex) được chuyển thành `<asset_id>.<đuôi>`, và `storage_key` được cập nhật cùng lúc.
+- Việc chuyển file và cập nhật database nằm trong một transaction. Nếu commit lỗi, các file đã chuyển được đưa về chỗ cũ.
+- Sau khi commit, script xóa các liên kết cứng trong cây `users/` trỏ tới file đã chuyển, rồi xóa các thư mục rỗng. Một file trong `users/` mà không phải liên kết tới file đã chuyển thì không bị xóa. Script liệt kê nó trong báo cáo để kiểm tra bằng tay.
+- Nếu tên đích đã có file, dòng đó được báo là trùng và giữ nguyên. Không bao giờ ghi đè.
+- File bị thiếu trên đĩa được báo, dòng giữ nguyên.
 
 ## Dọn tệp không còn dùng
 
@@ -93,10 +91,9 @@ Quy tắc:
 
 - Một tệp còn dùng khi có khóa ngoại trỏ tới nó. Danh sách khóa ngoại được đọc từ `pg_constraint`, nên cả khóa không khai báo trong model, như `users.avatar_media_id`, cũng được tính. Tổ chức đã xóa mềm vẫn giữ logo và bộ sưu tập, nên ảnh của nó không bị dọn.
 - Tải lên mới được giữ tối thiểu 30 ngày (mặc định). Tệp được ghi trước khi dòng trong database được commit, và người dùng có thể gắn ảnh sau khi tải lên, nên tuổi tính theo `created_at` của dòng.
-- Tệp đã tải lên, quá hạn, và không có khóa ngoại nào trỏ tới: dòng chuyển sang `upload_status = 'deleted'`, ghi `deleted_at`, xóa `file_hash` để lần tải lại cùng nội dung tạo tệp mới. Mọi bản của tệp, gồm bản trong `by-date` và các liên kết, bị xóa.
-- File không có dòng nào, hoặc có dòng đã `deleted`: xóa khi thời gian sửa đổi của file đã quá hạn.
-- Thư mục rỗng sau khi xóa được gỡ, từ sâu lên nông.
-- Chỉ đụng tới tên có dạng `<asset_id>.<đuôi>`. Tệp khác trong cây bị bỏ qua. Tệp phẳng cũ dưới gốc `MEDIA_DIR` cũng không bị đụng tới.
+- Tệp đã tải lên, quá hạn, và không có khóa ngoại nào trỏ tới: dòng chuyển sang `upload_status = 'deleted'`, ghi `deleted_at`, xóa `file_hash` để lần tải lại cùng nội dung tạo tệp mới. Tệp của dòng đó bị xóa.
+- File không có dòng nào, hoặc có dòng đã `deleted`: xóa khi thời gian sửa đổi của file đã quá hạn. Vì file không có dòng thì không truy ra được người tải lên, nên mọi lần chạy có `--user` vẫn bao gồm chúng.
+- Chỉ đụng tới tên có dạng `<asset_id>.<đuôi>` ngay dưới gốc `MEDIA_DIR`. Tên dạng 32 ký tự hex của bản tải lên cũ cũng được nhận. Tệp khác và thư mục con bị bỏ qua, nên các file trong `users/` của bố cục cũ không thuộc phạm vi script này, xem [Chuyển từ bố cục cũ](#chuyển-từ-bố-cục-cũ).
 - Dry run không ghi gì. Có `--apply` thì DB được commit trước, rồi mới xóa file. Nếu file không xóa được, lỗi được in ra và script trả về mã 1. Lần chạy sau sẽ xóa nốt file đó, vì dòng của nó đã `deleted`.
 
 Script khóa từng dòng trước khi kiểm tra lại, nên không xóa nhầm tệp vừa được gắn. Thứ tự là: kế hoạch được lập lúc chạy, sau đó mỗi tệp được khóa, kiểm tra lại khóa tham chiếu, rồi mới đánh dấu xóa. Việc gắn tệp (logo, ảnh bìa, bộ sưu tập, ảnh đại diện, ảnh bài viết, ảnh nền mẫu chứng nhận) cũng khóa đúng dòng đó cho đến khi commit, nên hai việc không thể xen vào nhau. Tệp đã gắn trong lúc chạy được giữ lại, và dòng kết quả của lần chạy có thể ít hơn kế hoạch in ra.
@@ -139,3 +136,4 @@ Thư mục `media/` nằm trong `.gitignore`. Tệp test dùng thư mục tạm,
 - Đọc kích thước ảnh (`width`, `height`) và tạo ảnh thu nhỏ (`thumb_url`).
 - Trả về `avatar` trong response của người dùng và ảnh bìa trong response của hoạt động. Tổ chức đã trả về `logo_url` và `cover_url` (xem [`organizations.md`](organizations.md)), nhưng chưa có đường đọc ID ảnh cho hai phần còn lại.
 - Object storage (S3 hoặc GCS).
+- Thư mục theo tầng cho số lượng file lớn. Hiện mọi file nằm thẳng trong `MEDIA_DIR`. Khi số file đủ lớn để thư mục gốc chậm, có thể thêm một tầng theo hai ký tự cuối của `asset_id`, nhưng chưa cần lúc này.

@@ -50,15 +50,9 @@ def set_avatar(api: ApiContext, headers: Headers, asset_id: str | None) -> Any:
 MP4 = b"\x00\x00\x00\x18ftypmp42" + b"\x00" * 100
 
 
-def placed(media_root: Path, user_id: str, *folders: str) -> set[str]:
-    """Names of the links shown in one folder of the account tree."""
-    folder = media_root.joinpath("users", user_id, *folders)
-    return {entry.name for entry in folder.iterdir()} if folder.is_dir() else set()
-
-
-def stored(media_root: Path, user_id: str, asset_id: str) -> list[Path]:
-    """The stored file, found under the by-date folder of its uploader."""
-    return list(media_root.joinpath("users", user_id, "by-date").rglob(f"{asset_id}.*"))
+def stored(media_root: Path, asset_id: str) -> list[Path]:
+    """The stored file or files of one asset. Files sit flat in the media root."""
+    return list(media_root.glob(f"{asset_id}.*"))
 
 
 def upload_video(api: ApiContext, headers: Headers) -> str:

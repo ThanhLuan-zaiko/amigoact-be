@@ -1,4 +1,4 @@
-"""Remove uploaded files that nothing uses any more, and the folders left empty.
+"""Remove uploaded files that nothing uses any more.
 
 Without --apply this script only reports what it would remove and changes nothing.
 """
@@ -34,7 +34,7 @@ def main() -> int:
         "--user",
         type=uuid.UUID,
         default=None,
-        help="only clean the files uploaded by this user id",
+        help="only clean the files uploaded by this user id (files with no row are always included)",
     )
     args = parser.parse_args()
     if args.min_age_days < 0:
@@ -56,7 +56,6 @@ def main() -> int:
     print(f"Media cleanup ({mode}) in {root}")
     print(f"  uploads to mark deleted: {len(plan.assets)}")
     print(f"  files to remove:         {len(plan.files)}")
-    print(f"  empty folders to remove: {len(plan.folders)}")
     for error in plan.errors:
         print(f"  could not remove {error}")
     return 1 if plan.errors else 0

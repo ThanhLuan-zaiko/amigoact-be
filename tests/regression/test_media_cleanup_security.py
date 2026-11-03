@@ -53,7 +53,7 @@ def test_upload_attached_after_the_plan_was_made_is_kept(
         apply_plan(db, plan, datetime.now(UTC))
 
     assert db_row(MediaAsset, uuid.UUID(old["id"])).upload_status == "active"
-    assert len(stored(media_root, user_id, old["id"])) == 1
+    assert len(stored(media_root, old["id"])) == 1
 
 
 def test_a_removed_upload_can_be_uploaded_again(

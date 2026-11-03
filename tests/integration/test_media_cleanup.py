@@ -41,7 +41,7 @@ def test_dry_run_lists_the_old_unused_upload_and_changes_nothing(
     assert uuid.UUID(old["id"]) in plan.assets
     assert len(plan.files) == 1
     assert db_row(MediaAsset, uuid.UUID(old["id"])).upload_status == "active"
-    assert len(stored(media_root, user_id, old["id"])) == 1
+    assert len(stored(media_root, old["id"])) == 1
 
 
 def test_apply_marks_the_unused_upload_deleted_and_removes_its_file(
@@ -57,7 +57,7 @@ def test_apply_marks_the_unused_upload_deleted_and_removes_its_file(
     assert row.upload_status == "deleted"
     assert row.deleted_at is not None
     assert row.file_hash is None
-    assert stored(media_root, user_id, old["id"]) == []
+    assert stored(media_root, old["id"]) == []
     gone = api.client.get(f"/media/{old['id']}/file", headers=headers)
     assert gone.status_code == 404
 
@@ -74,18 +74,16 @@ def test_logo_and_recent_uploads_survive_the_cleanup(
     clean(media_root, user_id, apply=True)
 
     assert db_row(MediaAsset, uuid.UUID(logo["id"])).upload_status == "active"
-    assert len(stored(media_root, user_id, logo["id"])) == 1
+    assert len(stored(media_root, logo["id"])) == 1
     assert db_row(MediaAsset, uuid.UUID(recent["id"])).upload_status == "active"
-    assert len(stored(media_root, user_id, recent["id"])) == 1
+    assert len(stored(media_root, recent["id"])) == 1
 
 
-def test_file_without_a_row_goes_once_old_and_its_folders_go_with_it(
+def test_file_without_a_row_goes_once_old(
     api: ApiContext, bearer: Bearer, media_root: Path
 ) -> None:
     _, user_id = user(api, bearer, "owner")
-    folder = media_root / "users" / user_id / "by-date" / "2001" / "01" / "01"
-    folder.mkdir(parents=True)
-    orphan = folder / f"{uuid.uuid4()}.png"
+    orphan = media_root / f"{uuid.uuid4()}.png"
     orphan.write_bytes(PNG)
     past = (datetime.now(UTC) - timedelta(days=60)).timestamp()
     os.utime(orphan, (past, past))
@@ -93,7 +91,6 @@ def test_file_without_a_row_goes_once_old_and_its_folders_go_with_it(
     clean(media_root, user_id, apply=True)
 
     assert not orphan.exists()
-    assert not (media_root / "users" / user_id / "by-date" / "2001").exists()
 
 
 def test_file_without_a_row_is_kept_during_the_grace_period(
@@ -101,9 +98,7 @@ def test_file_without_a_row_is_kept_during_the_grace_period(
 ) -> None:
     # A file is written before its row is committed, so a fresh one must not be removed.
     _, user_id = user(api, bearer, "owner")
-    folder = media_root / "users" / user_id / "by-date"
-    folder.mkdir(parents=True)
-    fresh = folder / f"{uuid.uuid4()}.png"
+    fresh = media_root / f"{uuid.uuid4()}.png"
     fresh.write_bytes(PNG)
 
     clean(media_root, user_id, apply=True)

@@ -148,9 +148,12 @@ def api() -> Iterator[ApiContext]:
     app.dependency_overrides.pop(get_mailer)
 
 
-@pytest.fixture
+@pytest.fixture(autouse=True)
 def media_root(tmp_path: Path) -> Iterator[Path]:
-    """Keep uploads in a temporary folder, never in the repository."""
+    """Keep every upload in a temporary folder, never in the real MEDIA_DIR.
+
+    Autouse, because tests that never ask for this fixture used to write into the real folder.
+    """
     app.dependency_overrides[get_media_root] = lambda: tmp_path
     yield tmp_path
     app.dependency_overrides.pop(get_media_root)

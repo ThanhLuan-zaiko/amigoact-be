@@ -1,4 +1,4 @@
-"""Remove uploaded files that nothing uses any more, and the folders left empty.
+"""Remove uploaded files that nothing uses any more.
 
 A file is in use when a foreign key points at its asset (see usage.py). A new upload
 is kept for a grace period, because it is stored before it is attached. Nothing is
@@ -8,7 +8,6 @@ written unless apply_plan runs.
 import re
 import uuid
 from collections.abc import Iterator
-from contextlib import suppress
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -16,14 +15,14 @@ from pathlib import Path
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
-from src.media import storage
 from src.media.service import ACTIVE
 from src.media.usage import referenced_asset_ids
 from src.models.media import MediaAsset
 
 DELETED = "deleted"
-# A stored file is named <asset_id>.<extension>. Anything else in the tree is ignored.
-MEDIA_FILE = re.compile(r"([0-9a-f-]{36})\.(?:jpg|png|webp|mp4|webm)")
+# A stored file is named <asset_id>.<extension>, or with the bare 32-hex id that older
+# uploads used. Anything else in the root is ignored.
+MEDIA_FILE = re.compile(r"([0-9a-f-]{36}|[0-9a-f]{32})\.(?:jpg|png|webp|mp4|webm)")
 
 
 @dataclass
@@ -32,7 +31,6 @@ class Plan:
 
     assets: list[uuid.UUID] = field(default_factory=list)
     files: list[Path] = field(default_factory=list)
-    folders: list[Path] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
 
 
@@ -68,28 +66,11 @@ def should_remove(
     return modified_at < cutoff
 
 
-def empty_folders(base: Path, doomed: set[Path]) -> list[Path]:
-    """Folders under base that are empty once the doomed files are gone, deepest first."""
-    if not base.is_dir():
-        return []
-    gone = set(doomed)
-    removable: list[Path] = []
-    folders = sorted(
-        (path for path in base.rglob("*") if path.is_dir()),
-        key=lambda path: len(path.parts),
-        reverse=True,
-    )
-    for folder in folders:
-        if all(child in gone for child in folder.iterdir()):
-            gone.add(folder)
-            removable.append(folder)
-    return removable
-
-
-def media_files(base: Path) -> Iterator[tuple[uuid.UUID, Path]]:
-    if not base.is_dir():
+def media_files(root: Path) -> Iterator[tuple[uuid.UUID, Path]]:
+    """The stored files directly under the root. Folders from older layouts are not walked."""
+    if not root.is_dir():
         return
-    for path in base.rglob("*"):
+    for path in root.iterdir():
         asset_id = file_asset_id(path.name)
         if asset_id is not None and path.is_file():
             yield asset_id, path
@@ -114,6 +95,13 @@ def expired_assets(
     return [asset_id for asset_id in db.scalars(query) if asset_id not in in_use]
 
 
+def in_scope(
+    asset_id: uuid.UUID, scope: set[uuid.UUID] | None, known: set[uuid.UUID]
+) -> bool:
+    """A file with no row cannot be traced to an uploader, so every scoped run may remove it."""
+    return scope is None or asset_id in scope or asset_id not in known
+
+
 def plan_cleanup(
     db: Session, root: Path, cutoff: datetime, uploader_id: uuid.UUID | None
 ) -> Plan:
@@ -124,19 +112,21 @@ def plan_cleanup(
             select(MediaAsset.asset_id).where(MediaAsset.upload_status == ACTIVE)
         )
     )
-    base = (
-        root / "users" if uploader_id is None else storage.user_dir(root, uploader_id)
-    )
+    known = set(db.scalars(select(MediaAsset.asset_id)))
+    scope: set[uuid.UUID] | None = None
+    if uploader_id is not None:
+        scope = set(
+            db.scalars(
+                select(MediaAsset.asset_id).where(MediaAsset.uploader_id == uploader_id)
+            )
+        )
     files = [
         path
-        for asset_id, path in media_files(base)
-        if should_remove(asset_id, modified_at(path), cutoff, expired, active)
+        for asset_id, path in media_files(root)
+        if in_scope(asset_id, scope, known)
+        and should_remove(asset_id, modified_at(path), cutoff, expired, active)
     ]
-    return Plan(
-        assets=sorted(expired),
-        files=files,
-        folders=empty_folders(base, set(files)),
-    )
+    return Plan(assets=sorted(expired), files=files)
 
 
 def still_unused(db: Session, asset_ids: list[uuid.UUID]) -> list[uuid.UUID]:
@@ -179,9 +169,6 @@ def apply_plan(db: Session, plan: Plan, now: datetime) -> None:
             path.unlink(missing_ok=True)
         except OSError as error:
             plan.errors.append(f"{path}: {error}")
-    for folder in plan.folders:
-        with suppress(OSError):
-            folder.rmdir()
 
 
 def run(

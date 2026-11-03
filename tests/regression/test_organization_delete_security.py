@@ -79,4 +79,4 @@ def test_deleting_keeps_members_and_the_logo_file(
     asset = db_row(MediaAsset, uuid.UUID(logo["id"]))
     assert member is not None and member.status == "active"
     assert asset is not None and asset.upload_status == "active"
-    assert len(stored(media_root, owner_id, logo["id"])) == 1
+    assert len(stored(media_root, logo["id"])) == 1

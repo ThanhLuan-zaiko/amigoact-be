@@ -1,37 +1,28 @@
-"""Files on the local disk. Names come from UUIDs only, never from the upload.
+"""Files on the local disk. Every file sits flat in the media root, named by its asset id.
 
 Layout:
-  users/<uploader_id>/by-date/<yyyy>/<mm>/<dd>/<asset_id>.<ext>  the stored file
-  users/<uploader_id>/<folders...>/<asset_id>.<ext>             one hard link per use
+  <media_root>/<asset_id>.<ext>
 
-Files stored before this layout stay flat as <hex>.<ext>. They keep working.
+A file is stored once. Who uses it is recorded in the database by the foreign keys that
+point at its asset (see usage.py), so the folder layout never has to say anything about
+owners or uses. Names come from UUIDs only, never from the upload.
 """
 
 import re
 import uuid
-from datetime import datetime
 from pathlib import Path
 
 from src.config import get_media_settings
 
-STORAGE_KEY = re.compile(
-    r"(users/[0-9a-f-]{36}/by-date/[0-9]{4}/[0-9]{2}/[0-9]{2}/[0-9a-f-]{36}|[0-9a-f]{32})"
-    r"\.(jpg|png|webp|mp4|webm)"
-)
+STORAGE_KEY = re.compile(r"[0-9a-f-]{36}\.(jpg|png|webp|mp4|webm)")
 
 
 def get_media_root() -> Path:
     return get_media_settings().media_dir
 
 
-def new_storage_key(
-    owner_id: uuid.UUID, asset_id: uuid.UUID, extension: str, when: datetime
-) -> str:
-    return f"users/{owner_id}/by-date/{when:%Y/%m/%d}/{asset_id}.{extension}"
-
-
-def user_dir(root: Path, user_id: uuid.UUID) -> Path:
-    return root / "users" / str(user_id)
+def new_storage_key(asset_id: uuid.UUID, extension: str) -> str:
+    return f"{asset_id}.{extension}"
 
 
 def file_path(root: Path, key: str) -> Path:

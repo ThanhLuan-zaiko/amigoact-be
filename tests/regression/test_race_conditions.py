@@ -122,7 +122,7 @@ def test_cleanup_waits_for_an_attach_and_keeps_the_file(
 
     assert cleanup.error is None
     assert db_row(MediaAsset, asset_id).upload_status == "active"
-    assert len(stored(media_root, user_id, old["id"])) == 1
+    assert len(stored(media_root, old["id"])) == 1
 
 
 def test_attach_waits_for_a_cleanup_and_is_refused_once_it_commits(

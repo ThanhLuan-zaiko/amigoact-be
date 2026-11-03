@@ -7,8 +7,8 @@ import pytest
 
 from src.media.cleanup import (
     cutoff_for,
-    empty_folders,
     file_asset_id,
+    media_files,
     modified_at,
     should_remove,
 )
@@ -68,30 +68,25 @@ def test_file_without_a_row_goes_only_after_the_grace_period() -> None:
     assert not should_remove(asset, FRESH, CUTOFF, expired=set(), active=set())
 
 
-def test_empty_folders_are_found_deepest_first(tmp_path: Path) -> None:
-    base = tmp_path / "users" / "u"
-    (base / "empty").mkdir(parents=True)
-    (base / "nested" / "inner").mkdir(parents=True)
-    (base / "doomed_dir").mkdir()
-    doomed = base / "doomed_dir" / "doomed.png"
-    doomed.write_bytes(b"x")
-    (base / "keep").mkdir()
-    (base / "keep" / "kept.png").write_bytes(b"x")
+def test_bare_hex_names_from_older_uploads_are_recognised() -> None:
+    asset = uuid.uuid7()
 
-    removable = empty_folders(base, {doomed})
-
-    assert set(removable) == {
-        base / "empty",
-        base / "nested" / "inner",
-        base / "nested",
-        base / "doomed_dir",
-    }
-    depths = [len(folder.parts) for folder in removable]
-    assert depths == sorted(depths, reverse=True)
+    assert file_asset_id(f"{asset.hex}.png") == asset
+    assert file_asset_id(f"{asset}.png") == asset
+    assert file_asset_id("notes.txt") is None
 
 
-def test_missing_base_has_nothing_to_remove(tmp_path: Path) -> None:
-    assert empty_folders(tmp_path / "missing", set()) == []
+def test_media_files_are_read_from_the_root_only(tmp_path: Path) -> None:
+    flat = uuid.uuid7()
+    (tmp_path / f"{flat}.png").write_bytes(b"x")
+    (tmp_path / "notes.txt").write_bytes(b"x")
+    legacy = tmp_path / "users" / "u" / "avatar"
+    legacy.mkdir(parents=True)
+    (legacy / f"{uuid.uuid7()}.png").write_bytes(b"x")
+
+    found = {asset_id for asset_id, _ in media_files(tmp_path)}
+
+    assert found == {flat}
 
 
 def test_modified_time_is_read_from_the_file(tmp_path: Path) -> None:
