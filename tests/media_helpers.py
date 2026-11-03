@@ -1,17 +1,21 @@
 """Shared steps for the media API tests."""
 
 import uuid
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from src.app import app
+from src.media.cleanup import Plan, run
+from src.models.media import MediaAsset
 from src.models.organizations import Organization
 from tests.conftest import ApiContext
 
 Headers = dict[str, str]
+GRACE_DAYS = 30
 
 # Only the first bytes matter for detection, so these are enough for every test.
 PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 100
@@ -81,3 +85,31 @@ def org_id_for(slug: str) -> uuid.UUID:
         )
     assert org_id is not None
     return org_id
+
+
+def unique_picture() -> bytes:
+    """A picture whose bytes differ each time, so no two uploads share one stored file."""
+    return PNG + uuid.uuid4().bytes
+
+
+def age(asset_id: str, days: int) -> None:
+    """Pretend an upload happened that many days ago."""
+    with app.state.engine.begin() as connection:
+        connection.execute(
+            update(MediaAsset)
+            .where(MediaAsset.asset_id == uuid.UUID(asset_id))
+            .values(created_at=datetime.now(UTC) - timedelta(days=days))
+        )
+
+
+def clean(media_root: Path, user_id: str, *, apply: bool) -> Plan:
+    """Run the cleanup for one uploader, so the shared test database is left alone."""
+    with Session(app.state.engine) as db:
+        return run(
+            db,
+            media_root,
+            now=datetime.now(UTC),
+            min_age_days=GRACE_DAYS,
+            uploader_id=uuid.UUID(user_id),
+            apply=apply,
+        )

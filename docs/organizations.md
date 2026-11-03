@@ -29,7 +29,7 @@ Role `admin` được tạo cùng tổ chức, nên không cần dữ liệu kh�
 | Người đã bị xóa | Luôn phải chờ duyệt, kể cả tổ chức `open` |
 | Bị từ chối | Chờ 7 ngày mới gửi lại được (`application_cooldown`) |
 
-Chủ sở hữu không rời được tổ chức và không bị xóa. Hiện chưa có chức năng chuyển quyền sở hữu và xóa tổ chức.
+Chủ sở hữu không rời được tổ chức và không bị gỡ khỏi tổ chức. Chủ sở hữu có thể xóa mềm tổ chức, xem mục [Xóa tổ chức](#xóa-tổ-chức). Chưa có chức năng chuyển quyền sở hữu và khôi phục tổ chức đã xóa.
 
 ### Thông tin pháp lý và ảnh
 
@@ -50,6 +50,9 @@ Chủ sở hữu không rời được tổ chức và không bị xóa. Hiện 
 | GET | `/organizations/mine` | Đã đăng nhập |
 | GET | `/organizations/{slug}` | Công khai |
 | PATCH | `/organizations/{slug}` | Quản trị viên |
+| DELETE | `/organizations/{slug}` | Chủ sở hữu: xóa mềm, trả về 204 |
+| GET | `/organizations/mine/deleted` | Đã đăng nhập: thùng rác của chính mình |
+| POST | `/organizations/mine/deleted/{org_id}/restore` | Chủ sở hữu: khôi phục từ thùng rác |
 | POST | `/organizations/{slug}/join` | Đã đăng nhập |
 | DELETE | `/organizations/{slug}/membership` | Đã đăng nhập: rời hoặc rút yêu cầu |
 | GET | `/organizations/{slug}/members` | Thành viên |
@@ -125,6 +128,42 @@ Ký tự điều khiển bị từ chối ở mọi trường văn bản, kể c
 
 Mọi khóa chính đều là UUIDv7, sinh bằng `uuid.uuid7()`. Test `test_new_ids_are_uuid7` khóa quy tắc này cho người dùng, tổ chức và vai trò.
 
+## Xóa tổ chức
+
+Chỉ chủ sở hữu được xóa hoặc khôi phục. Quản trị viên, thành viên và người ngoài nhận 403 `organization_forbidden`. Xóa lần hai, hoặc xóa tổ chức đã bị xóa, trả về 404 `organization_not_found`.
+
+Xóa là xóa mềm. Code nằm trong [`src/organizations/deletion.py`](../src/organizations/deletion.py).
+
+### Chặn khi còn hoạt động đang mở
+
+Một hoạt động ở trạng thái `published` là đang mở, cho đến khi được hoàn thành hoặc hủy. Khi tổ chức còn hoạt động như vậy, xóa trả về 409 `organization_has_open_activities`. Hoạt động nháp không chặn việc xóa. Muốn xóa, chủ sở hữu hủy các hoạt động đang mở trước. Chi tiết tổ chức trả về `open_activity_count` để giao diện hiện con số này trước khi bấm xóa. Đăng ký còn hiệu lực sẽ chuyển thành `cancelled` và người đăng ký được báo.
+
+Việc đăng hoạt động cũng khóa tổ chức, giống như xóa, và kiểm tra lại tổ chức còn hoạt động. Nhờ vậy một hoạt động không mở ra trong tổ chức vừa bị xóa.
+
+### Điều xảy ra khi xóa
+
+- `deleted_at` được đặt thời điểm xóa. Mọi đường đọc của tổ chức, bài đăng, chat và hoạt động đều lọc theo `deleted_at`, nên tổ chức biến mất với mọi người: trang chi tiết, danh sách, "Tổ chức của tôi", tham gia, danh sách thành viên, đơn, bộ sưu tập, hoạt động và bài đăng.
+- Slug được nhả. Slug cũ chuyển sang cột `previous_slug`, còn `slug` nhận một giá trị dạng `deleted-<hex>` mà không ai nhập được. Người khác có thể tạo tổ chức mới với đúng tên cũ và nhận lại slug cũ.
+- Không xóa gì khác: thành viên, vai trò, hoạt động, bài đăng, giờ tình nguyện và các tệp đều giữ nguyên.
+- Logo, ảnh bìa và ảnh bộ sưu tập chuyển sang `private`, nên người khác không tải được qua `/media/{id}/file`. Ngoại lệ: ảnh còn được dùng ở chỗ khác, ví dụ làm ảnh đại diện của chính chủ sở hữu, thì vẫn công khai. Chủ sở hữu luôn xem được ảnh của mình.
+- Tổ chức đã xóa không còn được tính trong giới hạn 5 tổ chức, nên xóa mềm trả lại một chỗ cho chủ sở hữu.
+- Chứng nhận đã cấp vẫn hiện tên tổ chức và vẫn xác minh được, vì đó là lịch sử của sinh viên.
+
+### Thùng rác và khôi phục
+
+| Method | Đường dẫn | Quyền |
+| ---- | ---- | ---- |
+| GET | `/organizations/mine/deleted` | Đã đăng nhập: chỉ liệt kê tổ chức của chính mình đã xóa |
+| POST | `/organizations/mine/deleted/{org_id}/restore` | Chủ sở hữu, chỉ với tổ chức đang ở thùng rác |
+
+Khôi phục trả về 200 với chi tiết tổ chức. Khi khôi phục:
+
+- Slug cũ phải còn trống, nếu không trả về 409 `slug_taken`. Tổ chức vẫn ở thùng rác.
+- Chủ sở hữu phải còn dưới giới hạn 5 tổ chức đang hoạt động, nếu không trả về 409 `organization_limit_reached`.
+- Logo, ảnh bìa và bộ sưu tập được công khai lại.
+
+Thùng rác không tự xóa. Chưa có xóa cứng qua API. Tệp không còn được dùng sau khi xóa sẽ được dọn bằng script, xem [`media.md`](media.md#dọn-tệp-không-còn-dùng).
+
 ## Mã lỗi nghiệp vụ
 
 | Mã | HTTP |
@@ -136,3 +175,4 @@ Mọi khóa chính đều là UUIDv7, sinh bằng `uuid.uuid7()`. Test `test_new
 | `membership_suspended` | 403 |
 | `owner_cannot_leave`, `owner_role_locked`, `owner_cannot_be_removed`, `cannot_remove_self` | 409 |
 | `not_a_member`, `member_not_found`, `application_not_found` | 404 |
+| `organization_has_open_activities`, `slug_taken` | 409 |

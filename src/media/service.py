@@ -122,8 +122,12 @@ def _reject_video(asset: MediaAsset) -> None:
 def check_attachable(
     db: Session, asset_id: uuid.UUID, user_id: uuid.UUID, *, allow_video: bool = False
 ) -> MediaAsset:
-    """Only the uploader may attach a file. Attaching makes it public, as a logo or photo must be."""
-    asset = db.get(MediaAsset, asset_id)
+    """Only the uploader may attach a file. Attaching makes it public, as a logo or photo must be.
+
+    The row is locked until the caller commits, so a cleanup run cannot mark it deleted
+    in between. The caller must commit the reference in the same transaction.
+    """
+    asset = db.get(MediaAsset, asset_id, with_for_update=True)
     if asset is None or asset.upload_status != ACTIVE or asset.uploader_id != user_id:
         raise api_error(status.HTTP_404_NOT_FOUND, "media_not_found")
     if not allow_video:
@@ -142,8 +146,11 @@ def stored_file(root: Path, asset: MediaAsset) -> Path:
 
 
 def owned_asset(db: Session, asset_id: uuid.UUID, user_id: uuid.UUID) -> MediaAsset:
-    """Check ownership without changing visibility. Used while a post is still a draft."""
-    asset = db.get(MediaAsset, asset_id)
+    """Check ownership without changing visibility. Used while a post is still a draft.
+
+    Locks the row like check_attachable, so the cleanup cannot remove it before the commit.
+    """
+    asset = db.get(MediaAsset, asset_id, with_for_update=True)
     if asset is None or asset.upload_status != ACTIVE or asset.uploader_id != user_id:
         raise api_error(status.HTTP_404_NOT_FOUND, "media_not_found")
     _reject_video(asset)

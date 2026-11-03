@@ -47,6 +47,7 @@ from src.models.activities import (
 from src.models.organizations import Organization
 from src.notifications.events import activity_data, notify
 from src.organizations.access import get_access
+from src.organizations.deletion import lock_live_organization
 from src.pagination import count_rows
 from src.validation import validation_failure
 
@@ -220,6 +221,10 @@ def _check_capacity_covers_seats(db: Session, activity: Activity) -> None:
 def publish_activity(db: Session, activity: Activity) -> None:
     if activity.status != DRAFT:
         raise api_error(status.HTTP_409_CONFLICT, "activity_not_editable")
+    # The same lock a soft delete takes, so an activity cannot open in an organization
+    # that is being deleted.
+    if not lock_live_organization(db, activity.org_id):
+        raise api_error(status.HTTP_404_NOT_FOUND, "organization_not_found")
     errors = publish_errors(
         start_at=activity.start_at,
         end_at=activity.end_at,

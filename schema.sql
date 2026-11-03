@@ -266,6 +266,8 @@ CREATE INDEX IF NOT EXISTS organizations_public_idx
     ON organizations (org_type, created_at DESC) WHERE deleted_at IS NULL;
 CREATE INDEX IF NOT EXISTS organizations_owner_idx ON organizations (owner_id);
 CREATE INDEX IF NOT EXISTS organizations_name_trgm_idx ON organizations USING gin (name gin_trgm_ops);
+-- Databases created before previous_slug existed get the column here. Safe to run again.
+ALTER TABLE organizations ADD COLUMN IF NOT EXISTS previous_slug text;
 
 -- Bảng tra loại tổ chức (dữ liệu, không phải enum cứng).
 CREATE TABLE IF NOT EXISTS org_types (

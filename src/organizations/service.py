@@ -24,6 +24,7 @@ from src.models.organizations import (
 )
 from src.organizations.access import ACTIVE, ADMIN_ROLE_CODE, get_access, resolve_role
 from src.organizations.gallery_items import attach_assets
+from src.organizations.open_activities import open_activity_count
 from src.organizations.pictures import attach_picture, picture_url
 from src.organizations.schemas import (
     MyOrganization,
@@ -166,6 +167,7 @@ def organization_detail(
         legal_status=org.legal_status,
         owner_name=owner.full_name if owner else "",
         activity_count=_activity_count(db, org.id),
+        open_activity_count=open_activity_count(db, org.id),
         volunteer_hours=_volunteer_hours(db, org.id),
         viewer=viewer_membership(db, org, user_id),
     )
@@ -211,7 +213,7 @@ def can_own_another(owned_count: int) -> bool:
     return owned_count < MAX_OWNED_ORGANIZATIONS
 
 
-def _enforce_owned_limit(db: Session, owner_id: uuid.UUID) -> None:
+def enforce_owned_limit(db: Session, owner_id: uuid.UUID) -> None:
     """Lock the owner row first, so parallel requests cannot pass the limit together."""
     db.execute(select(User.id).where(User.id == owner_id).with_for_update())
     # Suspended organizations still count, so suspension cannot free a slot.
@@ -230,7 +232,7 @@ def create_organization(
     """Create the organization with its owner as the first active member."""
     owner_id = owner.id
     enforce_rate_limit(db, f"org-create:{owner_id}", CREATE_LIMIT, CREATE_WINDOW)
-    _enforce_owned_limit(db, owner_id)
+    enforce_owned_limit(db, owner_id)
     org = _insert_with_unique_slug(db, payload, owner_id)
     # Attach after the insert: a slug retry rolls back, which would undo the public flag.
     org.logo_media_id = attach_picture(db, payload.logo_asset_id, owner_id)

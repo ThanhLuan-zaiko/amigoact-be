@@ -42,7 +42,10 @@ class Organization(Base):
     cover_media_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("media_assets.asset_id", ondelete="SET NULL")
     )
+    # Set by a soft delete. NULL means the organization is alive.
     deleted_at: Mapped[datetime | None]
+    # The slug the organization had before a soft delete released it.
+    previous_slug: Mapped[str | None]
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     # Kept current by the set_updated_at trigger, not by the ORM.
     updated_at: Mapped[datetime] = mapped_column(server_default=func.now())

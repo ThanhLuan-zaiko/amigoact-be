@@ -9,11 +9,12 @@ from src.auth.deps import CurrentPrincipal, Db, OptionalPrincipal
 from src.media import placement
 from src.media.storage import get_media_root
 from src.notifications.delivery import deliver_emails
-from src.organizations import membership, service
+from src.organizations import deletion, membership, service
 from src.organizations.access import require_manager, require_member, require_owner
 from src.organizations.gallery_items import unique_asset_ids
 from src.organizations.schemas import (
     ApplicationPage,
+    DeletedOrganization,
     JoinRequest,
     MemberPage,
     MemberRoleRequest,
@@ -102,6 +103,28 @@ def update_organization(
     placement.replace(db, root, previous_logo, org.logo_media_id, *folder, "logo")
     placement.replace(db, root, previous_cover, org.cover_media_id, *folder, "cover")
     return service.organization_detail(db, org, user_id)
+
+
+@router.delete("/{slug}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_organization(slug: Slug, principal: CurrentPrincipal, db: Db) -> None:
+    org = service.load_organization(db, slug)
+    require_owner(org, principal.user.id)
+    deletion.soft_delete_organization(db, org)
+
+
+@router.get("/mine/deleted")
+def list_deleted_organizations(
+    principal: CurrentPrincipal, db: Db
+) -> list[DeletedOrganization]:
+    return deletion.list_deleted_organizations(db, principal.user.id)
+
+
+@router.post("/mine/deleted/{org_id}/restore")
+def restore_organization(
+    org_id: Uuid7, principal: CurrentPrincipal, db: Db
+) -> OrganizationDetail:
+    org = deletion.restore_organization(db, principal.user.id, org_id)
+    return service.organization_detail(db, org, principal.user.id)
 
 
 @router.post("/{slug}/join")

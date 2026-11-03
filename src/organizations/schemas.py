@@ -205,6 +205,8 @@ class OrganizationDetail(OrganizationSummary):
     owner_name: str
     # Published activities and approved hours, for the header.
     activity_count: int
+    # Published activities that are not completed or cancelled yet. Blocks a delete.
+    open_activity_count: int
     volunteer_hours: float
     viewer: ViewerMembership
 
@@ -238,3 +240,12 @@ class ApplicationPage(BaseModel):
     items: list[ApplicationResponse]
     next_offset: int | None
     total: int
+
+
+class DeletedOrganization(BaseModel):
+    """An organization in the owner's trash. slug is the one it had before the delete."""
+
+    id: uuid.UUID
+    name: str
+    slug: str | None
+    deleted_at: datetime | None

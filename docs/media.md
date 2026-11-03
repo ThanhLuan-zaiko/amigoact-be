@@ -78,6 +78,29 @@ uv run python scripts/backfill_media_tree.py --apply  # chuyển file và ghi li
 
 Script đọc `.env` như các script khác. Với `--apply`, mọi thay đổi trong database được ghi trong một transaction. Nếu commit lỗi, file đã chuyển được đưa về chỗ cũ. Chạy lại an toàn: liên kết đã có thì bỏ qua.
 
+## Dọn tệp không còn dùng
+
+Khi tổ chức bị xóa cứng trong database, hoặc một lần tải lên không bao giờ được gắn vào đâu, file vẫn nằm trên ổ đĩa. Script sau dọn các file đó:
+
+```bash
+uv run python scripts/cleanup_media.py                    # chỉ báo cáo, không đổi gì
+uv run python scripts/cleanup_media.py --apply            # đánh dấu và xóa
+uv run python scripts/cleanup_media.py --user <user_id>   # chỉ file của một tài khoản
+uv run python scripts/cleanup_media.py --min-age-days 60  # giữ file mới hơn 60 ngày
+```
+
+Quy tắc:
+
+- Một tệp còn dùng khi có khóa ngoại trỏ tới nó. Danh sách khóa ngoại được đọc từ `pg_constraint`, nên cả khóa không khai báo trong model, như `users.avatar_media_id`, cũng được tính. Tổ chức đã xóa mềm vẫn giữ logo và bộ sưu tập, nên ảnh của nó không bị dọn.
+- Tải lên mới được giữ tối thiểu 30 ngày (mặc định). Tệp được ghi trước khi dòng trong database được commit, và người dùng có thể gắn ảnh sau khi tải lên, nên tuổi tính theo `created_at` của dòng.
+- Tệp đã tải lên, quá hạn, và không có khóa ngoại nào trỏ tới: dòng chuyển sang `upload_status = 'deleted'`, ghi `deleted_at`, xóa `file_hash` để lần tải lại cùng nội dung tạo tệp mới. Mọi bản của tệp, gồm bản trong `by-date` và các liên kết, bị xóa.
+- File không có dòng nào, hoặc có dòng đã `deleted`: xóa khi thời gian sửa đổi của file đã quá hạn.
+- Thư mục rỗng sau khi xóa được gỡ, từ sâu lên nông.
+- Chỉ đụng tới tên có dạng `<asset_id>.<đuôi>`. Tệp khác trong cây bị bỏ qua. Tệp phẳng cũ dưới gốc `MEDIA_DIR` cũng không bị đụng tới.
+- Dry run không ghi gì. Có `--apply` thì DB được commit trước, rồi mới xóa file. Nếu file không xóa được, lỗi được in ra và script trả về mã 1. Lần chạy sau sẽ xóa nốt file đó, vì dòng của nó đã `deleted`.
+
+Script khóa từng dòng trước khi kiểm tra lại, nên không xóa nhầm tệp vừa được gắn. Thứ tự là: kế hoạch được lập lúc chạy, sau đó mỗi tệp được khóa, kiểm tra lại khóa tham chiếu, rồi mới đánh dấu xóa. Việc gắn tệp (logo, ảnh bìa, bộ sưu tập, ảnh đại diện, ảnh bài viết, ảnh nền mẫu chứng nhận) cũng khóa đúng dòng đó cho đến khi commit, nên hai việc không thể xen vào nhau. Tệp đã gắn trong lúc chạy được giữ lại, và dòng kết quả của lần chạy có thể ít hơn kế hoạch in ra.
+
 ## Kiểm tra dữ liệu
 
 | Trường | Quy tắc | Mã lỗi |
@@ -95,6 +118,10 @@ Script đọc `.env` như các script khác. Với `--apply`, mọi thay đổi 
 
 Cột `file_hash` có ràng buộc UNIQUE trong schema, nên chỉ bản đầu tiên của một nội dung mới có hash. Các bản sao của người khác được lưu với `file_hash` trống.
 
+Khi script dọn tệp đánh dấu một dòng là `deleted`, dòng đó giữ lại để tra cứu, nhưng `file_hash` được xóa và tệp không còn truy cập được (`404 media_not_found`). Một tệp khác của cùng người vẫn có thể được gắn lại trong khi chạy: không bị chặn, vì hash đã được xóa.
+
+Khi tổ chức bị xóa mềm, logo, ảnh bìa và bộ sưu tập của nó chuyển sang `private` nếu không còn chỗ nào khác dùng tệp đó, và được công khai lại khi khôi phục. Xem [`organizations.md`](organizations.md#xóa-tổ-chức).
+
 ## Cấu hình
 
 | Biến trong `.env` | Ý nghĩa | Mặc định |
@@ -108,7 +135,7 @@ Thư mục `media/` nằm trong `.gitignore`. Tệp test dùng thư mục tạm,
 - Đọc tệp lớn theo luồng. `POST /media` hiện đọc cả tệp vào bộ nhớ, nên mỗi video có thể chiếm tới 50 MB RAM trong lúc tải.
 - Kiểm tra sâu nội dung video. Hiện chỉ nhận diện định dạng từ vài byte đầu.
 - Kiểm duyệt ảnh (`media_moderation`). Sẽ làm cùng quản trị nền tảng ở giai đoạn 6.
-- Xóa tệp và dọn tệp không được gắn vào đâu. Hiện tệp chỉ được thêm, không xóa. Mỗi tệp đã lưu thì tồn tại mãi.
+- Xóa tệp qua API. Không có API nào xóa tệp. Tệp chỉ bị xóa bởi script dọn tệp, xem mục [Dọn tệp không còn dùng](#dọn-tệp-không-còn-dùng).
 - Đọc kích thước ảnh (`width`, `height`) và tạo ảnh thu nhỏ (`thumb_url`).
 - Trả về `avatar` trong response của người dùng và ảnh bìa trong response của hoạt động. Tổ chức đã trả về `logo_url` và `cover_url` (xem [`organizations.md`](organizations.md)), nhưng chưa có đường đọc ID ảnh cho hai phần còn lại.
 - Object storage (S3 hoặc GCS).
