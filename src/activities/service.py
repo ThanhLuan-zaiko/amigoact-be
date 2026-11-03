@@ -47,6 +47,7 @@ from src.models.activities import (
 from src.models.organizations import Organization
 from src.notifications.events import activity_data, notify
 from src.organizations.access import get_access
+from src.pagination import count_rows
 from src.validation import validation_failure
 
 CREATE_LIMIT = 30
@@ -300,6 +301,7 @@ def _page(db: Session, query: Select[Any], limit: int, offset: int) -> ActivityP
     return ActivityPage(
         items=[to_summary(row) for row in rows[:limit]],
         next_offset=offset + limit if len(rows) > limit else None,
+        total=count_rows(db, query),
     )
 
 

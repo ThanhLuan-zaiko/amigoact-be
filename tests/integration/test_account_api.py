@@ -156,7 +156,7 @@ def test_forgot_password_does_not_reveal_unknown_email(api: ApiContext) -> None:
 
 
 def test_register_email_can_be_verified(api: ApiContext, bearer: Bearer) -> None:
-    headers = bearer(api.register()["tokens"]["access_token"])
+    headers = bearer(api.register(verified=False)["tokens"]["access_token"])
     assert (
         api.client.get("/account/me", headers=headers).json()["email_verified_at"]
         is None
@@ -172,7 +172,7 @@ def test_register_email_can_be_verified(api: ApiContext, bearer: Bearer) -> None
 
 
 def test_resend_verification_sends_a_new_link(api: ApiContext, bearer: Bearer) -> None:
-    headers = bearer(api.register()["tokens"]["access_token"])
+    headers = bearer(api.register(verified=False)["tokens"]["access_token"])
     first = api.mailer.last_token()
 
     response = api.client.post("/auth/email/resend", headers=headers)

@@ -5,7 +5,7 @@ from sqlalchemy import select
 
 from src.app import app
 from src.models.organizations import Organization, OrganizationMember, Role
-from tests.conftest import ApiContext
+from tests.conftest import ORG_FIELDS, ApiContext
 
 Bearer = Callable[[str], dict[str, str]]
 
@@ -14,7 +14,7 @@ def create(
     api: ApiContext, headers: dict[str, str], name: str, **extra: Any
 ) -> dict[str, Any]:
     response = api.client.post(
-        "/organizations", headers=headers, json={"name": name, **extra}
+        "/organizations", headers=headers, json={**ORG_FIELDS, "name": name, **extra}
     )
     assert response.status_code == 201, response.text
     body: dict[str, Any] = response.json()
@@ -57,7 +57,7 @@ def test_any_user_can_create_and_becomes_the_owner(
 
 
 def test_creating_requires_a_login(api: ApiContext) -> None:
-    response = api.client.post("/organizations", json={"name": "CLB"})
+    response = api.client.post("/organizations", json={**ORG_FIELDS, "name": "CLB"})
 
     assert response.status_code == 401
 
@@ -160,9 +160,9 @@ def test_update_changes_only_sent_fields(api: ApiContext, bearer: Bearer) -> Non
     assert body["slug"] == slug
 
     cleared = api.client.patch(
-        f"/organizations/{slug}", headers=headers, json={"description": None}
+        f"/organizations/{slug}", headers=headers, json={"website": None}
     )
-    assert cleared.json()["description"] is None
+    assert cleared.json()["website"] is None
 
 
 def test_plain_member_cannot_update(api: ApiContext, bearer: Bearer) -> None:
@@ -172,7 +172,7 @@ def test_plain_member_cannot_update(api: ApiContext, bearer: Bearer) -> None:
     api.client.post(f"/organizations/{slug}/join", headers=member, json={})
 
     response = api.client.patch(
-        f"/organizations/{slug}", headers=member, json={"name": "Moi"}
+        f"/organizations/{slug}", headers=member, json={**ORG_FIELDS, "name": "Moi"}
     )
 
     assert response.status_code == 403

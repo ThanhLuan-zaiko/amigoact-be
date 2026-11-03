@@ -4,7 +4,7 @@ from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from tests.conftest import ApiContext
+from tests.conftest import ORG_FIELDS, ApiContext
 
 Bearer = Callable[[str], dict[str, str]]
 Headers = dict[str, str]
@@ -22,7 +22,7 @@ def user(api: ApiContext, bearer: Bearer, name: str) -> tuple[Headers, str]:
 
 def make_org(api: ApiContext, headers: Headers) -> str:
     response = api.client.post(
-        "/organizations", headers=headers, json={"name": f"CLB {api.tag}"}
+        "/organizations", headers=headers, json={**ORG_FIELDS, "name": f"CLB {api.tag}"}
     )
     assert response.status_code == 201, response.text
     slug: str = response.json()["slug"]

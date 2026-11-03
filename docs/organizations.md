@@ -46,7 +46,7 @@ Chủ sở hữu không rời được tổ chức và không bị xóa. Hiện 
 | Method | Đường dẫn | Quyền |
 | ---- | ---- | ---- |
 | POST | `/organizations` | Đã đăng nhập |
-| GET | `/organizations?q=&limit=&offset=` | Công khai |
+| GET | `/organizations?q=&limit=&offset=&exclude_owned=` | Công khai. `exclude_owned=true` bỏ tổ chức người đang đăng nhập sở hữu ngay trong truy vấn, nên mỗi trang vẫn đủ số dòng. Khách không đăng nhập thì tham số này không có tác dụng |
 | GET | `/organizations/mine` | Đã đăng nhập |
 | GET | `/organizations/{slug}` | Công khai |
 | PATCH | `/organizations/{slug}` | Quản trị viên |
@@ -59,7 +59,35 @@ Chủ sở hữu không rời được tổ chức và không bị xóa. Hiện 
 | POST | `/organizations/{slug}/applications/{user_id}/approve` | Quản trị viên |
 | POST | `/organizations/{slug}/applications/{user_id}/reject` | Quản trị viên |
 
-Danh sách thành viên và danh sách yêu cầu không trả email hay số điện thoại. Danh sách phân trang trả `next_offset`, bằng `null` ở trang cuối. Tạo tổ chức giới hạn 10 lần mỗi giờ, tham gia giới hạn 30 lần mỗi giờ cho mỗi người dùng.
+Danh sách thành viên và danh sách yêu cầu không trả email hay số điện thoại. Danh sách phân trang trả `next_offset`, bằng `null` ở trang cuối. Tham gia giới hạn 30 lần mỗi giờ cho mỗi người dùng.
+
+Mỗi danh sách trả thêm `total` là tổng số dòng khớp, để giao diện đánh số trang. Thành viên, yêu cầu, hoạt động và đăng ký cũng có trường này.
+
+## Bộ sưu tập
+
+Mỗi tổ chức có tối đa 10 ảnh hoặc video, lưu trong bảng `organization_media`. Code nằm trong `src/organizations/gallery.py`.
+
+| Method | Đường dẫn | Quyền |
+| ---- | ---- | ---- |
+| GET | `/organizations/{slug}/gallery` | Công khai |
+| POST | `/organizations/{slug}/gallery` | Ban quản trị, chỉ gắn tệp của chính mình, body `{ "asset_id": "<uuid>" }` |
+| DELETE | `/organizations/{slug}/gallery/{asset_id}` | Ban quản trị |
+
+Quá 10 tệp trả về 409 `gallery_full`. Gắn lại cùng một tệp không tạo dòng mới. Gắn vào bộ sưu tập làm tệp thành công khai. Gỡ khỏi bộ sưu tập không xóa tệp.
+
+Database đã có sẵn cần tạo bảng này bằng câu `CREATE TABLE IF NOT EXISTS organization_media` trong `schema.sql`. Không cần reset.
+
+## Trường bắt buộc
+
+Khi tạo phải có `name`, `description`, `email`, `phone`, `city`. Khi sửa, không gửi trường nào thì trường đó giữ nguyên, nhưng gửi `null` cho các trường này bị từ chối bằng `required`. Tổ chức tạo trước đây có thể thiếu các trường này cho đến lần sửa tiếp theo.
+
+Giới hạn khi tạo tổ chức:
+
+| Quy tắc | Lỗi |
+| ------- | --- |
+| Email của người tạo phải được xác minh | 403 `email_not_verified` |
+| Tối đa 3 lần thử mỗi ngày (tính theo ngày UTC, kể cả lần thất bại) | 429 `rate_limited` |
+| Sở hữu tối đa 5 tổ chức chưa xóa, kể cả tổ chức bị tạm ngưng | 409 `organization_limit_reached` |
 
 ## Kiểm tra dữ liệu
 

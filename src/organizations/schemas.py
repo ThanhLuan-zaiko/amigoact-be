@@ -91,14 +91,14 @@ class OrganizationCreateRequest(StrictRequest):
     """Pictures are uploads from POST /media, sent by their asset id."""
 
     name: OrganizationName
-    description: Description | None = None
+    description: Description
     org_type: OrgType = "organization"
     join_policy: JoinPolicy = "invite"
-    email: EmailStr | None = None
-    phone: Phone | None = None
+    email: EmailStr
+    phone: Phone
     website: Website | None = None
     address: Address | None = None
-    city: City | None = None
+    city: City
     legal_name: ShortText | None = None
     tax_code: TaxCode | None = None
     license_number: ShortText | None = None
@@ -132,7 +132,15 @@ class OrganizationUpdateRequest(StrictRequest):
     def reject_null_required_fields(self) -> Self:
         errors: dict[str, tuple[str, str]] = {
             field: ("required", "This field cannot be empty")
-            for field in ("name", "org_type", "join_policy")
+            for field in (
+                "name",
+                "org_type",
+                "join_policy",
+                "description",
+                "email",
+                "phone",
+                "city",
+            )
             if field in self.model_fields_set and getattr(self, field) is None
         }
         if errors:
@@ -162,6 +170,7 @@ class OrganizationSummary(BaseModel):
 class OrganizationPage(BaseModel):
     items: list[OrganizationSummary]
     next_offset: int | None
+    total: int
 
 
 class ViewerMembership(BaseModel):
@@ -211,6 +220,7 @@ class MemberResponse(BaseModel):
 class MemberPage(BaseModel):
     items: list[MemberResponse]
     next_offset: int | None
+    total: int
 
 
 class ApplicationResponse(BaseModel):
@@ -223,3 +233,4 @@ class ApplicationResponse(BaseModel):
 class ApplicationPage(BaseModel):
     items: list[ApplicationResponse]
     next_offset: int | None
+    total: int

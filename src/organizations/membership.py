@@ -33,6 +33,7 @@ from src.organizations.schemas import (
     MemberResponse,
 )
 from src.organizations.service import APPLIED, reapply_time
+from src.pagination import count_rows
 
 JOIN_LIMIT = 30
 JOIN_WINDOW = 60 * 60
@@ -155,11 +156,13 @@ def leave_organization(db: Session, org: Organization, user_id: uuid.UUID) -> No
 def list_members(db: Session, org: Organization, limit: int, offset: int) -> MemberPage:
     """Contact details stay out of this list, which every member can read."""
     admins = admin_user_ids(db, org.id)
-    rows = db.execute(
+    query = (
         select(OrganizationMember, User.full_name)
         .join(User, User.id == OrganizationMember.user_id)
         .where(OrganizationMember.org_id == org.id, OrganizationMember.status == ACTIVE)
-        .order_by(OrganizationMember.joined_at, OrganizationMember.user_id)
+    )
+    rows = db.execute(
+        query.order_by(OrganizationMember.joined_at, OrganizationMember.user_id)
         .limit(limit + 1)
         .offset(offset)
     ).all()
@@ -179,7 +182,9 @@ def list_members(db: Session, org: Organization, limit: int, offset: int) -> Mem
             )
         )
     return MemberPage(
-        items=items, next_offset=offset + limit if len(rows) > limit else None
+        items=items,
+        next_offset=offset + limit if len(rows) > limit else None,
+        total=count_rows(db, query),
     )
 
 
@@ -187,7 +192,7 @@ def list_applications(
     db: Session, org: Organization, limit: int, offset: int
 ) -> ApplicationPage:
     """Return pending applications, oldest first."""
-    rows = db.execute(
+    query = (
         select(MembershipApplication, User.full_name)
         .join(User, User.id == MembershipApplication.user_id)
         .join(
@@ -199,7 +204,11 @@ def list_applications(
             MembershipApplication.org_id == org.id,
             OrganizationMember.status == APPLIED,
         )
-        .order_by(MembershipApplication.submitted_at, MembershipApplication.user_id)
+    )
+    rows = db.execute(
+        query.order_by(
+            MembershipApplication.submitted_at, MembershipApplication.user_id
+        )
         .limit(limit + 1)
         .offset(offset)
     ).all()
@@ -214,6 +223,7 @@ def list_applications(
             for application, full_name in rows[:limit]
         ],
         next_offset=offset + limit if len(rows) > limit else None,
+        total=count_rows(db, query),
     )
 
 

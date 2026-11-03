@@ -19,6 +19,7 @@ from src.organizations.slugs import (
     candidate_slug,
     slugify,
 )
+from tests.conftest import ORG_FIELDS
 
 
 def test_organization_models_register_their_tables() -> None:
@@ -94,14 +95,14 @@ def test_website_accepts_only_http_urls() -> None:
 
 
 def test_create_request_defaults_to_approval_and_trims_the_name() -> None:
-    payload = OrganizationCreateRequest(name="  CLB  ")
+    payload = OrganizationCreateRequest(**ORG_FIELDS, name="  CLB  ")
     assert payload.name == "CLB"
     assert payload.join_policy == "invite"
 
 
 def test_create_request_rejects_a_blank_name() -> None:
     with pytest.raises(ValidationError):
-        OrganizationCreateRequest(name="   ")
+        OrganizationCreateRequest(**ORG_FIELDS, name="   ")
 
 
 @pytest.mark.parametrize("field", ["name", "org_type", "join_policy"])

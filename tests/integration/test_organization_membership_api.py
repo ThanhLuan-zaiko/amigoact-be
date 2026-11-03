@@ -1,7 +1,7 @@
 from collections.abc import Callable
 from typing import Any
 
-from tests.conftest import ApiContext
+from tests.conftest import ORG_FIELDS, ApiContext
 
 Bearer = Callable[[str], dict[str, str]]
 
@@ -17,7 +17,7 @@ def create(
     response = api.client.post(
         "/organizations",
         headers=headers,
-        json={"name": f"CLB {api.tag}", "join_policy": join_policy},
+        json={**ORG_FIELDS, "name": f"CLB {api.tag}", "join_policy": join_policy},
     )
     assert response.status_code == 201, response.text
     slug: str = response.json()["slug"]

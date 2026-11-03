@@ -7,7 +7,7 @@ from sqlalchemy import select
 from src.app import app
 from src.models.organizations import Organization, Role
 from src.validation import UUID_V7
-from tests.conftest import PASSWORD, ApiContext
+from tests.conftest import ORG_FIELDS, PASSWORD, ApiContext
 
 Bearer = Callable[[str], dict[str, str]]
 
@@ -18,7 +18,7 @@ def owner_headers(api: ApiContext, bearer: Bearer) -> dict[str, str]:
 
 def create(api: ApiContext, headers: dict[str, str]) -> dict[str, str]:
     response = api.client.post(
-        "/organizations", headers=headers, json={"name": f"CLB {api.tag}"}
+        "/organizations", headers=headers, json={**ORG_FIELDS, "name": f"CLB {api.tag}"}
     )
     assert response.status_code == 201, response.text
     body: dict[str, str] = response.json()
@@ -110,7 +110,9 @@ def test_create_reports_the_exact_field_and_code(
 ) -> None:
     headers = owner_headers(api, bearer)
 
-    response = api.client.post("/organizations", headers=headers, json=payload)
+    response = api.client.post(
+        "/organizations", headers=headers, json={**ORG_FIELDS, **payload}
+    )
 
     assert response.status_code == 422
     assert first_error(response.json()) == (field, code)

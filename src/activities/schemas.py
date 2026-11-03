@@ -146,6 +146,7 @@ class ActivitySummary(BaseModel):
 class ActivityPage(BaseModel):
     items: list[ActivitySummary]
     next_offset: int | None
+    total: int
 
 
 class ShiftResponse(BaseModel):
@@ -228,3 +229,4 @@ class ActivityRegistration(BaseModel):
 class RegistrationPage(BaseModel):
     items: list[ActivityRegistration]
     next_offset: int | None
+    total: int

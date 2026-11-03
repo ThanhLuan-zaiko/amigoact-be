@@ -4,7 +4,7 @@ Tài liệu này mô tả phần tải ảnh của backend. Code nằm trong [`s
 
 ## Phạm vi
 
-Hiện chỉ nhận ảnh JPEG, PNG và WEBP, tối đa 5 MB mỗi tệp. Ảnh được dùng cho:
+Nhận ảnh JPEG, PNG, WEBP tối đa 5 MB và video MP4, WEBM tối đa 50 MB. Video chỉ gắn được vào bộ sưu tập của tổ chức (xem [`organizations.md`](organizations.md)). Logo, ảnh đại diện, ảnh bìa, ảnh nền chứng nhận và ảnh bài viết từ chối video bằng `unsupported_media_type`. Ảnh được dùng cho:
 
 - ảnh đại diện của người dùng,
 - logo và ảnh bìa của tổ chức,
@@ -48,7 +48,8 @@ Hiện chỉ nhận ảnh JPEG, PNG và WEBP, tối đa 5 MB mỗi tệp. Ảnh 
 | ---- | ---- | ---- |
 | `file` | Không được rỗng | `file_empty` (400) |
 | `file` | Tối đa 5 MB | `file_too_large` (413) |
-| `file` | Phải là JPEG, PNG hoặc WEBP | `unsupported_media_type` (415) |
+| `file` | Video tối đa 50 MB | `video_too_large` (413) |
+| `file` | Phải là JPEG, PNG, WEBP, MP4 hoặc WEBM | `unsupported_media_type` (415) |
 | `asset_id` | UUIDv7 hoặc `null` | `uuid_invalid` |
 | Body | Không nhận trường lạ | `extra_forbidden` |
 
@@ -68,6 +69,8 @@ Thư mục `media/` nằm trong `.gitignore`. Tệp test dùng thư mục tạm,
 
 ## Chưa có
 
+- Đọc tệp lớn theo luồng. `POST /media` hiện đọc cả tệp vào bộ nhớ, nên mỗi video có thể chiếm tới 50 MB RAM trong lúc tải.
+- Kiểm tra sâu nội dung video. Hiện chỉ nhận diện định dạng từ vài byte đầu.
 - Kiểm duyệt ảnh (`media_moderation`). Sẽ làm cùng quản trị nền tảng ở giai đoạn 6.
 - Xóa tệp và dọn tệp không được gắn vào đâu. Hiện tệp chỉ được thêm, không xóa. Mỗi tệp đã lưu thì tồn tại mãi.
 - Đọc kích thước ảnh (`width`, `height`) và tạo ảnh thu nhỏ (`thumb_url`).

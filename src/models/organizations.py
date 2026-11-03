@@ -48,6 +48,21 @@ class Organization(Base):
     updated_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
 
+class OrganizationMedia(Base):
+    __tablename__ = "organization_media"
+
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("organizations.id", ondelete="CASCADE"), primary_key=True
+    )
+    asset_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("media_assets.asset_id", ondelete="CASCADE"), primary_key=True
+    )
+    added_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+
 class OrganizationMember(Base):
     __tablename__ = "organization_members"
 

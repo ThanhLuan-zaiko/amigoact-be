@@ -86,7 +86,9 @@ def test_failed_action_leaves_no_notification_or_email(
 def test_email_skips_an_unconfirmed_address(api: ApiContext, bearer: Bearer) -> None:
     # Regression guard: an unconfirmed address may belong to someone else.
     owner, _ = user(api, bearer, "owner")
-    volunteer, _ = user(api, bearer, "volunteer")
+    volunteer = bearer(
+        api.register("volunteer", verified=False)["tokens"]["access_token"]
+    )
     activity = published(api, owner, make_org(api, owner))
     sign_up(api, volunteer, activity["id"])
     api.client.put(

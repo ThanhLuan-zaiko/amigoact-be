@@ -21,6 +21,7 @@ from src.models.activities import Activity, ActivitySlot, Registration
 from src.models.attendance import AttendanceAppeal, AttendanceRecord
 from src.models.auth import User
 from src.models.organizations import Organization
+from src.pagination import count_rows
 
 
 def list_activity_registrations(
@@ -59,6 +60,7 @@ def list_activity_registrations(
             for registration, full_name, shift_title in rows[:limit]
         ],
         next_offset=offset + limit if len(rows) > limit else None,
+        total=count_rows(db, query),
     )
 
 

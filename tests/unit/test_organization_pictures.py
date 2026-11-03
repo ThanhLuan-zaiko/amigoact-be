@@ -8,6 +8,7 @@ from src.organizations.schemas import (
     OrganizationCreateRequest,
     OrganizationUpdateRequest,
 )
+from tests.conftest import ORG_FIELDS
 
 
 def test_picture_url_is_the_media_path_or_none() -> None:
@@ -18,13 +19,16 @@ def test_picture_url_is_the_media_path_or_none() -> None:
 
 
 def test_create_request_normalizes_the_tax_code() -> None:
-    request = OrganizationCreateRequest(name="CLB Test", tax_code="0101234567001")
+    request = OrganizationCreateRequest(
+        **ORG_FIELDS, name="CLB Test", tax_code="0101234567001"
+    )
 
     assert request.tax_code == "0101234567-001"
 
 
 def test_create_request_accepts_legal_details() -> None:
     request = OrganizationCreateRequest(
+        **ORG_FIELDS,
         name="CLB Test",
         legal_name="Cong ty Test",
         license_number="QD-12/2026",
@@ -39,14 +43,16 @@ def test_create_request_accepts_legal_details() -> None:
 
 def test_create_request_rejects_a_bad_tax_code() -> None:
     with pytest.raises(ValidationError) as exc:
-        OrganizationCreateRequest(name="CLB Test", tax_code="123")
+        OrganizationCreateRequest(**ORG_FIELDS, name="CLB Test", tax_code="123")
 
     assert exc.value.errors()[0]["type"] == "tax_code_invalid"
 
 
 def test_legal_status_is_not_a_writable_field() -> None:
     with pytest.raises(ValidationError) as exc:
-        OrganizationCreateRequest(name="CLB Test", legal_status="verified")  # type: ignore[call-arg]
+        OrganizationCreateRequest(
+            **ORG_FIELDS, name="CLB Test", legal_status="verified"
+        )  # type: ignore[call-arg]
 
     assert exc.value.errors()[0]["type"] == "extra_forbidden"
 

@@ -6,7 +6,7 @@ from pathlib import Path
 
 from src.config import get_media_settings
 
-STORAGE_KEY = re.compile(r"[0-9a-f]{32}\.(jpg|png|webp)")
+STORAGE_KEY = re.compile(r"[0-9a-f]{32}\.(jpg|png|webp|mp4|webm)")
 
 
 def get_media_root() -> Path:

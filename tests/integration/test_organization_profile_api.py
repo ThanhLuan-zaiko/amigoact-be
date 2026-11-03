@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from src.models.media import MediaAsset
-from tests.conftest import ApiContext
+from tests.conftest import ORG_FIELDS, ApiContext
 from tests.media_helpers import WEBP, db_row, uploaded
 
 Bearer = Callable[[str], dict[str, str]]
@@ -16,7 +16,7 @@ def create(
     api: ApiContext, headers: dict[str, str], name: str, **extra: Any
 ) -> dict[str, Any]:
     response = api.client.post(
-        "/organizations", headers=headers, json={"name": name, **extra}
+        "/organizations", headers=headers, json={**ORG_FIELDS, "name": name, **extra}
     )
     assert response.status_code == 201, response.text
     body: dict[str, Any] = response.json()

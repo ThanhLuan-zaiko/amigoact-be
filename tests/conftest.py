@@ -6,10 +6,11 @@ import uuid
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import delete, or_, select
+from sqlalchemy import delete, func, or_, select, update
 
 from src.app import app
 from src.auth.mailer import get_mailer
@@ -23,6 +24,13 @@ from src.models.organizations import Organization
 from src.models.posts import OrgPost, PostComment
 
 PASSWORD = "Correct-Horse-7-Battery"
+# Every field an organization needs besides its name.
+ORG_FIELDS: dict[str, Any] = {
+    "description": "Test organization",
+    "email": "org@example.com",
+    "phone": "0912345678",
+    "city": "Ha Noi",
+}
 
 
 @dataclass
@@ -48,8 +56,9 @@ class ApiContext:
         return f"{name}-{self.tag}@example.com"
 
     def register(
-        self, name: str = "user", **extra: object
+        self, name: str = "user", *, verified: bool = True, **extra: object
     ) -> dict[str, dict[str, str]]:
+        """Users start verified, because creating an organization requires it."""
         response = self.client.post(
             "/auth/register",
             json={
@@ -60,6 +69,13 @@ class ApiContext:
             },
         )
         assert response.status_code == 201, response.text
+        if verified:
+            with app.state.engine.begin() as connection:
+                connection.execute(
+                    update(User)
+                    .where(User.email == self.email(name))
+                    .values(email_verified_at=func.now())
+                )
         result: dict[str, dict[str, str]] = response.json()
         return result
 

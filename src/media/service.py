@@ -12,7 +12,14 @@ from sqlalchemy.orm import Session
 
 from src.auth.errors import api_error
 from src.media import storage
-from src.media.sniff import MAX_UPLOAD_BYTES, SNIFF_BYTES, detect_image
+from src.media.sniff import (
+    MAX_UPLOAD_BYTES,
+    MAX_VIDEO_BYTES,
+    SNIFF_BYTES,
+    detect_image,
+    detect_video,
+    is_video,
+)
 from src.models.media import MediaAsset
 
 PUBLIC = "public"
@@ -44,13 +51,19 @@ def store_upload(
     """
     if not data:
         raise api_error(status.HTTP_400_BAD_REQUEST, "file_empty")
-    if len(data) > MAX_UPLOAD_BYTES:
-        raise api_error(status.HTTP_413_CONTENT_TOO_LARGE, "file_too_large")
-    kind = detect_image(data[:SNIFF_BYTES])
+    head = data[:SNIFF_BYTES]
+    kind = detect_image(head)
+    limit = MAX_UPLOAD_BYTES
+    if kind is None:
+        kind = detect_video(head)
+        limit = MAX_VIDEO_BYTES
     if kind is None:
         raise api_error(
             status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, "unsupported_media_type"
         )
+    if len(data) > limit:
+        code = "video_too_large" if is_video(kind.mime) else "file_too_large"
+        raise api_error(status.HTTP_413_CONTENT_TOO_LARGE, code)
 
     digest = hashlib.sha256(data).hexdigest()
     existing = db.scalar(select(MediaAsset).where(MediaAsset.file_hash == digest))
@@ -96,13 +109,23 @@ def load_visible(
     return asset
 
 
+def _reject_video(asset: MediaAsset) -> None:
+    """Logos, avatars, covers, and post images must be pictures. Only galleries take video."""
+    if is_video(asset.mime):
+        raise api_error(
+            status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, "unsupported_media_type"
+        )
+
+
 def check_attachable(
-    db: Session, asset_id: uuid.UUID, user_id: uuid.UUID
+    db: Session, asset_id: uuid.UUID, user_id: uuid.UUID, *, allow_video: bool = False
 ) -> MediaAsset:
     """Only the uploader may attach a file. Attaching makes it public, as a logo or photo must be."""
     asset = db.get(MediaAsset, asset_id)
     if asset is None or asset.upload_status != ACTIVE or asset.uploader_id != user_id:
         raise api_error(status.HTTP_404_NOT_FOUND, "media_not_found")
+    if not allow_video:
+        _reject_video(asset)
     asset.visibility = PUBLIC
     return asset
 
@@ -121,6 +144,7 @@ def owned_asset(db: Session, asset_id: uuid.UUID, user_id: uuid.UUID) -> MediaAs
     asset = db.get(MediaAsset, asset_id)
     if asset is None or asset.upload_status != ACTIVE or asset.uploader_id != user_id:
         raise api_error(status.HTTP_404_NOT_FOUND, "media_not_found")
+    _reject_video(asset)
     return asset
 
 

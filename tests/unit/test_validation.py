@@ -10,6 +10,7 @@ from src.organizations.schemas import (
     normalize_website,
 )
 from src.validation import multi_line, require_uuid7, single_line
+from tests.conftest import ORG_FIELDS
 
 
 def test_single_line_collapses_spaces() -> None:
@@ -79,7 +80,9 @@ def test_organization_name_accepts_vietnamese_letters_and_digits() -> None:
 
 
 def test_organization_request_collapses_spaces_in_the_name() -> None:
-    assert OrganizationCreateRequest(name=" CLB   Xanh ").name == "CLB Xanh"
+    assert (
+        OrganizationCreateRequest(**ORG_FIELDS, name=" CLB   Xanh ").name == "CLB Xanh"
+    )
 
 
 def test_account_name_rejects_control_characters() -> None:

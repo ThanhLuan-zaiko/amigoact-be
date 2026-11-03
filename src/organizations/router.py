@@ -39,16 +39,22 @@ Search = Annotated[str | None, Query(max_length=100, pattern=r"^[^\x00-\x1f\x7f]
 def create_organization(
     payload: OrganizationCreateRequest, principal: CurrentPrincipal, db: Db
 ) -> OrganizationDetail:
-    user_id = principal.user.id
-    org = service.create_organization(db, payload, user_id)
-    return service.organization_detail(db, org, user_id)
+    org = service.create_organization(db, payload, principal.user)
+    return service.organization_detail(db, org, principal.user.id)
 
 
 @router.get("")
 def list_organizations(
-    db: Db, q: Search = None, limit: Limit = 20, offset: Offset = 0
+    db: Db,
+    principal: OptionalPrincipal,
+    q: Search = None,
+    limit: Limit = 20,
+    offset: Offset = 0,
+    exclude_owned: bool = False,
 ) -> OrganizationPage:
-    return service.list_organizations(db, q, limit, offset)
+    # An anonymous visitor owns nothing, so the flag changes nothing for them.
+    excluded = principal.user.id if exclude_owned and principal else None
+    return service.list_organizations(db, q, limit, offset, excluded)
 
 
 @router.get("/mine")

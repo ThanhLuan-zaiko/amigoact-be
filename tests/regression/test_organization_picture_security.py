@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from src.app import app
 from src.models.media import MediaAsset
 from src.models.organizations import Organization
-from tests.conftest import ApiContext
+from tests.conftest import ORG_FIELDS, ApiContext
 from tests.media_helpers import db_row, uploaded
 
 Bearer = Callable[[str], dict[str, str]]
@@ -37,7 +37,7 @@ def test_create_cannot_attach_someone_elses_private_picture(
     response = api.client.post(
         "/organizations",
         headers=owner,
-        json={"name": name, "logo_asset_id": private["id"]},
+        json={**ORG_FIELDS, "name": name, "logo_asset_id": private["id"]},
     )
 
     assert response.status_code == 404
@@ -53,7 +53,7 @@ def test_patch_cannot_attach_someone_elses_private_picture(
     stranger = bearer(api.register("stranger")["tokens"]["access_token"])
     private = uploaded(api, stranger)
     slug = api.client.post(
-        "/organizations", headers=owner, json={"name": f"CLB {api.tag}"}
+        "/organizations", headers=owner, json={**ORG_FIELDS, "name": f"CLB {api.tag}"}
     ).json()["slug"]
 
     response = api.client.patch(
@@ -76,13 +76,13 @@ def test_owner_cannot_set_legal_status_to_verified(
     created = api.client.post(
         "/organizations",
         headers=owner,
-        json={"name": f"CLB {api.tag}", "legal_status": "verified"},
+        json={**ORG_FIELDS, "name": f"CLB {api.tag}", "legal_status": "verified"},
     )
     assert created.status_code == 422
     assert created.json()["detail"][0]["type"] == "extra_forbidden"
 
     slug = api.client.post(
-        "/organizations", headers=owner, json={"name": f"CLB {api.tag}-2"}
+        "/organizations", headers=owner, json={**ORG_FIELDS, "name": f"CLB {api.tag}-2"}
     ).json()["slug"]
     patched = api.client.patch(
         f"/organizations/{slug}", headers=owner, json={"legal_status": "verified"}
@@ -99,7 +99,7 @@ def test_invalid_tax_code_is_rejected_with_a_stable_code(
     response = api.client.post(
         "/organizations",
         headers=owner,
-        json={"name": f"CLB {api.tag}", "tax_code": "123"},
+        json={**ORG_FIELDS, "name": f"CLB {api.tag}", "tax_code": "123"},
     )
 
     assert response.status_code == 422

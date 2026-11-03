@@ -34,10 +34,13 @@ from src.organizations.schemas import (
     ViewerMembership,
 )
 from src.organizations.slugs import candidate_slug, slugify
+from src.pagination import count_rows
 
-HOUR = 60 * 60
-CREATE_LIMIT = 10
-CREATE_WINDOW = HOUR
+DAY = 24 * 60 * 60
+# The rate limit also counts failed attempts, so it leaves room for one mistake.
+CREATE_LIMIT = 3
+CREATE_WINDOW = DAY
+MAX_OWNED_ORGANIZATIONS = 5
 SLUG_ATTEMPTS = 5
 ADMIN_ROLE_NAME = "Admin"
 ADMIN_ROLE_POSITION = 100
@@ -203,11 +206,32 @@ def _insert_with_unique_slug(
     raise api_error(status.HTTP_409_CONFLICT, "conflict")
 
 
+def can_own_another(owned_count: int) -> bool:
+    return owned_count < MAX_OWNED_ORGANIZATIONS
+
+
+def _enforce_owned_limit(db: Session, owner_id: uuid.UUID) -> None:
+    """Lock the owner row first, so parallel requests cannot pass the limit together."""
+    db.execute(select(User.id).where(User.id == owner_id).with_for_update())
+    # Suspended organizations still count, so suspension cannot free a slot.
+    owned = db.scalar(
+        select(func.count())
+        .select_from(Organization)
+        .where(Organization.owner_id == owner_id, Organization.deleted_at.is_(None))
+    )
+    if not can_own_another(owned or 0):
+        raise api_error(status.HTTP_409_CONFLICT, "organization_limit_reached")
+
+
 def create_organization(
-    db: Session, payload: OrganizationCreateRequest, owner_id: uuid.UUID
+    db: Session, payload: OrganizationCreateRequest, owner: User
 ) -> Organization:
     """Create the organization with its owner as the first active member."""
+    owner_id = owner.id
+    if owner.email_verified_at is None:
+        raise api_error(status.HTTP_403_FORBIDDEN, "email_not_verified")
     enforce_rate_limit(db, f"org-create:{owner_id}", CREATE_LIMIT, CREATE_WINDOW)
+    _enforce_owned_limit(db, owner_id)
     org = _insert_with_unique_slug(db, payload, owner_id)
     # Attach after the insert: a slug retry rolls back, which would undo the public flag.
     org.logo_media_id = attach_picture(db, payload.logo_asset_id, owner_id)
@@ -262,13 +286,21 @@ def _page_of_summaries(
             for org, count in rows[:limit]
         ],
         next_offset=offset + limit if len(rows) > limit else None,
+        total=count_rows(db, query),
     )
 
 
 def list_organizations(
-    db: Session, search: str | None, limit: int, offset: int
+    db: Session,
+    search: str | None,
+    limit: int,
+    offset: int,
+    excluded_owner_id: uuid.UUID | None = None,
 ) -> OrganizationPage:
     query = select(Organization, _member_count()).where(*live_organization())
+    # Filter in the query, so every page stays full and next_offset stays correct.
+    if excluded_owner_id is not None:
+        query = query.where(Organization.owner_id != excluded_owner_id)
     if search:
         query = query.where(Organization.name.icontains(search, autoescape=True))
     query = query.order_by(Organization.created_at.desc(), Organization.id)

@@ -312,6 +312,14 @@ CREATE TABLE IF NOT EXISTS membership_applications (
 CREATE INDEX IF NOT EXISTS membership_applications_user_idx ON membership_applications (user_id);
 
 -- Gộp organization_members + members_by_user.
+CREATE TABLE IF NOT EXISTS organization_media (
+    org_id      uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    asset_id    uuid NOT NULL REFERENCES media_assets(asset_id) ON DELETE CASCADE,
+    added_by    uuid REFERENCES users(id) ON DELETE SET NULL,
+    created_at  timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (org_id, asset_id)
+);
+
 CREATE TABLE IF NOT EXISTS organization_members (
     org_id      uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
     user_id     uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,

@@ -10,7 +10,7 @@ from src.auth.deps import CurrentPrincipal, Db, OptionalPrincipal
 from src.auth.rate_limit import enforce_rate_limit
 from src.media import service
 from src.media.schemas import MediaResponse
-from src.media.sniff import MAX_UPLOAD_BYTES
+from src.media.sniff import MAX_VIDEO_BYTES
 from src.media.storage import get_media_root
 from src.validation import Uuid7
 
@@ -33,8 +33,8 @@ def upload_media(
     enforce_rate_limit(
         db, f"media-upload:{principal.user.id}", UPLOAD_LIMIT, UPLOAD_WINDOW
     )
-    # One byte more than the limit is enough to tell a too large file apart.
-    data = file.file.read(MAX_UPLOAD_BYTES + 1)
+    # One byte more than the largest limit is enough to tell a too large file apart.
+    data = file.file.read(MAX_VIDEO_BYTES + 1)
     asset = service.store_upload(db, root, principal.user.id, data, file.filename)
     return MediaResponse.from_asset(asset)
 

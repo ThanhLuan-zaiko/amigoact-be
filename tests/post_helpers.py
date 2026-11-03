@@ -4,7 +4,7 @@ import uuid
 from typing import Any
 
 from tests.activity_helpers import Headers
-from tests.conftest import ApiContext
+from tests.conftest import ORG_FIELDS, ApiContext
 
 
 def open_org(api: ApiContext, headers: Headers) -> str:
@@ -12,7 +12,11 @@ def open_org(api: ApiContext, headers: Headers) -> str:
     response = api.client.post(
         "/organizations",
         headers=headers,
-        json={"name": f"CLB {uuid.uuid4().hex[:6]}", "join_policy": "open"},
+        json={
+            **ORG_FIELDS,
+            "name": f"CLB {uuid.uuid4().hex[:6]}",
+            "join_policy": "open",
+        },
     )
     assert response.status_code == 201, response.text
     slug: str = response.json()["slug"]
