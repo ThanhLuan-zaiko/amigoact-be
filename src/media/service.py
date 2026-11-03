@@ -3,6 +3,7 @@
 import hashlib
 import re
 import uuid
+from datetime import UTC, datetime
 from pathlib import Path
 
 from fastapi import status
@@ -69,10 +70,11 @@ def store_upload(
     existing = db.scalar(select(MediaAsset).where(MediaAsset.file_hash == digest))
     if existing is not None and existing.uploader_id == user_id:
         return existing
-    key = storage.new_storage_key(kind.extension)
+    asset_id = uuid.uuid7()
+    key = storage.new_storage_key(user_id, asset_id, kind.extension, datetime.now(UTC))
     storage.write_file(root, key, data)
     asset = MediaAsset(
-        asset_id=uuid.uuid7(),
+        asset_id=asset_id,
         owner_id=user_id,
         owner_type="user",
         # Unique in the table, so another person's identical file is stored without a hash.

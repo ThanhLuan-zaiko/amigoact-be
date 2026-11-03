@@ -23,6 +23,7 @@ from src.models.organizations import (
     UserRole,
 )
 from src.organizations.access import ACTIVE, ADMIN_ROLE_CODE, get_access, resolve_role
+from src.organizations.gallery_items import attach_assets
 from src.organizations.pictures import attach_picture, picture_url
 from src.organizations.schemas import (
     MyOrganization,
@@ -94,6 +95,8 @@ def _summary_fields(org: Organization, member_count: int) -> dict[str, Any]:
         "join_policy": org.join_policy,
         "member_count": member_count,
         "created_at": org.created_at,
+        "logo_url": picture_url(org.logo_media_id),
+        "cover_url": picture_url(org.cover_media_id),
     }
 
 
@@ -161,8 +164,6 @@ def organization_detail(
         legal_rep_name=org.legal_rep_name,
         legal_rep_position=org.legal_rep_position,
         legal_status=org.legal_status,
-        logo_url=picture_url(org.logo_media_id),
-        cover_url=picture_url(org.cover_media_id),
         owner_name=owner.full_name if owner else "",
         activity_count=_activity_count(db, org.id),
         volunteer_hours=_volunteer_hours(db, org.id),
@@ -228,14 +229,13 @@ def create_organization(
 ) -> Organization:
     """Create the organization with its owner as the first active member."""
     owner_id = owner.id
-    if owner.email_verified_at is None:
-        raise api_error(status.HTTP_403_FORBIDDEN, "email_not_verified")
     enforce_rate_limit(db, f"org-create:{owner_id}", CREATE_LIMIT, CREATE_WINDOW)
     _enforce_owned_limit(db, owner_id)
     org = _insert_with_unique_slug(db, payload, owner_id)
     # Attach after the insert: a slug retry rolls back, which would undo the public flag.
     org.logo_media_id = attach_picture(db, payload.logo_asset_id, owner_id)
     org.cover_media_id = attach_picture(db, payload.cover_asset_id, owner_id)
+    attach_assets(db, org.id, payload.gallery_asset_ids, owner_id)
     db.add(
         OrganizationMember(
             org_id=org.id,

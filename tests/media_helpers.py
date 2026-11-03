@@ -1,6 +1,7 @@
 """Shared steps for the media API tests."""
 
 import uuid
+from pathlib import Path
 from typing import Any
 
 from sqlalchemy import select
@@ -40,6 +41,29 @@ def set_avatar(api: ApiContext, headers: Headers, asset_id: str | None) -> Any:
     return api.client.put(
         "/account/me/avatar", headers=headers, json={"asset_id": asset_id}
     )
+
+
+MP4 = b"\x00\x00\x00\x18ftypmp42" + b"\x00" * 100
+
+
+def placed(media_root: Path, user_id: str, *folders: str) -> set[str]:
+    """Names of the links shown in one folder of the account tree."""
+    folder = media_root.joinpath("users", user_id, *folders)
+    return {entry.name for entry in folder.iterdir()} if folder.is_dir() else set()
+
+
+def stored(media_root: Path, user_id: str, asset_id: str) -> list[Path]:
+    """The stored file, found under the by-date folder of its uploader."""
+    return list(media_root.joinpath("users", user_id, "by-date").rglob(f"{asset_id}.*"))
+
+
+def upload_video(api: ApiContext, headers: Headers) -> str:
+    response = api.client.post(
+        "/media", headers=headers, files={"file": ("clip.mp4", MP4)}
+    )
+    assert response.status_code == 201, response.text
+    asset_id: str = response.json()["id"]
+    return asset_id
 
 
 def db_row(model: type, key: Any) -> Any:

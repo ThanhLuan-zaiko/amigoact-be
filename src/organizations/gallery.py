@@ -1,25 +1,29 @@
 """The gallery of an organization: up to ten pictures and videos."""
 
 import uuid
+from pathlib import Path as FilePath
 from typing import Annotated
 
-from fastapi import APIRouter, Path, status
+from fastapi import APIRouter, Depends, Path, status
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from src.auth.deps import CurrentPrincipal, Db
 from src.auth.errors import api_error
+from src.media import placement
 from src.media import service as media_service
+from src.media.storage import get_media_root
 from src.models.media import MediaAsset
 from src.models.organizations import Organization, OrganizationMedia
 from src.organizations.access import require_manager
+from src.organizations.gallery_items import MAX_GALLERY_ITEMS
 from src.organizations.pictures import picture_url
 from src.organizations.service import load_organization
 from src.validation import Uuid7
 
-MAX_GALLERY_ITEMS = 10
 Slug = Annotated[str, Path(pattern=r"^[A-Za-z0-9-]{1,80}$")]
+MediaRoot = Annotated[FilePath, Depends(get_media_root)]
 
 router = APIRouter(prefix="/organizations", tags=["organizations"])
 
@@ -86,17 +90,22 @@ def get_gallery(slug: Slug, db: Db) -> list[GalleryItem]:
 
 @router.post("/{slug}/gallery", status_code=status.HTTP_201_CREATED)
 def add_to_gallery(
-    slug: Slug, payload: GalleryAddRequest, principal: CurrentPrincipal, db: Db
+    slug: Slug,
+    payload: GalleryAddRequest,
+    principal: CurrentPrincipal,
+    db: Db,
+    root: MediaRoot,
 ) -> list[GalleryItem]:
     org = load_organization(db, slug)
     require_manager(db, org, principal.user.id)
     add_item(db, org, payload.asset_id, principal.user.id)
+    placement.link(db, root, payload.asset_id, "organizations", str(org.id), "gallery")
     return list_items(db, org.id)
 
 
 @router.delete("/{slug}/gallery/{asset_id}", status_code=status.HTTP_204_NO_CONTENT)
 def remove_from_gallery(
-    slug: Slug, asset_id: Uuid7, principal: CurrentPrincipal, db: Db
+    slug: Slug, asset_id: Uuid7, principal: CurrentPrincipal, db: Db, root: MediaRoot
 ) -> None:
     org = load_organization(db, slug)
     require_manager(db, org, principal.user.id)
@@ -105,3 +114,4 @@ def remove_from_gallery(
         raise api_error(status.HTTP_404_NOT_FOUND, "media_not_found")
     db.delete(item)
     db.commit()
+    placement.unlink(db, root, asset_id, "organizations", str(org.id), "gallery")

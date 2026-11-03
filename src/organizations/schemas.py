@@ -17,6 +17,7 @@ from pydantic import (
 from pydantic_core import PydanticCustomError
 
 from src.auth.schemas import Address, Phone, ShortText, TaxCode, field_errors
+from src.organizations.gallery_items import MAX_GALLERY_ITEMS
 from src.validation import Uuid7, multi_line, single_line
 
 OrgRole = Literal["owner", "admin", "member"]
@@ -88,7 +89,7 @@ class StrictRequest(BaseModel):
 
 
 class OrganizationCreateRequest(StrictRequest):
-    """Pictures are uploads from POST /media, sent by their asset id."""
+    """Pictures and gallery files are uploads from POST /media, sent by their asset id."""
 
     name: OrganizationName
     description: Description
@@ -106,6 +107,9 @@ class OrganizationCreateRequest(StrictRequest):
     legal_rep_position: ShortText | None = None
     logo_asset_id: Uuid7 | None = None
     cover_asset_id: Uuid7 | None = None
+    gallery_asset_ids: list[Uuid7] = Field(
+        default_factory=list, max_length=MAX_GALLERY_ITEMS
+    )
 
 
 class OrganizationUpdateRequest(StrictRequest):
@@ -165,6 +169,9 @@ class OrganizationSummary(BaseModel):
     join_policy: str
     member_count: int
     created_at: datetime
+    # Relative paths served by GET /media/{id}/file, or null. Read from the row itself.
+    logo_url: str | None
+    cover_url: str | None
 
 
 class OrganizationPage(BaseModel):
@@ -195,9 +202,6 @@ class OrganizationDetail(OrganizationSummary):
     legal_rep_name: str | None
     legal_rep_position: str | None
     legal_status: str
-    # Relative path of the picture, served by GET /media/{id}/file. Null when unset.
-    logo_url: str | None
-    cover_url: str | None
     owner_name: str
     # Published activities and approved hours, for the header.
     activity_count: int

@@ -18,7 +18,7 @@ Nhận ảnh JPEG, PNG, WEBP tối đa 5 MB và video MP4, WEBM tối đa 50 MB.
 
 - Loại tệp được xác định từ vài byte đầu, không dựa vào tên file hay `Content-Type` do trình duyệt gửi. Tệp không phải ảnh thì bị từ chối dù tên có đuôi `.png`.
 - Tên gốc chỉ được lưu để hiển thị, không bao giờ dùng để đặt tên file. Ký tự điều khiển, kể cả NUL, bị bỏ đi. Tên dài hơn 255 ký tự bị cắt.
-- File được lưu trên ổ đĩa của server, trong thư mục `MEDIA_DIR` (mặc định `media`, tính từ thư mục khởi động server). Tên file là `<uuid>.<đuôi>` do server sinh, nên không thể đoán hay đưa đường dẫn ra ngoài thư mục này.
+- File được lưu trên ổ đĩa của server, trong thư mục `MEDIA_DIR` (mặc định `media`, tính từ thư mục khởi động server). Tên file do server sinh từ UUID, không lấy từ tên người gửi, nên không thể đoán hay đưa đường dẫn ra ngoài thư mục này. Cách sắp xếp thư mục xem mục [Cây thư mục](#cây-thư-mục).
 - Mỗi tệp mới có quyền `private`. Chỉ người tải lên mới xem được.
 - Gắn ảnh vào đại diện, logo, ảnh bìa tổ chức hoặc ảnh bìa hoạt động thì ảnh chuyển thành `public`. Ai có đường link cũng xem được. Gỡ ảnh khỏi chỗ đó không đổi lại thành `private`.
 - Chỉ người tải lên mới được gắn tệp của mình. Gắn vào tổ chức hoặc hoạt động còn cần quyền quản lý.
@@ -41,6 +41,42 @@ Nhận ảnh JPEG, PNG, WEBP tối đa 5 MB và video MP4, WEBM tối đa 50 MB.
 - Tạo và sửa tổ chức cũng nhận `logo_asset_id` và `cover_asset_id` trong body, nên ảnh có thể gắn ngay lúc tạo mà không cần gọi thêm.
 - `GET /media/{id}/file` trả về nội dung ảnh, kèm `X-Content-Type-Options: nosniff`. Ảnh công khai có `Cache-Control: public`, ảnh riêng có `private`.
 - Tệp riêng của người khác, tệp chưa tải xong và tệp không tồn tại đều trả về 404 `media_not_found`. Không phân biệt các trường hợp để khỏi lộ tệp nào đang tồn tại.
+
+## Cây thư mục
+
+Gốc là `MEDIA_DIR`. Thư mục đầu tiên là tài khoản đã tải file lên, nên nhìn cây là biết file của ai:
+
+```
+media/
+  users/<user_id>/
+    by-date/<yyyy>/<mm>/<dd>/<asset_id>.<đuôi>        file thật, lưu một lần
+    avatar/<asset_id>.<đuôi>                          ảnh đại diện của người này
+    organizations/<org_id>/logo/<asset_id>.<đuôi>
+    organizations/<org_id>/cover/<asset_id>.<đuôi>
+    organizations/<org_id>/gallery/<asset_id>.<đuôi>
+    activities/<activity_id>/cover/<asset_id>.<đuôi>
+```
+
+- `by-date` chứa mọi file người này đã tải lên, theo ngày tải. Đây là bản duy nhất của file.
+- Các thư mục khác chứa liên kết cứng (hard link) tới file trong `by-date`. Một file dùng ở nhiều chỗ thì có nhiều liên kết, mỗi chỗ một liên kết. Nếu hệ thống file không hỗ trợ liên kết cứng thì file được sao chép.
+- Gỡ một chỗ dùng chỉ xóa liên kết của chỗ đó. File thật không bị xóa.
+- Tên thư mục chỉ là chữ thường, dấu gạch ngang hoặc UUID. Mọi tên khác bị từ chối, nên không thể đưa đường dẫn ra ngoài cây.
+- Liên kết chỉ là bản hiển thị theo thư mục. Nguồn sự thật vẫn là bảng trong database.
+
+Đã nối liên kết cho: ảnh đại diện, logo, ảnh bìa và bộ sưu tập của tổ chức (kể cả lúc tạo), ảnh bìa hoạt động. Chưa nối: ảnh bài viết và ảnh nền mẫu chứng nhận. Các file này vẫn nằm trong `by-date`, chỉ chưa có liên kết.
+
+Code: [`src/media/placement.py`](../src/media/placement.py) và [`src/media/storage.py`](../src/media/storage.py).
+
+### Backfill
+
+File tải lên trước khi có cây thư mục nằm phẳng trong `media/` và chưa có liên kết. Chạy script để chuyển chúng vào `by-date` và tạo lại các liên kết còn thiếu:
+
+```bash
+uv run python scripts/backfill_media_tree.py          # chỉ báo cáo, không đổi gì
+uv run python scripts/backfill_media_tree.py --apply  # chuyển file và ghi liên kết
+```
+
+Script đọc `.env` như các script khác. Với `--apply`, mọi thay đổi trong database được ghi trong một transaction. Nếu commit lỗi, file đã chuyển được đưa về chỗ cũ. Chạy lại an toàn: liên kết đã có thì bỏ qua.
 
 ## Kiểm tra dữ liệu
 

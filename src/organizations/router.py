@@ -1,13 +1,17 @@
 """Routes for organizations and their members."""
 
+from pathlib import Path as FilePath
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Path, Query, status
 
 from src.auth.deps import CurrentPrincipal, Db, OptionalPrincipal
+from src.media import placement
+from src.media.storage import get_media_root
 from src.notifications.delivery import deliver_emails
 from src.organizations import membership, service
 from src.organizations.access import require_manager, require_member, require_owner
+from src.organizations.gallery_items import unique_asset_ids
 from src.organizations.schemas import (
     ApplicationPage,
     JoinRequest,
@@ -33,13 +37,22 @@ Limit = Annotated[int, Query(ge=1, le=100)]
 Offset = Annotated[int, Query(ge=0, le=100_000)]
 # The pattern rejects control characters. PostgreSQL does not accept NUL in text.
 Search = Annotated[str | None, Query(max_length=100, pattern=r"^[^\x00-\x1f\x7f]*$")]
+MediaRoot = Annotated[FilePath, Depends(get_media_root)]
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
 def create_organization(
-    payload: OrganizationCreateRequest, principal: CurrentPrincipal, db: Db
+    payload: OrganizationCreateRequest,
+    principal: CurrentPrincipal,
+    db: Db,
+    root: MediaRoot,
 ) -> OrganizationDetail:
     org = service.create_organization(db, payload, principal.user)
+    folder = ("organizations", str(org.id))
+    placement.replace(db, root, None, org.logo_media_id, *folder, "logo")
+    placement.replace(db, root, None, org.cover_media_id, *folder, "cover")
+    for asset_id in unique_asset_ids(payload.gallery_asset_ids):
+        placement.link(db, root, asset_id, *folder, "gallery")
     return service.organization_detail(db, org, principal.user.id)
 
 
@@ -78,11 +91,16 @@ def update_organization(
     payload: OrganizationUpdateRequest,
     principal: CurrentPrincipal,
     db: Db,
+    root: MediaRoot,
 ) -> OrganizationDetail:
     user_id = principal.user.id
     org = service.load_organization(db, slug)
     require_manager(db, org, user_id)
+    previous_logo, previous_cover = org.logo_media_id, org.cover_media_id
     service.update_organization(db, org, payload, user_id)
+    folder = ("organizations", str(org.id))
+    placement.replace(db, root, previous_logo, org.logo_media_id, *folder, "logo")
+    placement.replace(db, root, previous_cover, org.cover_media_id, *folder, "cover")
     return service.organization_detail(db, org, user_id)
 
 

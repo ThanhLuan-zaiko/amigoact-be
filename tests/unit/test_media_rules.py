@@ -1,3 +1,5 @@
+import uuid
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -27,14 +29,32 @@ def test_upload_limit_is_five_megabytes() -> None:
     assert MAX_UPLOAD_BYTES == 5 * 1024 * 1024
 
 
-def test_generated_key_is_accepted_and_stays_in_the_root(tmp_path: Path) -> None:
-    key = new_storage_key("png")
+def test_generated_key_is_grouped_by_uploader_and_date(tmp_path: Path) -> None:
+    owner = uuid.uuid7()
+    asset = uuid.uuid7()
+    when = datetime(2026, 11, 3, 9, 30, tzinfo=UTC)
+
+    key = new_storage_key(owner, asset, "png", when)
+
+    assert key == f"users/{owner}/by-date/2026/11/03/{asset}.png"
+    assert file_path(tmp_path, key) == tmp_path / key
+
+
+def test_flat_keys_from_before_the_tree_are_still_accepted(tmp_path: Path) -> None:
+    key = "a" * 32 + ".png"
     assert file_path(tmp_path, key) == tmp_path / key
 
 
 @pytest.mark.parametrize(
     "key",
-    ["../secret.png", "photo.png", "a" * 32 + ".exe", "sub/" + "a" * 32 + ".png"],
+    [
+        "../secret.png",
+        "photo.png",
+        "a" * 32 + ".exe",
+        "sub/" + "a" * 32 + ".png",
+        "users/../../secret.png",
+        "users/" + str(uuid.uuid7()) + "/avatar/" + "a" * 32 + ".png",
+    ],
 )
 def test_keys_outside_the_generated_shape_are_refused(tmp_path: Path, key: str) -> None:
     with pytest.raises(ValueError):

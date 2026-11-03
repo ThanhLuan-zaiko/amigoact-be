@@ -38,7 +38,7 @@ Chủ sở hữu không rời được tổ chức và không bị xóa. Hiện 
 - `legal_status` chỉ đọc, gồm `none`, `pending`, `verified`. Mới tạo luôn là `none`. Gửi `legal_status` trong body bị từ chối bằng `extra_forbidden`, nên người dùng không tự xác nhận được. Quy trình xác minh của quản trị nền tảng chưa có.
 - Logo và ảnh bìa gửi bằng `logo_asset_id` và `cover_asset_id`, là ID của ảnh đã tải lên qua `POST /media`. Chỉ người tải lên mới gắn được ảnh của mình. Ảnh không tồn tại, ảnh riêng của người khác, hoặc ảnh chưa tải xong đều trả về 404 `media_not_found`. Khi tạo, nếu ảnh không hợp lệ thì tổ chức không được tạo.
 - Gắn ảnh làm ảnh thành `public`. Gửi `null` để gỡ ảnh. Khi không gửi trường ảnh, ảnh giữ nguyên.
-- Phản hồi chi tiết trả về `logo_url` và `cover_url` dạng `/media/{id}/file`, hoặc `null`. Danh sách không có hai trường này, để không phải truy vấn thêm cho mỗi dòng.
+- Phản hồi chi tiết trả về `logo_url` và `cover_url` dạng `/media/{id}/file`, hoặc `null`. Mọi danh sách tổ chức cũng có hai trường này. Chúng lấy từ dòng tổ chức đã được đọc sẵn, nên không tốn truy vấn thêm.
 - Thông tin pháp lý và ảnh công khai với mọi người, vì `GET /organizations/{slug}` không cần đăng nhập.
 
 ## API
@@ -59,6 +59,8 @@ Chủ sở hữu không rời được tổ chức và không bị xóa. Hiện 
 | POST | `/organizations/{slug}/applications/{user_id}/approve` | Quản trị viên |
 | POST | `/organizations/{slug}/applications/{user_id}/reject` | Quản trị viên |
 
+`GET /organizations/mine` trả thêm `logo_url` và `cover_url`, cùng dạng với chi tiết tổ chức, để thẻ "Tổ chức của tôi" hiện ảnh. Hai trường này lấy từ dòng tổ chức, không tốn truy vấn thêm.
+
 Danh sách thành viên và danh sách yêu cầu không trả email hay số điện thoại. Danh sách phân trang trả `next_offset`, bằng `null` ở trang cuối. Tham gia giới hạn 30 lần mỗi giờ cho mỗi người dùng.
 
 Mỗi danh sách trả thêm `total` là tổng số dòng khớp, để giao diện đánh số trang. Thành viên, yêu cầu, hoạt động và đăng ký cũng có trường này.
@@ -75,17 +77,18 @@ Mỗi tổ chức có tối đa 10 ảnh hoặc video, lưu trong bảng `organi
 
 Quá 10 tệp trả về 409 `gallery_full`. Gắn lại cùng một tệp không tạo dòng mới. Gắn vào bộ sưu tập làm tệp thành công khai. Gỡ khỏi bộ sưu tập không xóa tệp.
 
+Khi tạo tổ chức, có thể gửi `gallery_asset_ids` là danh sách tối đa 10 ID ảnh hoặc video đã tải lên qua `POST /media`. Mỗi ID trùng lặp chỉ tạo một tệp, và thứ tự giữ như lúc gửi. Nếu một tệp không hợp lệ hoặc không phải của người tạo, trả về 404 `media_not_found` và tổ chức không được tạo. Danh sách rỗng hoặc không gửi trường này thì không có gì được thêm vào bộ sưu tập.
+
 Database đã có sẵn cần tạo bảng này bằng câu `CREATE TABLE IF NOT EXISTS organization_media` trong `schema.sql`. Không cần reset.
 
 ## Trường bắt buộc
 
 Khi tạo phải có `name`, `description`, `email`, `phone`, `city`. Khi sửa, không gửi trường nào thì trường đó giữ nguyên, nhưng gửi `null` cho các trường này bị từ chối bằng `required`. Tổ chức tạo trước đây có thể thiếu các trường này cho đến lần sửa tiếp theo.
 
-Giới hạn khi tạo tổ chức:
+Giới hạn khi tạo tổ chức. Hiện chưa kiểm tra email đã xác minh, vì chức năng xác minh email chưa làm xong:
 
 | Quy tắc | Lỗi |
 | ------- | --- |
-| Email của người tạo phải được xác minh | 403 `email_not_verified` |
 | Tối đa 3 lần thử mỗi ngày (tính theo ngày UTC, kể cả lần thất bại) | 429 `rate_limited` |
 | Sở hữu tối đa 5 tổ chức chưa xóa, kể cả tổ chức bị tạm ngưng | 409 `organization_limit_reached` |
 

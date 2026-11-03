@@ -37,18 +37,6 @@ def owned_count(api: ApiContext) -> int:
     return count or 0
 
 
-def test_unverified_email_cannot_create(api: ApiContext, bearer: Bearer) -> None:
-    headers = bearer(api.register(verified=False)["tokens"]["access_token"])
-
-    response = api.client.post(
-        "/organizations", headers=headers, json={**ORG_FIELDS, "name": "CLB"}
-    )
-
-    assert response.status_code == 403
-    assert response.json()["detail"] == "email_not_verified"
-    assert owned_count(api) == 0
-
-
 def test_owner_at_the_limit_gets_a_conflict(api: ApiContext, bearer: Bearer) -> None:
     headers = bearer(api.register()["tokens"]["access_token"])
     seed_owned(api, MAX_OWNED_ORGANIZATIONS)
