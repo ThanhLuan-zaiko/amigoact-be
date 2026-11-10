@@ -2,10 +2,12 @@
 
 from pathlib import Path
 
-from sqlalchemy import Engine, make_url, text
+from sqlalchemy import URL, Engine, create_engine, make_url, text
+from sqlalchemy.dialects import postgresql
 
 SCHEMA_FILE = Path(__file__).resolve().parent.parent / "schema.sql"
 PROTECTED_DATABASES = frozenset({"postgres", "template0", "template1"})
+ADMIN_DATABASE = "postgres"
 
 # Drops only the public schema of the target database, then recreates it empty.
 RESET_SQL = "DROP SCHEMA public CASCADE;\nCREATE SCHEMA public;\n"
@@ -16,6 +18,8 @@ TABLE_LIST_SQL = text(
     "ORDER BY table_name"
 )
 
+DATABASE_EXISTS_SQL = text("SELECT 1 FROM pg_database WHERE datname = :name")
+
 
 def database_name(database_url: str) -> str:
     """Return the database name in the URL, refusing system databases."""
@@ -25,6 +29,44 @@ def database_name(database_url: str) -> str:
     if name in PROTECTED_DATABASES:
         raise ValueError(f"Refusing to reset the system database '{name}'.")
     return name
+
+
+def admin_database_url(database_url: str) -> URL:
+    """Return the same connection URL pointed at the maintenance database."""
+    return make_url(database_url).set(database=ADMIN_DATABASE)
+
+
+def create_database_statement(name: str) -> str:
+    """Return CREATE DATABASE with the name quoted as a PostgreSQL identifier."""
+    quoted = postgresql.dialect().identifier_preparer.quote(name)
+    return f"CREATE DATABASE {quoted}"
+
+
+def database_exists(database_url: str) -> bool:
+    """Return True if the server already has the database named in the URL."""
+    name = database_name(database_url)
+    engine = create_engine(admin_database_url(database_url))
+    try:
+        with engine.connect() as connection:
+            row = connection.execute(DATABASE_EXISTS_SQL, {"name": name}).first()
+    finally:
+        engine.dispose()
+    return row is not None
+
+
+def create_database(database_url: str) -> None:
+    """Create the database named in the URL. Does nothing if it already exists."""
+    name = database_name(database_url)
+    engine = create_engine(
+        admin_database_url(database_url), isolation_level="AUTOCOMMIT"
+    )
+    try:
+        with engine.connect() as connection:
+            row = connection.execute(DATABASE_EXISTS_SQL, {"name": name}).first()
+            if row is None:
+                connection.exec_driver_sql(create_database_statement(name))
+    finally:
+        engine.dispose()
 
 
 def list_public_tables(engine: Engine) -> list[str]:

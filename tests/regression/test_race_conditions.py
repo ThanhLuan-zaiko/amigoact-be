@@ -18,8 +18,8 @@ from fastapi import HTTPException
 from sqlalchemy import update
 from sqlalchemy.orm import Session
 
+from src.activities.publishing import publish_activity
 from src.activities.rules import PUBLISHED
-from src.activities.service import publish_activity
 from src.app import app
 from src.media.cleanup import apply_plan, run, still_unused
 from src.media.service import PUBLIC, check_attachable

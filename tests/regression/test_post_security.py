@@ -9,7 +9,7 @@ from src.models.organizations import Organization
 from src.models.posts import OrgPost
 from tests.activity_helpers import Bearer, user
 from tests.conftest import ApiContext
-from tests.media_helpers import db_row, uploaded
+from tests.media_helpers import MP4, db_row, uploaded
 from tests.post_helpers import comment, created, join, open_org, post
 
 
@@ -206,6 +206,45 @@ def test_members_post_cannot_carry_pictures(
     picture = uploaded(api, owner)
 
     response = post(api, owner, slug, media_ids=[picture["id"]])
+
+    assert response.status_code == 422
+    assert "members_post_has_no_media" in response.text
+
+
+def test_video_on_a_draft_stays_private_and_cannot_be_stolen(
+    api: ApiContext, bearer: Bearer, media_root: Path
+) -> None:
+    owner, _ = user(api, bearer, "vidowner")
+    thief, _ = user(api, bearer, "vidthief")
+    video = uploaded(api, owner, MP4)
+    draft = created(
+        api,
+        owner,
+        open_org(api, owner),
+        kind="announcement",
+        draft=True,
+        media_ids=[video["id"]],
+    )
+
+    assert db_row(MediaAsset, uuid.UUID(video["id"])).visibility == "private"
+    assert api.client.get(video["url"]).status_code == 404
+    stolen = post(
+        api, thief, open_org(api, thief), kind="announcement", media_ids=[video["id"]]
+    )
+    assert stolen.status_code == 404
+    assert stolen.json()["detail"] == "media_not_found"
+
+    api.client.post(f"/posts/{draft['id']}/publish", headers=owner)
+    assert api.client.get(video["url"]).status_code == 200
+
+
+def test_members_post_cannot_carry_a_video(
+    api: ApiContext, bearer: Bearer, media_root: Path
+) -> None:
+    owner, _ = user(api, bearer, "vidmembers")
+    video = uploaded(api, owner, MP4)
+
+    response = post(api, owner, open_org(api, owner), media_ids=[video["id"]])
 
     assert response.status_code == 422
     assert "members_post_has_no_media" in response.text

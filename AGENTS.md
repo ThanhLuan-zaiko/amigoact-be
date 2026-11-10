@@ -73,7 +73,7 @@ Put scratch work in the session scratchpad directory, not in the repository. CI 
 
 - Never reset, drop, truncate, or delete database data on your own. Run `scripts/reset_database.py --apply` only when the user explicitly asks for a reset in the current message.
 - Without `--apply`, the script is a read-only dry run. It is safe to run to inspect the target.
-- The script touches only the database named in `DATABASE_URL` in `.env`. It refuses `postgres`, `template0`, and `template1`, and it asks the user to type the database name before it changes anything.
+- The script touches only the database named in `DATABASE_URL` in `.env`. It refuses `postgres`, `template0`, and `template1`, and it asks the user to type the database name before it changes anything. With `--apply` it creates the database first if the server does not have it (connecting to the `postgres` maintenance database); without `--apply` it never creates anything.
 - A reset drops the `public` schema of that database, which removes every table and its data, then loads `schema.sql` in one transaction.
 - Do not write tests that reset the database. Integration tests use the same `.env` database as local development.
 

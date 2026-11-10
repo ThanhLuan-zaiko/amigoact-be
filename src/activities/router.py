@@ -4,7 +4,13 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Path, Query, status
 
-from src.activities import registration_lists, registrations, service, shifts
+from src.activities import (
+    publishing,
+    registration_lists,
+    registrations,
+    service,
+    shifts,
+)
 from src.activities.schemas import (
     ActivityCreateRequest,
     ActivityDetail,
@@ -117,7 +123,7 @@ def publish_activity(
     user_id = principal.user.id
     activity = service.load_activity(db, activity_id, lock=True)
     service.require_activity_manager(db, activity, user_id)
-    service.publish_activity(db, activity)
+    publishing.publish_activity(db, activity)
     return service.activity_detail(db, activity, user_id)
 
 

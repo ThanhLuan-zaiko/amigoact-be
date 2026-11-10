@@ -5,7 +5,7 @@ from src.models.media import MediaAsset
 from src.models.posts import OrgPost
 from tests.activity_helpers import Bearer, user
 from tests.conftest import ApiContext
-from tests.media_helpers import db_row, uploaded
+from tests.media_helpers import MP4, db_row, uploaded
 from tests.post_helpers import comment, created, join, open_org, post
 
 
@@ -259,6 +259,23 @@ def test_media_on_a_public_post_becomes_public(
     ]
     assert db_row(MediaAsset, uuid.UUID(picture["id"])).visibility == "public"
     assert api.client.get(picture["url"]).status_code == 200
+
+
+def test_public_post_carries_a_picture_and_a_video_in_order(
+    api: ApiContext, bearer: Bearer, media_root: Path
+) -> None:
+    owner, _ = user(api, bearer, "clip")
+    slug = open_org(api, owner)
+    picture = uploaded(api, owner)
+    video = uploaded(api, owner, MP4)
+
+    item = created(
+        api, owner, slug, kind="announcement", media_ids=[video["id"], picture["id"]]
+    )
+
+    assert [entry["mime"] for entry in item["media"]] == ["video/mp4", "image/png"]
+    assert db_row(MediaAsset, uuid.UUID(video["id"])).visibility == "public"
+    assert api.client.get(video["url"]).status_code == 200
 
 
 def test_picture_on_a_draft_stays_private_until_publish(

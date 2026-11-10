@@ -82,6 +82,10 @@ def test_completion_needs_hours_when_someone_attended(
     owner, _ = user(api, bearer, "owner")
     volunteer, _ = user(api, bearer, "volunteer")
     activity = published(api, owner, make_org(api, owner))
+    # Hours are required to publish, so they are cleared afterwards to reach this case.
+    api.client.patch(
+        f"/activities/{activity['id']}", headers=owner, json={"hours_awarded": None}
+    )
     sign_up(api, volunteer, activity["id"])
     session = open_session(api, owner, activity["id"])
     check_in(api, volunteer, token=session["qr_token"])

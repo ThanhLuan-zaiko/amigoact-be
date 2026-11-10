@@ -62,6 +62,9 @@ def test_failed_action_leaves_no_notification_or_email(
         "/notifications/preferences", headers=volunteer, json={"email": True}
     )
     activity = published(api, owner, make_org(api, owner))
+    api.client.patch(
+        f"/activities/{activity['id']}", headers=owner, json={"hours_awarded": None}
+    )
     sign_up(api, volunteer, activity["id"])
     session = open_session(api, owner, activity["id"])
     check_in(api, volunteer, token=session["qr_token"])

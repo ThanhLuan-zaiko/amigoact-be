@@ -4,19 +4,31 @@ from datetime import datetime
 from typing import Any
 
 DRAFT = "draft"
+
 PUBLISHED = "published"
+
 COMPLETED = "completed"
+
 CANCELLED = "cancelled"
 
+
 PENDING = "pending"
+
 APPROVED = "approved"
+
 REJECTED = "rejected"
+
 WAITLISTED = "waitlisted"
+
 ATTENDED = "attended"
 
+
 # A pending registration holds its seat, so approvals can never overfill an activity.
+
 HOLDS_SEAT = (PENDING, APPROVED, ATTENDED)
+
 ACTIVE_REGISTRATION = (PENDING, APPROVED, WAITLISTED)
+
 EDITABLE_STATUSES = (DRAFT, PUBLISHED)
 
 
@@ -26,6 +38,7 @@ def requires_approval(requirements: dict[str, Any] | None) -> bool:
 
 def initial_status(*, capacity: int | None, taken: int, needs_approval: bool) -> str:
     """A full activity puts the volunteer on the waitlist. No capacity means no limit."""
+
     if capacity is not None and taken >= capacity:
         return WAITLISTED
     return admitted_status(needs_approval)
@@ -61,6 +74,7 @@ def can_appeal(
     now: datetime,
 ) -> bool:
     """An appeal makes sense once the activity has started, for someone expected there."""
+
     return (
         activity_status in (PUBLISHED, COMPLETED)
         and start_at is not None
@@ -78,6 +92,7 @@ def schedule_errors(
     errors: dict[str, str] = {}
     if start_at and end_at and end_at <= start_at:
         errors["end_at"] = "end_before_start"
+
     if start_at and deadline and deadline > start_at:
         errors["registration_deadline"] = "deadline_after_start"
     return errors
@@ -96,15 +111,32 @@ def publish_errors(
     errors = schedule_errors(start_at, end_at, deadline)
     if start_at is None:
         errors["start_at"] = "required"
+
     elif start_at <= now:
         errors["start_at"] = "start_in_past"
+
     if end_at is None:
         errors["end_at"] = "required"
+
     if deadline is not None and deadline <= now:
         errors.setdefault("registration_deadline", "deadline_in_past")
+
     if not is_remote and not location:
         errors["location"] = "required"
     return errors
+
+
+def completeness_errors(
+    *, description: str | None, city: str | None, hours_awarded: object | None
+) -> dict[str, str]:
+    """Fields a volunteer needs to see before an activity is published."""
+
+    values = {
+        "description": description,
+        "city": city,
+        "hours_awarded": hours_awarded,
+    }
+    return {field: "required" for field, value in values.items() if value is None}
 
 
 def shift_errors(
@@ -118,8 +150,10 @@ def shift_errors(
     errors: dict[str, str] = {}
     if end_at <= start_at:
         errors["end_at"] = "end_before_start"
+
     if activity_start and start_at < activity_start:
         errors["start_at"] = "shift_outside_activity"
+
     if activity_end and end_at > activity_end:
         errors["end_at"] = "shift_outside_activity"
     return errors
@@ -132,6 +166,7 @@ def times_overlap(
     second_end: datetime | None,
 ) -> bool:
     """Touching end to end is not an overlap, so back-to-back shifts are allowed."""
+
     if not (first_start and first_end and second_start and second_end):
         return False
     return first_start < second_end and second_start < first_end

@@ -11,7 +11,7 @@ Tài liệu này mô tả phần hoạt động của backend. Code nằm trong 
 | `completed` | Đã kết thúc | Không đổi được nữa |
 | `cancelled` | Đã hủy. Mọi đăng ký còn hiệu lực chuyển thành `cancelled` | Không đổi được nữa |
 
-Khi đăng, hoạt động phải có giờ bắt đầu ở tương lai, giờ kết thúc, và địa điểm nếu không trực tuyến. Trạng thái `ongoing` trong schema chưa dùng: hoạt động đang diễn ra vẫn là `published`.
+Khi tạo, API bắt buộc có tên, mô tả, thành phố, giờ tình nguyện, giờ bắt đầu, giờ kết thúc, và địa điểm nếu không trực tuyến, giống form. Khi đăng, hoạt động phải có giờ bắt đầu ở tương lai, giờ kết thúc, mô tả, thành phố, giờ tình nguyện, và địa điểm nếu không trực tuyến. Việc đăng nằm trong `publishing.py`. Trạng thái `ongoing` trong schema chưa dùng: hoạt động đang diễn ra vẫn là `published`.
 
 ## Ca
 

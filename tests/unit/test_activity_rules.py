@@ -6,6 +6,7 @@ from pydantic import ValidationError
 
 from src.activities.rules import (
     can_cancel_registration,
+    completeness_errors,
     initial_status,
     publish_errors,
     registration_is_open,
@@ -54,6 +55,7 @@ def test_activity_models_register_their_tables() -> None:
 def test_initial_status(
     capacity: int | None, taken: int, needs_approval: bool, expected: str
 ) -> None:
+
     status = initial_status(
         capacity=capacity, taken=taken, needs_approval=needs_approval
     )
@@ -81,6 +83,7 @@ def test_registration_closes_at_the_deadline_or_else_the_start() -> None:
 
 @pytest.mark.parametrize("status", ["draft", "completed", "cancelled"])
 def test_registration_needs_a_published_activity(status: str) -> None:
+
     assert not registration_is_open(
         status=status, start_at=after(5), deadline=None, now=NOW
     )
@@ -110,6 +113,7 @@ def test_publish_needs_times_and_a_place() -> None:
         is_remote=False,
         now=NOW,
     )
+
     assert errors == {
         "start_at": "required",
         "end_at": "required",
@@ -138,6 +142,7 @@ def test_publish_rejects_times_already_gone() -> None:
         is_remote=False,
         now=NOW,
     )
+
     assert errors == {
         "start_at": "start_in_past",
         "registration_deadline": "deadline_in_past",
@@ -167,29 +172,55 @@ def test_back_to_back_shifts_do_not_overlap() -> None:
     assert not times_overlap(None, after(2), after(1), after(3))
 
 
+FULL = {
+    "title": "Mua he xanh",
+    "description": "Mo ta",
+    "city": "Ha Noi",
+    "location": "San truong",
+    "hours_awarded": "2",
+    "start_at": "2026-06-01T08:00:00Z",
+    "end_at": "2026-06-01T10:00:00Z",
+}
+
+
+def test_create_request_needs_a_place_unless_remote() -> None:
+    without_place = {k: v for k, v in FULL.items() if k != "location"}
+    with pytest.raises(ValidationError) as caught:
+        ActivityCreateRequest.model_validate(without_place)
+    assert caught.value.errors()[0]["loc"] == ("location",)
+    remote = ActivityCreateRequest.model_validate({**without_place, "is_remote": True})
+    assert remote.location is None
+
+
 def test_create_request_rejects_a_time_without_a_zone() -> None:
     with pytest.raises(ValidationError) as caught:
         ActivityCreateRequest.model_validate(
-            {"title": "Mua he xanh", "start_at": "2026-06-01T08:00:00"}
+            {**FULL, "start_at": "2026-06-01T08:00:00"}
         )
     assert caught.value.errors()[0]["type"] == "timezone_aware"
 
 
 def test_hours_allow_two_decimal_places() -> None:
-    payload = ActivityCreateRequest(title="Mua he", hours_awarded=Decimal("2.50"))
+    payload = ActivityCreateRequest.model_validate(
+        {**FULL, "hours_awarded": Decimal("2.50")}
+    )
     assert payload.hours_awarded == Decimal("2.50")
     with pytest.raises(ValidationError):
-        ActivityCreateRequest(title="Mua he", hours_awarded=Decimal("2.555"))
+        ActivityCreateRequest.model_validate(
+            {**FULL, "hours_awarded": Decimal("2.555")}
+        )
 
 
 @pytest.mark.parametrize("title", ["ab", "...", "a\x00bc", "x" * 201])
 def test_title_rules(title: str) -> None:
+
     with pytest.raises(ValidationError):
-        ActivityCreateRequest(title=title)
+        ActivityCreateRequest.model_validate({**FULL, "title": title})
 
 
 @pytest.mark.parametrize("field", ["title", "is_remote", "requires_approval"])
 def test_update_rejects_null_for_required_fields(field: str) -> None:
+
     with pytest.raises(ValidationError) as caught:
         ActivityUpdateRequest.model_validate({field: None})
     assert caught.value.errors()[0]["loc"] == (field,)
@@ -213,3 +244,18 @@ def test_register_request_accepts_only_uuid7_shifts() -> None:
             {"shift_id": "9f1f1c2e-3b4a-4c5d-8e6f-7a8b9c0d1e2f"}
         )
     assert caught.value.errors()[0]["type"] == "uuid_invalid"
+
+
+def test_publish_needs_description_city_and_hours() -> None:
+    assert completeness_errors(description=None, city=None, hours_awarded=None) == {
+        "description": "required",
+        "city": "required",
+        "hours_awarded": "required",
+    }
+
+    assert (
+        completeness_errors(
+            description="Mo ta", city="Ha Noi", hours_awarded=Decimal(0)
+        )
+        == {}
+    )

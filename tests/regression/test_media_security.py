@@ -43,7 +43,7 @@ def test_file_over_five_megabytes_is_rejected(
     api: ApiContext, bearer: Bearer, media_root: Path
 ) -> None:
     headers, _ = user(api, bearer, "big")
-    too_big = PNG + b"\x00" * (5 * 1024 * 1024)
+    too_big = PNG + b"\x00" * (20 * 1024 * 1024)
 
     response = upload(api, headers, data=too_big)
 

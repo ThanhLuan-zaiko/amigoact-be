@@ -4,13 +4,13 @@ Tài liệu này mô tả phần tải ảnh của backend. Code nằm trong [`s
 
 ## Phạm vi
 
-Nhận ảnh JPEG, PNG, WEBP tối đa 5 MB và video MP4, WEBM tối đa 50 MB. Video chỉ gắn được vào bộ sưu tập của tổ chức (xem [`organizations.md`](organizations.md)). Logo, ảnh đại diện, ảnh bìa, ảnh nền chứng nhận và ảnh bài viết từ chối video bằng `unsupported_media_type`. Ảnh được dùng cho:
+Nhận ảnh JPEG, PNG, WEBP tối đa 20 MB và video MP4, WEBM tối đa 50 MB. Video chỉ gắn được vào bộ sưu tập của tổ chức (xem [`organizations.md`](organizations.md)) và vào bài bảng tin công khai (xem [`posts.md`](posts.md)). Logo, ảnh đại diện, ảnh bìa và ảnh nền chứng nhận từ chối video bằng `unsupported_media_type`. Ảnh được dùng cho:
 
 - ảnh đại diện của người dùng,
 - logo và ảnh bìa của tổ chức,
 - ảnh bìa của hoạt động,
 - ảnh nền của mẫu chứng nhận,
-- ảnh trong bài bảng tin, với bài công khai (xem [`posts.md`](posts.md)).
+- ảnh và video trong bài bảng tin, với bài công khai (xem [`posts.md`](posts.md)).
 
 Ảnh nền của mẫu chứng nhận cũng tải lên qua API này, xem [`certificates.md`](certificates.md).
 
@@ -103,7 +103,7 @@ Script khóa từng dòng trước khi kiểm tra lại, nên không xóa nhầm
 | Trường | Quy tắc | Mã lỗi |
 | ---- | ---- | ---- |
 | `file` | Không được rỗng | `file_empty` (400) |
-| `file` | Tối đa 5 MB | `file_too_large` (413) |
+| `file` | Tối đa 20 MB | `file_too_large` (413) |
 | `file` | Video tối đa 50 MB | `video_too_large` (413) |
 | `file` | Phải là JPEG, PNG, WEBP, MP4 hoặc WEBM | `unsupported_media_type` (415) |
 | `asset_id` | UUIDv7 hoặc `null` | `uuid_invalid` |

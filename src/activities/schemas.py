@@ -65,18 +65,29 @@ RegistrationNote = Annotated[
 
 
 class ActivityCreateRequest(StrictRequest):
+    """The create form asks for all of these, so the API refuses a body without them."""
+
     title: Title
-    description: ActivityDescription | None = None
+    description: ActivityDescription
     location: Location | None = None
     address: Address | None = None
-    city: City | None = None
+    city: City
     is_remote: bool = False
-    start_at: AwareDatetime | None = None
-    end_at: AwareDatetime | None = None
+    start_at: AwareDatetime
+    end_at: AwareDatetime
     registration_deadline: AwareDatetime | None = None
     max_participants: Capacity | None = None
-    hours_awarded: Hours | None = None
+    hours_awarded: Hours
     requires_approval: bool = False
+
+    @model_validator(mode="after")
+    def need_a_place_unless_remote(self) -> Self:
+        if not self.is_remote and self.location is None:
+            raise field_errors(
+                "ActivityCreateRequest",
+                {"location": ("required", "This field cannot be empty")},
+            )
+        return self
 
 
 class ActivityUpdateRequest(StrictRequest):

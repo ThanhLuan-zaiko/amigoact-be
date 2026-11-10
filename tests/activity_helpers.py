@@ -7,6 +7,7 @@ from typing import Any
 from tests.conftest import ORG_FIELDS, ApiContext
 
 Bearer = Callable[[str], dict[str, str]]
+
 Headers = dict[str, str]
 
 
@@ -32,13 +33,18 @@ def make_org(api: ApiContext, headers: Headers) -> str:
 def draft(
     api: ApiContext, headers: Headers, slug: str, **fields: Any
 ) -> dict[str, Any]:
+
     body = {
         "title": f"Hoat dong {api.tag}",
+        "description": "Mo ta hoat dong",
+        "city": "Ha Noi",
+        "hours_awarded": "2",
         "location": "San truong",
         "start_at": at(10),
         "end_at": at(11),
         **fields,
     }
+
     response = api.client.post(
         f"/organizations/{slug}/activities", headers=headers, json=body
     )
@@ -67,6 +73,7 @@ def add_shift(
     capacity: int = 5,
     title: str = "Ca sang",
 ) -> dict[str, Any]:
+
     response = api.client.post(
         f"/activities/{activity_id}/shifts",
         headers=headers,
@@ -85,6 +92,7 @@ def add_shift(
 def sign_up(
     api: ApiContext, headers: Headers, activity_id: str, **body: Any
 ) -> dict[str, Any]:
+
     response = api.client.post(
         f"/activities/{activity_id}/registrations", headers=headers, json=body
     )

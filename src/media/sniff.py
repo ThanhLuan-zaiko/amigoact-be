@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 
-MAX_UPLOAD_BYTES = 5 * 1024 * 1024
+MAX_UPLOAD_BYTES = 20 * 1024 * 1024
 MAX_VIDEO_BYTES = 50 * 1024 * 1024
 SNIFF_BYTES = 16
 

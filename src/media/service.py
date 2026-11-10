@@ -111,7 +111,7 @@ def load_visible(
 
 
 def _reject_video(asset: MediaAsset) -> None:
-    """Logos, avatars, covers, and post images must be pictures. Only galleries take video."""
+    """Logos, avatars, and covers must be pictures. Only galleries and posts take video."""
     if is_video(asset.mime):
         raise api_error(
             status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, "unsupported_media_type"
@@ -144,7 +144,9 @@ def stored_file(root: Path, asset: MediaAsset) -> Path:
     return path
 
 
-def owned_asset(db: Session, asset_id: uuid.UUID, user_id: uuid.UUID) -> MediaAsset:
+def owned_asset(
+    db: Session, asset_id: uuid.UUID, user_id: uuid.UUID, *, allow_video: bool = False
+) -> MediaAsset:
     """Check ownership without changing visibility. Used while a post is still a draft.
 
     Locks the row like check_attachable, so the cleanup cannot remove it before the commit.
@@ -152,7 +154,8 @@ def owned_asset(db: Session, asset_id: uuid.UUID, user_id: uuid.UUID) -> MediaAs
     asset = db.get(MediaAsset, asset_id, with_for_update=True)
     if asset is None or asset.upload_status != ACTIVE or asset.uploader_id != user_id:
         raise api_error(status.HTTP_404_NOT_FOUND, "media_not_found")
-    _reject_video(asset)
+    if not allow_video:
+        _reject_video(asset)
     return asset
 
 

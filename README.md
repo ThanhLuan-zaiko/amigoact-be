@@ -38,7 +38,9 @@ Schema nằm trong [`schema.sql`](schema.sql). Dự án dùng một database ri�
 uv run python scripts/reset_database.py
 ```
 
-Lệnh này chỉ đọc và không thay đổi gì. Để xóa toàn bộ dữ liệu và nạp lại schema, chạy với `--apply`. Script sẽ yêu cầu gõ lại tên database để xác nhận. Thao tác này chỉ tác động tới database trong `.env` và không thể hoàn tác.
+Lệnh này chỉ đọc và không thay đổi gì. Nếu server chưa có database trong `.env`, dry run chỉ báo là chưa có.
+
+Để xóa toàn bộ dữ liệu và nạp lại schema, chạy với `--apply`. Nếu database chưa tồn tại, `--apply` sẽ tạo nó trước, rồi nạp schema. Script luôn yêu cầu gõ lại tên database để xác nhận. Thao tác này chỉ tác động tới database trong `.env` và không thể hoàn tác. Script cần user có quyền tạo database (`CREATEDB`) khi database chưa có.
 
 ## Tài liệu
 

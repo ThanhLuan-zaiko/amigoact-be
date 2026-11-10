@@ -39,13 +39,13 @@ Người đăng có thể chọn `visibility` khác mặc định khi tạo ho�
 - Thẻ được chuẩn hóa thành slug không dấu, chữ thường, nối bằng dấu gạch ngang. `Môi trường` và `moi truong` là cùng một thẻ. Tên không có chữ hoặc số nào thì bị từ chối (`tag_invalid`).
 - `GET /feed/popular-tags` đếm số bài đã đăng, nhìn thấy được với người xem, trong 30 ngày gần nhất. Trả về tối đa 10 thẻ.
 
-## Ảnh trong bài
+## Ảnh và video trong bài
 
-- Ảnh phải do chính tác giả tải lên, qua [`/media`](media.md). Ảnh của người khác nhận 404.
-- Bản nháp: ảnh vẫn riêng tư. Khi bài được đăng, ảnh thành công khai.
+- Ảnh và video (MP4, WEBM) phải do chính tác giả tải lên, qua [`/media`](media.md). Tệp của người khác nhận 404. Ảnh tối đa 20 MB, video tối đa 50 MB. Ảnh và video dùng chung danh sách `media_ids`, giữ đúng thứ tự gửi.
+- Bản nháp: ảnh và video vẫn riêng tư. Khi bài được đăng, các tệp thành công khai.
 - Bài công khai có ảnh: ảnh công khai ngay khi đăng.
 - Bài chỉ thành viên không được có ảnh (`members_post_has_no_media`). Lý do: quyền xem ảnh theo nhóm chưa có. Bài công khai có ảnh thì không đổi được sang chỉ thành viên, cho đến khi gỡ ảnh.
-- Tối đa 10 ảnh mỗi bài, giữ đúng thứ tự gửi.
+- Tối đa 10 tệp (ảnh và video cộng lại) mỗi bài.
 
 ## Danh sách
 

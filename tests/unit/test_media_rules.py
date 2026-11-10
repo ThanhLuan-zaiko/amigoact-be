@@ -25,7 +25,7 @@ def test_riff_without_webp_is_not_an_image() -> None:
 
 
 def test_upload_limit_is_five_megabytes() -> None:
-    assert MAX_UPLOAD_BYTES == 5 * 1024 * 1024
+    assert MAX_UPLOAD_BYTES == 20 * 1024 * 1024
 
 
 def test_generated_key_is_the_asset_id_with_its_extension(tmp_path: Path) -> None:

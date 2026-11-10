@@ -47,11 +47,11 @@ from src.models.activities import (
 from src.models.organizations import Organization
 from src.notifications.events import activity_data, notify
 from src.organizations.access import get_access
-from src.organizations.deletion import lock_live_organization
 from src.pagination import count_rows
 from src.validation import validation_failure
 
 CREATE_LIMIT = 30
+
 CREATE_WINDOW = 60 * 60
 
 
@@ -59,6 +59,7 @@ def load_activity(
     db: Session, activity_id: uuid.UUID, *, lock: bool = False
 ) -> Activity:
     """Find a live activity. The lock makes seat changes on it run one at a time."""
+
     query = (
         select(Activity)
         .join(Organization, Organization.id == Activity.org_id)
@@ -69,6 +70,7 @@ def load_activity(
             Organization.status == "active",
         )
     )
+
     if lock:
         query = query.with_for_update(of=Activity)
     activity = db.scalar(query)
@@ -103,6 +105,7 @@ def activity_detail(
     summary = to_summary(
         db.execute(summary_query().where(Activity.id == activity.id)).one()
     )
+
     return ActivityDetail(
         **summary.model_dump(),
         description=activity.description,
@@ -134,9 +137,11 @@ def create_activity(
     payload: ActivityCreateRequest,
 ) -> Activity:
     """Create a draft. Nothing is checked for completeness until it is published."""
+
     errors = schedule_errors(
         payload.start_at, payload.end_at, payload.registration_deadline
     )
+
     if errors:
         raise validation_failure(errors)
     enforce_rate_limit(db, f"activity-create:{user_id}", CREATE_LIMIT, CREATE_WINDOW)
@@ -159,9 +164,11 @@ def _check_shifts_still_fit(db: Session, activity: Activity) -> None:
             ActivitySchedule.activity_id == activity.id
         )
     ).all()
+
     for start_at, end_at in rows:
         if activity.start_at and start_at and start_at < activity.start_at:
             raise validation_failure({"start_at": "activity_time_excludes_shift"})
+
         if activity.end_at and end_at and end_at > activity.end_at:
             raise validation_failure({"end_at": "activity_time_excludes_shift"})
 
@@ -169,6 +176,7 @@ def _check_shifts_still_fit(db: Session, activity: Activity) -> None:
 def _apply_update(activity: Activity, payload: ActivityUpdateRequest) -> None:
     for field in payload.model_fields_set - {"requires_approval"}:
         setattr(activity, field, getattr(payload, field))
+
     if "requires_approval" in payload.model_fields_set:
         activity.requirements_json = {
             **(activity.requirements_json or {}),
@@ -180,15 +188,18 @@ def update_activity(
     db: Session, activity: Activity, payload: ActivityUpdateRequest
 ) -> None:
     """Check the merged result, because a rule can span sent and stored fields."""
+
     if activity.status not in EDITABLE_STATUSES:
         raise api_error(status.HTTP_409_CONFLICT, "activity_not_editable")
     was_published = activity.status == PUBLISHED
     old_start = activity.start_at
     with db.no_autoflush:
         _apply_update(activity, payload)
+
         errors = schedule_errors(
             activity.start_at, activity.end_at, activity.registration_deadline
         )
+
         if was_published:
             errors = publish_errors(
                 start_at=activity.start_at,
@@ -203,8 +214,10 @@ def update_activity(
                 "start_in_past"
             ):
                 del errors["start_at"]
+
             if errors.get("registration_deadline") == "deadline_in_past":
                 del errors["registration_deadline"]
+
         if errors:
             raise validation_failure(errors)
         _check_shifts_still_fit(db, activity)
@@ -218,31 +231,10 @@ def _check_capacity_covers_seats(db: Session, activity: Activity) -> None:
         raise validation_failure({"max_participants": "capacity_below_registered"})
 
 
-def publish_activity(db: Session, activity: Activity) -> None:
-    if activity.status != DRAFT:
-        raise api_error(status.HTTP_409_CONFLICT, "activity_not_editable")
-    # The same lock a soft delete takes, so an activity cannot open in an organization
-    # that is being deleted.
-    if not lock_live_organization(db, activity.org_id):
-        raise api_error(status.HTTP_404_NOT_FOUND, "organization_not_found")
-    errors = publish_errors(
-        start_at=activity.start_at,
-        end_at=activity.end_at,
-        deadline=activity.registration_deadline,
-        location=activity.location,
-        is_remote=activity.is_remote,
-        now=datetime.now(UTC),
-    )
-    if errors:
-        raise validation_failure(errors)
-    activity.status = PUBLISHED
-    activity.published_at = datetime.now(UTC)
-    db.commit()
-
-
 def require_completable(activity: Activity) -> None:
     if activity.status != PUBLISHED:
         raise api_error(status.HTTP_409_CONFLICT, "activity_not_editable")
+
     if activity.start_at is None or activity.start_at > datetime.now(UTC):
         raise api_error(status.HTTP_409_CONFLICT, "activity_not_started")
 
@@ -254,6 +246,7 @@ def complete_activity(db: Session, activity: Activity) -> None:
 
 def cancel_activity(db: Session, activity: Activity, actor_id: uuid.UUID) -> None:
     """Cancel the activity and every registration that was still active."""
+
     if activity.status != PUBLISHED:
         raise api_error(status.HTTP_409_CONFLICT, "activity_not_editable")
     now = datetime.now(UTC)
@@ -264,6 +257,7 @@ def cancel_activity(db: Session, activity: Activity, actor_id: uuid.UUID) -> Non
             Registration.status.in_(ACTIVE_REGISTRATION),
         )
     ).all()
+
     for registration in registrations:
         db.add(
             RegistrationStatusHistory(
@@ -281,11 +275,13 @@ def cancel_activity(db: Session, activity: Activity, actor_id: uuid.UUID) -> Non
     data = activity_data(db, activity.id)
     for student_id in {registration.student_id for registration in registrations}:
         notify(db, student_id, "activity_cancelled", data)
+
     slot_ids = (
         select(ActivitySlot.slot_id)
         .join(ActivitySchedule, ActivitySchedule.id == ActivitySlot.schedule_id)
         .where(ActivitySchedule.activity_id == activity.id)
     )
+
     for slot in db.scalars(
         select(ActivitySlot).where(ActivitySlot.slot_id.in_(slot_ids))
     ):
@@ -295,6 +291,7 @@ def cancel_activity(db: Session, activity: Activity, actor_id: uuid.UUID) -> Non
 
 def delete_draft(db: Session, activity: Activity) -> None:
     """Only a draft can go away. A published activity is cancelled, which keeps its history."""
+
     if activity.status != DRAFT:
         raise api_error(status.HTTP_409_CONFLICT, "activity_not_draft")
     activity.deleted_at = datetime.now(UTC)
@@ -318,11 +315,14 @@ def list_public_activities(
     offset: int,
 ) -> ActivityPage:
     """Published activities that have not started, soonest first."""
+
     query = summary_query().where(
         Activity.status == PUBLISHED, Activity.start_at > func.now()
     )
+
     if search:
         query = query.where(Activity.title.icontains(search, autoescape=True))
+
     if city:
         query = query.where(Activity.city.icontains(city, autoescape=True))
     query = query.order_by(Activity.start_at, Activity.id)

@@ -40,11 +40,11 @@ def _members_post_has_no_media() -> HTTPException:
 def _link_media(
     db: Session, post: OrgPost, asset_ids: list[uuid.UUID], user_id: uuid.UUID
 ) -> None:
-    """Replace the picture list. Pictures stay private until the post is published."""
+    """Replace the picture and video list. Files stay private until the post is published."""
     db.execute(delete(PostMedia).where(PostMedia.post_id == post.post_id))
     db.flush()
     for position, asset_id in enumerate(dict.fromkeys(asset_ids)):
-        media_service.owned_asset(db, asset_id, user_id)
+        media_service.owned_asset(db, asset_id, user_id, allow_video=True)
         db.add(PostMedia(post_id=post.post_id, asset_id=asset_id, position=position))
     db.flush()
     _publish_media(db, post)
