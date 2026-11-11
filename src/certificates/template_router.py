@@ -42,6 +42,16 @@ def list_templates(slug: Slug, principal: CurrentPrincipal, db: Db) -> TemplateL
     return TemplateList(items=[templates.to_response(row) for row in rows])
 
 
+@router.get("/certificate-templates/{template_id}")
+def read_template(
+    template_id: Uuid7, principal: CurrentPrincipal, db: Db
+) -> TemplateResponse:
+    template = templates.load_template(db, template_id)
+    org = templates.template_organization(db, template)
+    require_manager(db, org, principal.user.id)
+    return templates.to_response(template)
+
+
 @router.patch("/certificate-templates/{template_id}")
 def update_template(
     template_id: Uuid7,

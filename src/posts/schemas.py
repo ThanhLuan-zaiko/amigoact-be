@@ -8,7 +8,7 @@ from pydantic import AfterValidator, BaseModel, Field, StringConstraints
 
 from src.organizations.schemas import StrictRequest
 from src.posts.rules import MEDIA_LIMIT, TAG_LIMIT, TAG_NAME_MAX
-from src.validation import Uuid7, multi_line, single_line
+from src.validation import StrictBool, Uuid7, has_letter, multi_line, single_line
 
 PostKind = Literal["announcement", "discussion"]
 Visibility = Literal["public", "members"]
@@ -17,6 +17,7 @@ PostTitle = Annotated[
     str,
     StringConstraints(strip_whitespace=True, min_length=1, max_length=160),
     AfterValidator(single_line),
+    AfterValidator(has_letter),
 ]
 PostBody = Annotated[
     str,
@@ -43,7 +44,7 @@ class PostCreate(StrictRequest):
     body: PostBody
     tags: list[TagName] = Field(default_factory=list, max_length=TAG_LIMIT)
     media_ids: list[Uuid7] = Field(default_factory=list, max_length=MEDIA_LIMIT)
-    draft: bool = False
+    draft: StrictBool = False
 
 
 class PostUpdate(StrictRequest):
@@ -57,6 +58,10 @@ class PostUpdate(StrictRequest):
 
 
 class CommentCreate(StrictRequest):
+    body: CommentBody
+
+
+class CommentUpdate(StrictRequest):
     body: CommentBody
 
 
@@ -113,13 +118,37 @@ class PostPage(BaseModel):
 
 
 class CommentResponse(BaseModel):
+    """A deleted comment keeps its place in the thread with an empty body."""
+
     id: uuid.UUID
     body: str
     author_name: str
+    deleted: bool = False
+    can_edit: bool = False
     can_delete: bool
+    can_restore: bool = False
     created_at: datetime
+    edited_at: datetime | None = None
 
 
 class CommentPage(BaseModel):
     items: list[CommentResponse]
     next_after: uuid.UUID | None
+
+
+class TrashPost(BaseModel):
+    """A post in the trash. The body is left out, the title is enough to choose."""
+
+    id: uuid.UUID
+    kind: str
+    visibility: str
+    title: str
+    deleted_at: datetime
+    purge_at: datetime
+    deleted_by_name: str | None
+    can_purge: bool
+
+
+class TrashPage(BaseModel):
+    items: list[TrashPost]
+    next_before: uuid.UUID | None

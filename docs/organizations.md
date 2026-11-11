@@ -124,6 +124,21 @@ Bộ kiểm tra dùng chung nằm trong [`src/validation.py`](../src/validation.
 
 Ký tự điều khiển bị từ chối ở mọi trường văn bản, kể cả họ tên và địa chỉ của tài khoản. Nếu không chặn, ký tự NUL sẽ làm PostgreSQL báo lỗi và API trả về 500.
 
+### Chữ ra chữ, số ra số
+
+Các body mới và các body có số dùng kiểu chặt trong `src/validation.py`, để giá trị sai kiểu bị từ chối thay vì bị đoán:
+
+| Kiểu | Nhận | Từ chối | Mã lỗi |
+| ---- | ---- | ---- | ---- |
+| `StrictInt` (số chỗ, số phút, cỡ chữ) | Số nguyên JSON | `"5"`, `5.0`, `true` | `int_type` |
+| `StrictFloat` (vị trí trên mẫu chứng nhận) | Số JSON | Chuỗi, `true`, `NaN`, vô cực | `float_type`, `finite_number` |
+| `StrictDecimal` (giờ, hệ số, giới hạn giờ) | Số JSON, hoặc chuỗi số thường như `"2.5"`, `"-1"` | `"1e3"`, `" 2"`, `".5"`, `"NaN"`, `"Infinity"`, `true` | `number_invalid` |
+| `StrictBool` (cờ như `draft`, `is_remote`) | `true`, `false` | `"true"`, `1`, `"on"` | `bool_type` |
+| Chuỗi | Chuỗi JSON | Số, danh sách | `string_type` |
+
+- `has_letter` từ chối tiêu đề không có chữ cái nào, ví dụ `"2024"` hay `"!!!"`, với mã `text_needs_letter`. Áp dụng cho tiêu đề bài viết và tên hoạt động.
+- Số thập phân nhận cả chuỗi vì frontend gửi đúng số người dùng gõ, giữ độ chính xác. Chuỗi phải đúng dạng `-?[0-9]+(\.[0-9]+)?`.
+
 ## Khóa chính
 
 Mọi khóa chính đều là UUIDv7, sinh bằng `uuid.uuid7()`. Test `test_new_ids_are_uuid7` khóa quy tắc này cho người dùng, tổ chức và vai trò.

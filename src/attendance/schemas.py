@@ -17,7 +17,7 @@ from pydantic import (
 from src.activities.schemas import ShiftTitle
 from src.auth.schemas import field_errors
 from src.organizations.schemas import StrictRequest
-from src.validation import Uuid7, multi_line
+from src.validation import StrictDecimal, StrictInt, Uuid7, multi_line
 
 MIN_SESSION_MINUTES = 5
 MAX_SESSION_MINUTES = 24 * 60
@@ -38,18 +38,18 @@ ManualCode = Annotated[
     str, BeforeValidator(normalize_code), Field(pattern=r"^[0-9A-Z]{6}$")
 ]
 QrToken = Annotated[str, Field(pattern=r"^[A-Za-z0-9_-]{20,64}$")]
-Delta = Annotated[Decimal, Field(ge=-1000, le=1000, decimal_places=2)]
-Multiplier = Annotated[Decimal, Field(ge=Decimal("0.1"), le=10, decimal_places=3)]
-CapHours = Annotated[Decimal, Field(gt=0, le=9999, decimal_places=2)]
+Delta = Annotated[StrictDecimal, Field(ge=-1000, le=1000, decimal_places=2)]
+Multiplier = Annotated[StrictDecimal, Field(ge=Decimal("0.1"), le=10, decimal_places=3)]
+CapHours = Annotated[StrictDecimal, Field(gt=0, le=9999, decimal_places=2)]
 
 
 class SessionCreateRequest(StrictRequest):
     # Required when the activity has shifts, and not allowed when it has none.
     shift_id: Uuid7 | None = None
     title: ShiftTitle | None = None
-    minutes: Annotated[int, Field(ge=MIN_SESSION_MINUTES, le=MAX_SESSION_MINUTES)] = (
-        DEFAULT_SESSION_MINUTES
-    )
+    minutes: Annotated[
+        StrictInt, Field(ge=MIN_SESSION_MINUTES, le=MAX_SESSION_MINUTES)
+    ] = DEFAULT_SESSION_MINUTES
 
 
 class CheckInRequest(StrictRequest):

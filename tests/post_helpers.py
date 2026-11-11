@@ -49,3 +49,28 @@ def comment(api: ApiContext, headers: Headers, post_id: str, text: str) -> Any:
     return api.client.post(
         f"/posts/{post_id}/comments", headers=headers, json={"body": text}
     )
+
+
+def promote(api: ApiContext, slug: str, owner: Headers, user_id: str) -> None:
+    """Make a member an admin of the organization."""
+    response = api.client.patch(
+        f"/organizations/{slug}/members/{user_id}",
+        headers=owner,
+        json={"role": "admin"},
+    )
+    assert response.status_code == 204, response.text
+
+
+def backdate(model: type, key: uuid.UUID, column: str, days: float) -> None:
+    """Move one timestamp of a row into the past, straight in the database."""
+    from datetime import UTC, datetime, timedelta
+
+    from sqlalchemy.orm import Session
+
+    from src.app import app
+
+    with Session(app.state.engine) as session:
+        row = session.get(model, key)
+        assert row is not None
+        setattr(row, column, datetime.now(UTC) - timedelta(days=days))
+        session.commit()

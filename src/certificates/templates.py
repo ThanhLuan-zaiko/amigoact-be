@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from src.auth.errors import api_error
 from src.certificates.template_schemas import (
+    CertificateDesign,
     Layout,
     TemplateCreate,
     TemplateResponse,
@@ -99,13 +100,31 @@ def usable_template(
     return template
 
 
-def to_response(template: CertificateTemplate) -> TemplateResponse:
+def _background_url(template: CertificateTemplate) -> str | None:
     background = template.background_media_id
+    return f"/media/{background}/file" if background else None
+
+
+def _layout(template: CertificateTemplate) -> Layout:
+    return Layout.model_validate(template.layout_json or {})
+
+
+def to_response(template: CertificateTemplate) -> TemplateResponse:
     return TemplateResponse(
         id=template.template_id,
         name=template.name,
         is_active=template.is_active,
-        background_url=f"/media/{background}/file" if background else None,
-        layout=Layout.model_validate(template.layout_json or {}),
+        background_url=_background_url(template),
+        layout=_layout(template),
         created_at=template.created_at,
+    )
+
+
+def design_of(template: CertificateTemplate | None) -> CertificateDesign | None:
+    """The look of an issued certificate. A template that was turned off later still
+    counts, because a certificate keeps the template it was issued with."""
+    if template is None:
+        return None
+    return CertificateDesign(
+        background_url=_background_url(template), layout=_layout(template)
     )

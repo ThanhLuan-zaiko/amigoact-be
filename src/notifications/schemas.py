@@ -8,11 +8,12 @@ from pydantic import BaseModel, Field
 
 from src.notifications.events import NotificationType
 from src.organizations.schemas import StrictRequest
+from src.validation import StrictBool
 
 
 class PreferencesRequest(StrictRequest):
-    inapp: bool = True
-    email: bool = False
+    inapp: StrictBool = True
+    email: StrictBool = False
     muted_types: list[NotificationType] = Field(default_factory=list)
 
 

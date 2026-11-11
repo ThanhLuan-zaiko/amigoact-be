@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from src.auth.errors import api_error
 from src.auth.rate_limit import enforce_rate_limit
 from src.chat.crypto import open_text, seal
-from src.chat.rooms import Room, can_moderate, require_writable
+from src.chat.rooms import Room, can_delete, require_writable
 from src.chat.rules import REPLY_PREVIEW, SEND_LIMIT, SEND_WINDOW
 from src.chat.schemas import MessageSend
 from src.models.auth import User
@@ -78,8 +78,8 @@ def edit_message(
 def delete_message(
     db: Session, room: Room, message: OrgRoomMessage, user_id: uuid.UUID
 ) -> None:
-    """The author or a moderator deletes. Pins and reactions go with it."""
-    if message.author_id != user_id and not can_moderate(room, user_id):
+    """The author, or a manager outside DMs, deletes. Pins and reactions go with it."""
+    if not can_delete(room, message.author_id, user_id):
         raise api_error(status.HTTP_403_FORBIDDEN, "message_forbidden")
     db.delete(message)
     db.commit()

@@ -56,12 +56,19 @@ Put scratch work in the session scratchpad directory, not in the repository. CI 
 - Any logged-in user can create an organization and becomes its owner. Volunteers do not have to be students.
 - Shared validators live in `src/validation.py`. Single-line and multi-line text reject control characters, because NUL crashes PostgreSQL. Path IDs use the `Uuid7` type.
 - New request bodies reject unknown fields with `extra="forbid"`. Every validation error needs a stable `type` code that the frontend can translate.
+- Numbers and flags in request bodies use `StrictInt`, `StrictFloat`, `StrictDecimal`, and `StrictBool` from `src/validation.py`, so `"5"` is not read as 5 and `"true"` is not read as true. Titles people read use `has_letter` (`text_needs_letter`).
 
 ## Activities
 
 - Details are in `docs/activities.md`. Code lives in `src/activities/`.
 - Every seat change locks the activity row first with `load_activity(..., lock=True)`, so the last seat cannot be taken twice. Every registration status change writes a `registration_status_history` row.
 - Rules that need the database report errors with `validation_failure` from `src/validation.py`, in the same shape as schema errors.
+
+## Posts
+
+- Details are in `docs/posts.md`. Code lives in `src/posts/`.
+- Deleting a draft removes it for good. Deleting a published post sets `deleted_at` and `deleted_by`; it stays in the trash for `TRASH_DAYS` and expired posts are purged when the trash is read. Only the owner purges; owners and admins restore.
+- Comments are soft deleted and keep their place with an empty body. Authors edit them within `COMMENT_EDIT_MINUTES`.
 
 ## Attendance and hours
 

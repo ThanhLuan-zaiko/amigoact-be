@@ -24,13 +24,32 @@ Người đăng có thể chọn `visibility` khác mặc định khi tạo ho�
 - **Đăng**: `POST /posts/{id}/publish` chuyển nháp thành bài đăng và ghi `published_at`. Đăng lại bài đã đăng trả về 409 `post_not_draft`.
 - **Sửa**: chỉ tác giả. Ghi `edited_at`. Không đổi loại bài. Gửi `tags` hoặc `media_ids` thì thay thế danh sách cũ.
 - **Ghim**: chỉ quản trị viên, và chỉ với bài đã đăng. Bỏ ghim bằng `unpin`.
-- **Xóa**: tác giả hoặc quản trị viên. Xóa mềm: bài và bình luận đều ẩn, dữ liệu vẫn còn trong bảng.
+- **Xóa bản nháp**: chỉ tác giả. **Xóa cứng** ngay, vì bản nháp chưa từng có ai khác nhìn thấy.
+- **Xóa bài đã đăng**: tác giả hoặc quản trị viên. **Xóa mềm**: ghi `deleted_at` và `deleted_by`, bỏ ghim. Bài biến mất khỏi mọi danh sách và `GET /posts/{id}` trả 404.
+
+## Thùng rác, khôi phục và xóa vĩnh viễn
+
+| Việc | Ai làm | Điều kiện | Lỗi |
+| ---- | ---- | ---- | ---- |
+| Xem thùng rác `GET /organizations/{slug}/post-trash` | Chủ sở hữu, quản trị viên | Thành viên đang hoạt động | 401, 403 `post_forbidden` |
+| Khôi phục `POST /posts/{id}/restore` | Chủ sở hữu, quản trị viên | Bài đang trong thùng rác và chưa quá 30 ngày | 409 `post_not_in_trash`, 404 với người ngoài |
+| Xóa vĩnh viễn `DELETE /posts/{id}/purge` | Chỉ chủ sở hữu | Bài đang trong thùng rác | 409 `post_not_in_trash`, 403 với quản trị viên, 404 với người ngoài |
+
+- Bài nằm trong thùng rác **30 ngày** (`TRASH_DAYS` trong `src/posts/rules.py`). Mỗi lần mở thùng rác, bài quá hạn của tổ chức đó bị xóa hẳn trước khi liệt kê, nên không cần tác vụ chạy định kỳ. Bài quá hạn mà chưa bị dọn cũng không khôi phục được (404).
+- Mỗi dòng thùng rác có `deleted_at`, `purge_at` (thời điểm tự xóa), `deleted_by_name` và `can_purge`. Thân bài không được trả về.
+- Xóa vĩnh viễn xóa dòng `org_posts`. Thẻ, liên kết ảnh và bình luận đi theo nhờ `ON DELETE CASCADE`. Tệp ảnh không còn ai dùng sẽ được script dọn tệp xóa sau (xem [`media.md`](media.md)).
+- Người không phải thành viên luôn nhận 404, để không lộ việc bài đã xóa có tồn tại.
+- Code nằm trong [`src/posts/trash.py`](../src/posts/trash.py) và [`src/posts/trash_router.py`](../src/posts/trash_router.py).
 
 ## Bình luận
 
 - Chỉ thành viên đang hoạt động bình luận được, và chỉ trên bài đã đăng. Khách chỉ đọc được bình luận của bài họ xem được.
 - Bình luận phẳng, sắp theo thời gian tăng dần. Trang đi tiếp bằng `after`.
-- Xóa được bởi người viết bình luận hoặc quản trị viên.
+- **Sửa** (`PATCH /comments/{id}`): chỉ người viết, khi còn là thành viên, trong **15 phút** sau khi viết (`COMMENT_EDIT_MINUTES`). Quá hạn trả 409 `comment_edit_expired`. Ghi `edited_at`.
+- **Xóa mềm** (`DELETE /comments/{id}`): người viết hoặc quản trị viên. Bình luận giữ chỗ trong luồng, trả về với `deleted: true` và `body` rỗng, nội dung cũ không bao giờ rời server. Xóa lần hai trả 404.
+- **Khôi phục** (`POST /comments/{id}/restore`): chủ sở hữu hoặc quản trị viên. Bình luận chưa bị xóa trả 409 `comment_not_deleted`.
+- **Xóa cứng**: đi cùng bài khi bài bị xóa vĩnh viễn.
+- Mỗi bình luận trả về `can_edit`, `can_delete`, `can_restore`, `edited_at`. `comment_count` của bài không đếm bình luận đã xóa.
 - Bình luận hiện tên người viết (`author_name`). Bài không hiện tên tác giả, chỉ hiện tên tổ chức.
 
 ## Thẻ
@@ -66,10 +85,15 @@ Người đăng có thể chọn `visibility` khác mặc định khi tạo ho�
 | PATCH | `/posts/{id}` | Tác giả |
 | POST | `/posts/{id}/publish` | Tác giả |
 | POST | `/posts/{id}/pin`, `/posts/{id}/unpin` | Quản trị viên |
-| DELETE | `/posts/{id}` | Tác giả hoặc quản trị viên |
+| DELETE | `/posts/{id}` | Tác giả hoặc quản trị viên. Nháp: xóa cứng. Bài đã đăng: vào thùng rác |
+| GET | `/organizations/{slug}/post-trash` | Chủ sở hữu, quản trị viên |
+| POST | `/posts/{id}/restore` | Chủ sở hữu, quản trị viên |
+| DELETE | `/posts/{id}/purge` | Chủ sở hữu |
 | GET | `/posts/{id}/comments` | Ai cũng xem, theo quyền xem |
 | POST | `/posts/{id}/comments` | Thành viên đang hoạt động |
-| DELETE | `/comments/{id}` | Người viết hoặc quản trị viên |
+| PATCH | `/comments/{id}` | Người viết, trong 15 phút |
+| DELETE | `/comments/{id}` | Người viết hoặc quản trị viên (xóa mềm) |
+| POST | `/comments/{id}/restore` | Chủ sở hữu, quản trị viên |
 | GET | `/feed` | Đã đăng nhập |
 | GET | `/feed/public` | Ai cũng xem |
 | GET | `/feed/popular-tags` | Ai cũng xem, theo quyền xem |
@@ -81,11 +105,12 @@ Mỗi bài trả về `viewer` với bốn cờ: `can_edit`, `can_delete`, `can_
 | Trường | Quy tắc | Mã lỗi |
 | ---- | ---- | ---- |
 | `kind` | `announcement` hoặc `discussion` | `literal_error` |
-| `title` | 1 đến 160 ký tự, một dòng, không ký tự điều khiển | `string_too_short`, `string_too_long`, `text_invalid` |
+| `title` | 1 đến 160 ký tự, một dòng, không ký tự điều khiển, có ít nhất một chữ cái | `string_too_short`, `string_too_long`, `text_invalid`, `text_needs_letter` |
 | `body` | 1 đến 5000 ký tự, cho phép xuống dòng | `string_too_short`, `string_too_long` |
 | `tags` | Tối đa 3, mỗi tên 1 đến 40 ký tự | `too_long`, `tag_invalid` |
 | `media_ids` | Tối đa 10 mã UUIDv7 | `too_long`, `uuid_invalid` |
-| `comment body` | 1 đến 1000 ký tự | `string_too_short`, `string_too_long` |
+| `draft` | Chỉ `true` hoặc `false`. `"true"` hay `1` bị từ chối | `bool_type` |
+| `comment body` | 1 đến 1000 ký tự, phải là chuỗi | `string_too_short`, `string_too_long`, `string_type` |
 | Body | Không nhận trường lạ | `extra_forbidden` |
 | Mã trên đường dẫn | UUIDv7 | `uuid_invalid` |
 
@@ -97,6 +122,9 @@ Mỗi bài trả về `viewer` với bốn cờ: `can_edit`, `can_delete`, `can_
 | `post_forbidden` | Không đủ quyền với bài: không phải thành viên, không phải quản trị, hoặc không phải tác giả |
 | `post_not_draft` | Bài không còn là bản nháp |
 | `post_not_published` | Bài là bản nháp, không bình luận hay ghim được |
+| `post_not_in_trash` | Bài không nằm trong thùng rác, nên không khôi phục hay xóa vĩnh viễn được |
+| `comment_edit_expired` | Đã quá 15 phút, không sửa bình luận được nữa |
+| `comment_not_deleted` | Bình luận chưa bị xóa |
 | `comment_forbidden` | Chỉ thành viên đang hoạt động bình luận được. Chỉ người viết hoặc quản trị viên xóa được |
 | `comment_not_found` | Bình luận không tồn tại |
 | `media_not_found` | Ảnh không tồn tại hoặc không phải của tác giả |
@@ -113,7 +141,6 @@ Mỗi bài trả về `viewer` với bốn cờ: `can_edit`, `can_delete`, `can_
 - Ảnh bìa bài viết (`cover_media_id`).
 - Ảnh trong bài chỉ thành viên. Cần quyền xem ảnh theo nhóm trước.
 - Bản nháp chỉnh sửa cho bài đã đăng. Hiện sửa trực tiếp.
-- Thùng rác và khôi phục bài đã xóa.
 - Tab "Đang theo dõi" và việc theo dõi tổ chức.
 - Thông báo khi có bài mới hoặc bình luận.
 - Báo cáo nội dung và kiểm duyệt. Sẽ làm cùng quản trị nền tảng ở giai đoạn 6.

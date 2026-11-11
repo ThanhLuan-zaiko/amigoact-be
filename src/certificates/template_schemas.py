@@ -7,7 +7,7 @@ from typing import Annotated
 from pydantic import AfterValidator, BaseModel, Field, StringConstraints
 
 from src.organizations.schemas import StrictRequest
-from src.validation import Uuid7, single_line
+from src.validation import StrictBool, StrictFloat, StrictInt, Uuid7, single_line
 
 TemplateName = Annotated[
     str,
@@ -19,9 +19,9 @@ TemplateName = Annotated[
 class Placement(StrictRequest):
     """Where one text sits on the page, as a percentage of the page size."""
 
-    x: float = Field(ge=0, le=100)
-    y: float = Field(ge=0, le=100)
-    size: int = Field(ge=8, le=72)
+    x: StrictFloat = Field(ge=0, le=100)
+    y: StrictFloat = Field(ge=0, le=100)
+    size: StrictInt = Field(ge=8, le=72)
 
 
 def _placement(x: float, y: float, size: int) -> Placement:
@@ -50,7 +50,7 @@ class TemplateUpdate(StrictRequest):
     name: TemplateName | None = None
     background_asset_id: Uuid7 | None = None
     layout: Layout | None = None
-    is_active: bool | None = None
+    is_active: StrictBool | None = None
 
 
 class TemplateResponse(BaseModel):
@@ -61,6 +61,14 @@ class TemplateResponse(BaseModel):
     background_url: str | None
     layout: Layout
     created_at: datetime
+
+
+class CertificateDesign(BaseModel):
+    """How a certificate looks when printed. It is public, so it holds no template
+    name, ID, or organization: only the picture and where each text goes."""
+
+    background_url: str | None
+    layout: Layout
 
 
 class TemplateList(BaseModel):

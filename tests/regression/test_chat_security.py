@@ -184,6 +184,32 @@ def test_direct_messages_are_private_to_the_pair(
     assert listed["items"] == []
 
 
+def test_dm_peer_cannot_delete_the_other_persons_message(
+    api: ApiContext, bearer: Bearer
+) -> None:
+    """Pinning is shared in a DM, deleting is not. The peer could once remove it."""
+    owner, _ = user(api, bearer, "dm_keep_a")
+    peer, peer_id = user(api, bearer, "dm_keep_b")
+    slug = open_org(api, owner)
+    join(api, slug, peer)
+    room_id = api.client.post(
+        f"/organizations/{slug}/chat/dms", headers=owner, json={"user_id": peer_id}
+    ).json()["room_id"]
+    from_owner = sent(api, owner, room_id, "Dung xoa")
+    from_peer = sent(api, peer, room_id, "Cua toi")
+
+    by_peer = api.client.delete(f"/messages/{from_owner['id']}", headers=peer)
+    # Managing the organization gives no delete right inside a DM either.
+    by_owner = api.client.delete(f"/messages/{from_peer['id']}", headers=owner)
+
+    assert by_peer.status_code == 403
+    assert by_peer.json()["detail"] == "message_forbidden"
+    assert by_owner.status_code == 403
+    assert by_owner.json()["detail"] == "message_forbidden"
+    kept = [item["id"] for item in messages(api, peer, room_id)]
+    assert sorted(kept) == sorted([from_owner["id"], from_peer["id"]])
+
+
 def test_dm_needs_two_active_members(api: ApiContext, bearer: Bearer) -> None:
     owner, owner_id = user(api, bearer, "opener")
     _, outsider_id = user(api, bearer, "not_joined")

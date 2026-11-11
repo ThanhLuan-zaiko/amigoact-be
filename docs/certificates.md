@@ -34,10 +34,12 @@ Mỗi tổ chức có nhiều mẫu. Mẫu gồm tên, ảnh nền và vị trí
 | POST | `/activities/{id}/certificates` | Ban quản trị. Body tùy chọn: `{ "template_id": "<uuid>" }` |
 | POST | `/organizations/{slug}/certificate-templates` | Ban quản trị |
 | GET | `/organizations/{slug}/certificate-templates` | Ban quản trị, kèm mẫu không hoạt động |
+| GET | `/certificate-templates/{id}` | Ban quản trị của tổ chức sở hữu mẫu |
 | PATCH | `/certificate-templates/{id}` | Ban quản trị. Chỉ đổi trường được gửi |
 | GET | `/activities/{id}/certificates` | Ban quản trị |
 | GET | `/certificates/mine` | Đã đăng nhập |
-| GET | `/certificates/verify/{serial}` | Công khai |
+| GET | `/certificates/verify/{serial}` | Công khai, giới hạn tần suất |
+| GET | `/certificates/verify/{serial}/pdf` | Công khai, giới hạn tần suất |
 | POST | `/certificates/{id}/revoke` | Ban quản trị |
 | POST | `/certificates/{id}/reinstate` | Ban quản trị |
 
@@ -45,9 +47,27 @@ Mỗi tổ chức có nhiều mẫu. Mẫu gồm tên, ảnh nền và vị trí
 - `GET /activities/{id}/certificates` trả về danh sách cùng `missing_count`, là số người đã tham gia nhưng chưa có chứng nhận. Danh sách không có email hay số điện thoại.
 - `GET /certificates/mine` trả về chứng nhận của chính người gọi, kèm tên hoạt động và tên tổ chức.
 - `GET /certificates/verify/{serial}` chỉ trả về những gì cần để chứng minh: tên người nhận, hoạt động, tổ chức, số giờ, ngày cấp, trạng thái và ngày thu hồi (nếu có). Không trả về lý do thu hồi hay thông tin liên hệ.
+- `GET /certificates/mine` và `GET /certificates/verify/{serial}` có thêm `design`: `{ "background_url": ..., "layout": {...} }` của mẫu đã gắn khi cấp, để giao diện in đúng mẫu. `design` là `null` khi cấp không dùng mẫu. Mẫu bị tắt sau đó vẫn trả về `design`, vì chứng nhận giữ mẫu lúc cấp. `design` không có tên hay ID của mẫu, vì trang xác minh là công khai. Ảnh nền đã công khai từ lúc gắn vào mẫu.
 - `PATCH` nhận `name`, `background_asset_id` (gửi `null` để gỡ ảnh), `layout` và `is_active`. Gửi `null` cho `name`, `layout` hoặc `is_active` thì bị bỏ qua.
 - Body của mẫu không nhận trường lạ. `layout` không nhận tên nội dung khác năm nội dung đã nêu.
 - Đường dẫn `serial` không phân biệt hoa thường. Serial sai định dạng trả về `string_pattern_mismatch`.
+
+## File PDF
+
+`GET /certificates/verify/{serial}/pdf` trả về chứng nhận dạng PDF, một trang A4 ngang. Code nằm trong `src/certificates/pdf.py`.
+
+- Vẽ theo `design` giống bản xem trước ở giao diện: vị trí là phần trăm khổ giấy tính từ góc trên bên trái, `x` là tâm của dòng chữ, `y` là giữa dòng chữ, cỡ chữ tính bằng point trên trang A4.
+- Ảnh nền phủ kín trang và giữ tỉ lệ. Ảnh được giải mã hết trước khi vẽ và thu nhỏ còn tối đa 3508 × 2480 điểm ảnh (A4 ở 300 dpi). Lúc tải lên, ảnh chỉ được kiểm tra qua vài byte đầu, nên ảnh hỏng, ảnh đã xóa hoặc không còn công khai thì trang in không có nền thay vì lỗi.
+- Dòng chữ quá dài được thu nhỏ để vừa 90% chiều ngang, nhỏ nhất 6 pt.
+- Số giờ in dạng "4.5 giờ tình nguyện", ngày cấp dạng `dd/mm/yyyy` theo giờ Việt Nam.
+- Chứng nhận đã thu hồi trả về `409 certificate_not_issued`, nên không in được bản trông như còn hiệu lực. Hoàn tác thu hồi thì in lại được. Phản hồi có `Cache-Control: no-store` vì lý do tương tự.
+- Chữ dùng font Be Vietnam Pro (Regular và Bold) trong `assets/fonts/`, giấy phép SIL Open Font License ở `assets/fonts/OFL.txt`. Font được đóng gói cùng mã nguồn vì CI chạy Linux và font của Windows không được phép phân phối lại. Thư viện PDF là `reportlab`, kéo theo `pillow` để đọc ảnh PNG và WEBP.
+
+## Giới hạn tần suất
+
+Tra cứu công khai (trang xác minh và file PDF) dùng chung một giới hạn: 60 lần mỗi phút cho mỗi địa chỉ IP, bucket `certificate-verify:{ip}`. Vượt giới hạn thì trả về `429 rate_limited` kèm `Retry-After`.
+
+Frontend gọi backend từ server của nó, nên backend chỉ thấy đúng IP người dùng khi uvicorn chạy với `--forwarded-allow-ips` là địa chỉ của server frontend. Nếu không, mọi khách truy cập dùng chung một bucket.
 
 ## Kiểm tra dữ liệu
 
@@ -70,6 +90,5 @@ Mỗi tổ chức có nhiều mẫu. Mẫu gồm tên, ảnh nền và vị trí
 
 ## Chưa có
 
-- File PDF của chứng nhận. Mẫu đã có, nhưng việc dựng PDF từ mẫu chưa làm. Hiện người dùng in từ trình duyệt.
-- Trang xác minh trên giao diện và nút in từ trình duyệt.
-- Giới hạn tần suất cho trang xác minh công khai.
+- Lưu sẵn file PDF. File được dựng lại ở mỗi lần tải, nên luôn theo đúng trạng thái và mẫu hiện tại.
+- Phần giao diện (trang xác minh, nút in, nút tải PDF, chỉnh mẫu) nằm trong `amigoact-fe/docs/certificates.md`.

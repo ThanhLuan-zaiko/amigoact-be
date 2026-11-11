@@ -27,6 +27,7 @@ from src.organizations.router import router as organizations_router
 from src.posts.comment_router import router as post_comment_router
 from src.posts.feed_router import router as feed_router
 from src.posts.router import router as posts_router
+from src.posts.trash_router import router as post_trash_router
 
 logging.basicConfig(
     level=logging.INFO,
@@ -81,6 +82,7 @@ app.include_router(notifications_router)
 app.include_router(media_router)
 app.include_router(media_attach_router)
 app.include_router(posts_router)
+app.include_router(post_trash_router)
 app.include_router(post_comment_router)
 app.include_router(feed_router)
 app.include_router(chat_router)

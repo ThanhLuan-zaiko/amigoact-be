@@ -2,7 +2,6 @@
 
 import uuid
 from datetime import datetime
-from decimal import Decimal
 from typing import Annotated, Literal, Self
 
 from pydantic import (
@@ -17,7 +16,15 @@ from pydantic_core import PydanticCustomError
 
 from src.auth.schemas import Address, field_errors
 from src.organizations.schemas import City, StrictRequest
-from src.validation import Uuid7, multi_line, single_line
+from src.validation import (
+    StrictBool,
+    StrictDecimal,
+    StrictInt,
+    Uuid7,
+    has_letter,
+    multi_line,
+    single_line,
+)
 
 MAX_CAPACITY = 100_000
 MAX_HOURS = 1000
@@ -39,6 +46,7 @@ Title = Annotated[
     StringConstraints(strip_whitespace=True, min_length=3, max_length=200),
     AfterValidator(single_line),
     AfterValidator(check_title),
+    AfterValidator(has_letter),
 ]
 ShiftTitle = Annotated[
     str,
@@ -55,8 +63,8 @@ Location = Annotated[
     StringConstraints(strip_whitespace=True, min_length=1, max_length=200),
     AfterValidator(single_line),
 ]
-Capacity = Annotated[int, Field(ge=1, le=MAX_CAPACITY)]
-Hours = Annotated[Decimal, Field(ge=0, le=MAX_HOURS, decimal_places=2)]
+Capacity = Annotated[StrictInt, Field(ge=1, le=MAX_CAPACITY)]
+Hours = Annotated[StrictDecimal, Field(ge=0, le=MAX_HOURS, decimal_places=2)]
 RegistrationNote = Annotated[
     str,
     StringConstraints(strip_whitespace=True, min_length=1, max_length=1000),
@@ -72,13 +80,13 @@ class ActivityCreateRequest(StrictRequest):
     location: Location | None = None
     address: Address | None = None
     city: City
-    is_remote: bool = False
+    is_remote: StrictBool = False
     start_at: AwareDatetime
     end_at: AwareDatetime
     registration_deadline: AwareDatetime | None = None
     max_participants: Capacity | None = None
     hours_awarded: Hours
-    requires_approval: bool = False
+    requires_approval: StrictBool = False
 
     @model_validator(mode="after")
     def need_a_place_unless_remote(self) -> Self:
@@ -98,13 +106,13 @@ class ActivityUpdateRequest(StrictRequest):
     location: Location | None = None
     address: Address | None = None
     city: City | None = None
-    is_remote: bool | None = None
+    is_remote: StrictBool | None = None
     start_at: AwareDatetime | None = None
     end_at: AwareDatetime | None = None
     registration_deadline: AwareDatetime | None = None
     max_participants: Capacity | None = None
     hours_awarded: Hours | None = None
-    requires_approval: bool | None = None
+    requires_approval: StrictBool | None = None
 
     @model_validator(mode="after")
     def reject_null_required_fields(self) -> Self:

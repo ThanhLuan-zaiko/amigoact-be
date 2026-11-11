@@ -22,7 +22,7 @@ Mỗi phòng có một mã (`room_id`). Có ba loại:
 
 - Nội dung từ 1 đến 2000 ký tự, cho phép xuống dòng, không có ký tự điều khiển.
 - Tác giả sửa được tin của mình. Tin đã sửa có `edited_at`.
-- Tác giả xóa được tin của mình. Quản trị viên xóa được tin trong phòng của tổ chức. Trong tin nhắn riêng, chỉ tác giả xóa được. Xóa là xóa hẳn, kèm ghim và phản ứng.
+- Tác giả xóa được tin của mình. Quản trị viên xóa được tin trong phòng chung và kênh. Trong tin nhắn riêng, chỉ tác giả xóa được: người kia ghim được nhưng không xóa được, và quyền quản trị tổ chức không có tác dụng ở đây (`can_delete` trong `src/chat/rooms.py`). Xóa là xóa hẳn, kèm ghim và phản ứng.
 - Trả lời một tin trong cùng phòng. Bản trả lời lưu sẵn tên và 200 ký tự đầu của tin gốc, nên vẫn hiển thị được khi tin gốc bị xóa.
 - Phản ứng bằng emoji tối đa 16 ký tự. Mỗi người chỉ có một lần cho mỗi emoji trên một tin.
 - Ghim: quản trị viên ghim trong phòng của tổ chức, hai người trong cặp ghim trong tin nhắn riêng.
@@ -71,11 +71,11 @@ Sự kiện không kèm cờ `mine` của từng người xem. Mọi người nh
 | GET | `/rooms/{id}/messages` | Người có quyền vào phòng |
 | POST | `/rooms/{id}/messages` | Người có quyền vào phòng |
 | PATCH | `/messages/{id}` | Tác giả |
-| DELETE | `/messages/{id}` | Tác giả hoặc người có quyền kiểm duyệt |
+| DELETE | `/messages/{id}` | Tác giả. Quản trị viên trong phòng chung và kênh. Trong tin nhắn riêng chỉ tác giả |
 | POST | `/messages/{id}/reactions` | Người có quyền vào phòng |
 | DELETE | `/messages/{id}/reactions/{emoji}` | Người đã phản ứng |
 | GET | `/rooms/{id}/pins` | Người có quyền vào phòng |
-| POST, DELETE | `/rooms/{id}/pins/{message_id}` | Người có quyền kiểm duyệt |
+| POST, DELETE | `/rooms/{id}/pins/{message_id}` | Quản trị viên trong phòng chung và kênh. Cả hai người trong tin nhắn riêng |
 | POST | `/rooms/{id}/read` | Người có quyền vào phòng |
 
 Phòng chung của tổ chức có mã trùng với mã tổ chức (`id` trong chi tiết tổ chức).
@@ -103,7 +103,7 @@ Phòng chung của tổ chức có mã trùng với mã tổ chức (`id` trong 
 | `channel_not_restricted` | Chỉ thêm người được vào kênh giới hạn |
 | `channel_member_not_found` | Người này không nằm trong kênh giới hạn |
 | `message_not_found` | Tin không có trong phòng này |
-| `message_forbidden` | Không phải tác giả, hoặc không có quyền kiểm duyệt |
+| `message_forbidden` | Không phải tác giả, hoặc không có quyền xóa hay ghim trong phòng này |
 
 ## Giới hạn
 

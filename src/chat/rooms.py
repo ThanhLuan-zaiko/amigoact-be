@@ -85,10 +85,21 @@ def require_writable(room: Room) -> None:
 
 
 def can_moderate(room: Room, user_id: uuid.UUID) -> bool:
-    """Managers moderate org rooms. In a DM, only the two people in it may."""
+    """Who pins. Managers in org rooms and channels; in a DM, the two people in it."""
     if room.kind == ROOM_DM:
         return room.dm_pair is not None and user_id in (
             room.dm_pair.user_lo,
             room.dm_pair.user_hi,
         )
     return room.is_manager
+
+
+def can_delete(room: Room, author_id: uuid.UUID, user_id: uuid.UUID) -> bool:
+    """The author always deletes. Managers delete in org rooms and channels.
+
+    A DM has no moderator: pinning is shared by the pair, but deleting is not, so one
+    person cannot remove what the other wrote.
+    """
+    if author_id == user_id:
+        return True
+    return room.kind != ROOM_DM and room.is_manager

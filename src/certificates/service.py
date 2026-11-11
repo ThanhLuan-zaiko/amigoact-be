@@ -19,10 +19,15 @@ from src.certificates.schemas import (
     MyCertificate,
     VerifiedCertificate,
 )
+from src.certificates.templates import design_of
 from src.models.activities import Activity, Registration
 from src.models.attendance import VolunteerHourLedger
 from src.models.auth import User
-from src.models.certificates import Certificate, CertificateRevocation
+from src.models.certificates import (
+    Certificate,
+    CertificateRevocation,
+    CertificateTemplate,
+)
 from src.models.organizations import Organization
 from src.notifications.events import activity_data, notify
 
@@ -200,9 +205,13 @@ def activity_certificates(db: Session, activity_id: uuid.UUID) -> ActivityCertif
 
 def my_certificates(db: Session, user_id: uuid.UUID) -> list[MyCertificate]:
     rows = db.execute(
-        select(Certificate, Activity.title, Organization.name)
+        select(Certificate, Activity.title, Organization.name, CertificateTemplate)
         .join(Activity, Activity.id == Certificate.activity_id)
         .join(Organization, Organization.id == Activity.org_id)
+        .outerjoin(
+            CertificateTemplate,
+            CertificateTemplate.template_id == Certificate.template_id,
+        )
         .where(Certificate.student_id == user_id)
         .order_by(Certificate.certificate_id.desc())
     ).all()
@@ -216,23 +225,34 @@ def my_certificates(db: Session, user_id: uuid.UUID) -> list[MyCertificate]:
             activity_id=certificate.activity_id,
             activity_title=title,
             organization_name=org_name,
+            design=design_of(template),
         )
-        for certificate, title, org_name in rows
+        for certificate, title, org_name, template in rows
     ]
 
 
 def verify_certificate(db: Session, serial: str) -> VerifiedCertificate:
     """Public lookup. A revoked certificate is still found, with its status shown."""
     row = db.execute(
-        select(Certificate, User.full_name, Activity, Organization.name)
+        select(
+            Certificate,
+            User.full_name,
+            Activity,
+            Organization.name,
+            CertificateTemplate,
+        )
         .join(User, User.id == Certificate.student_id)
         .join(Activity, Activity.id == Certificate.activity_id)
         .join(Organization, Organization.id == Activity.org_id)
+        .outerjoin(
+            CertificateTemplate,
+            CertificateTemplate.template_id == Certificate.template_id,
+        )
         .where(Certificate.serial_no == serial.upper())
     ).first()
     if row is None:
         raise api_error(status.HTTP_404_NOT_FOUND, "certificate_not_found")
-    certificate, full_name, activity, org_name = row
+    certificate, full_name, activity, org_name, template = row
     revoked_at = None
     if certificate.status == REVOKED:
         revoked_at = db.scalar(
@@ -250,4 +270,5 @@ def verify_certificate(db: Session, serial: str) -> VerifiedCertificate:
         activity_title=activity.title,
         activity_start_at=activity.start_at,
         organization_name=org_name,
+        design=design_of(template),
     )

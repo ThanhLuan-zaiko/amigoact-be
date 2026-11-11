@@ -2,6 +2,7 @@
 
 import uuid
 from collections import defaultdict
+from datetime import UTC, datetime
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -12,7 +13,7 @@ from src.models.posts import OrgPost, PostComment, PostMedia, PostTag
 from src.models.tags import Tag
 from src.organizations.access import ACTIVE, Access, get_access
 from src.posts.queries import next_page_cursor
-from src.posts.rules import POST_ACTIVE
+from src.posts.rules import POST_ACTIVE, comment_editable
 from src.posts.schemas import (
     CommentResponse,
     MediaItem,
@@ -88,7 +89,7 @@ def to_responses(
     comments = dict(
         db.execute(
             select(PostComment.post_id, func.count())
-            .where(PostComment.post_id.in_(ids))
+            .where(PostComment.post_id.in_(ids), PostComment.deleted_at.is_(None))
             .group_by(PostComment.post_id)
         ).all()
     )
@@ -121,22 +122,31 @@ def to_comment_responses(
     rows: list[tuple[PostComment, str]],
     viewer_id: uuid.UUID | None,
 ) -> list[CommentResponse]:
+    """A deleted comment shows no body. Only a manager may bring it back."""
     org = db.get(Organization, post.org_id)
     access = get_access(db, org, viewer_id) if (org and viewer_id) else None
-    return [
-        CommentResponse(
-            id=comment.comment_id,
-            body=comment.body,
-            author_name=author_name,
-            can_delete=viewer_id is not None
-            and (
-                comment.author_id == viewer_id
-                or (access is not None and access.can_manage)
-            ),
-            created_at=comment.created_at,
+    manager = access is not None and access.status == ACTIVE and access.can_manage
+    now = datetime.now(UTC)
+    items = []
+    for comment, author_name in rows:
+        deleted = comment.deleted_at is not None
+        mine = viewer_id is not None and comment.author_id == viewer_id
+        items.append(
+            CommentResponse(
+                id=comment.comment_id,
+                body="" if deleted else comment.body,
+                author_name=author_name,
+                deleted=deleted,
+                can_edit=mine
+                and not deleted
+                and comment_editable(comment.created_at, now),
+                can_delete=not deleted and (mine or manager),
+                can_restore=deleted and manager,
+                created_at=comment.created_at,
+                edited_at=comment.edited_at,
+            )
         )
-        for comment, author_name in rows
-    ]
+    return items
 
 
 def post_page(

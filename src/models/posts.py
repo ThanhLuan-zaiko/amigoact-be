@@ -28,6 +28,9 @@ class OrgPost(Base):
     edited_at: Mapped[datetime | None]
     published_at: Mapped[datetime | None]
     deleted_at: Mapped[datetime | None]
+    deleted_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
 
@@ -63,4 +66,6 @@ class PostComment(Base):
     )
     author_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"))
     body: Mapped[str]
+    edited_at: Mapped[datetime | None]
+    deleted_at: Mapped[datetime | None]
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())

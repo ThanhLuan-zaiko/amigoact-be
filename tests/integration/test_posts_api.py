@@ -63,9 +63,9 @@ def test_member_cannot_announce(api: ApiContext, bearer: Bearer) -> None:
 def test_timeline_pages_newest_first(api: ApiContext, bearer: Bearer) -> None:
     owner, _ = user(api, bearer, "pager")
     slug = open_org(api, owner)
-    first = created(api, owner, slug, kind="announcement", title="1")
-    second = created(api, owner, slug, kind="announcement", title="2")
-    third = created(api, owner, slug, kind="announcement", title="3")
+    first = created(api, owner, slug, kind="announcement", title="Bai 1")
+    second = created(api, owner, slug, kind="announcement", title="Bai 2")
+    third = created(api, owner, slug, kind="announcement", title="Bai 3")
 
     page_one = api.client.get(f"/organizations/{slug}/posts?limit=2").json()
     page_two = api.client.get(
@@ -209,7 +209,13 @@ def test_author_and_manager_can_delete_comments(
         api.client.delete(f"/comments/{theirs['id']}", headers=owner).status_code == 204
     )
     listed = api.client.get(f"/posts/{item['id']}/comments").json()["items"]
-    assert listed == []
+    # Soft delete: the rows keep their place in the thread, without their text.
+    assert [(c["id"], c["deleted"], c["body"]) for c in listed] == [
+        (mine["id"], True, ""),
+        (theirs["id"], True, ""),
+    ]
+    post_now = api.client.get(f"/posts/{item['id']}", headers=owner).json()
+    assert post_now["comment_count"] == 0
 
 
 def test_member_feed_and_public_feed(api: ApiContext, bearer: Bearer) -> None:

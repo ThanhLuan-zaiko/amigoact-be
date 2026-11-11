@@ -1182,6 +1182,8 @@ CREATE INDEX IF NOT EXISTS org_posts_trash_idx ON org_posts (org_id, post_id DES
     WHERE deleted_at IS NOT NULL;
 CREATE INDEX IF NOT EXISTS org_posts_revision_idx ON org_posts (revision_of) WHERE revision_of IS NOT NULL;
 CREATE INDEX IF NOT EXISTS org_posts_author_idx   ON org_posts (author_id);
+-- Who moved a post to the trash. Databases created before it existed get it here.
+ALTER TABLE org_posts ADD COLUMN IF NOT EXISTS deleted_by uuid REFERENCES users(id) ON DELETE SET NULL;
 
 -- Tag của bài viết (dùng chung danh mục tags theo org), tối đa 3 tag / bài.
 CREATE TABLE IF NOT EXISTS post_tags (
@@ -1233,6 +1235,9 @@ CREATE TABLE IF NOT EXISTS org_post_comments (
     created_at  timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS org_post_comments_post_idx ON org_post_comments (post_id, comment_id);
+-- Comment edits and soft deletes. Safe to run again on older databases.
+ALTER TABLE org_post_comments ADD COLUMN IF NOT EXISTS edited_at timestamptz;
+ALTER TABLE org_post_comments ADD COLUMN IF NOT EXISTS deleted_at timestamptz;
 
 -- ---- Chat ----
 -- room_id có thể là: org id (phòng chung), activity id, channel id hoặc dm room id

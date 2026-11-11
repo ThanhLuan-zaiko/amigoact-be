@@ -112,6 +112,29 @@ def test_direct_message_opens_once_and_both_sides_see_it(
     assert messages(api, member, room_id)[0]["body"] == "Rieng tu"
 
 
+def test_direct_message_author_deletes_and_either_side_pins(
+    api: ApiContext, bearer: Bearer
+) -> None:
+    owner, _ = user(api, bearer, "dm_del_owner")
+    peer, peer_id = user(api, bearer, "dm_del_peer")
+    slug = open_org(api, owner)
+    join(api, slug, peer)
+    room_id = api.client.post(
+        f"/organizations/{slug}/chat/dms", headers=owner, json={"user_id": peer_id}
+    ).json()["room_id"]
+    mine = sent(api, owner, room_id, "Cua toi")
+    theirs = sent(api, peer, room_id, "Cua ban")
+
+    pin = api.client.post(f"/rooms/{room_id}/pins/{theirs['id']}", headers=owner)
+    deleted = api.client.delete(f"/messages/{mine['id']}", headers=owner)
+
+    assert pin.status_code == 204
+    assert deleted.status_code == 204
+    left = messages(api, peer, room_id)
+    assert [item["id"] for item in left] == [theirs["id"]]
+    assert left[0]["pinned"] is True
+
+
 def test_edit_delete_react_and_pin(api: ApiContext, bearer: Bearer) -> None:
     owner, _ = user(api, bearer, "mod_lead")
     member, _ = user(api, bearer, "mod_member")

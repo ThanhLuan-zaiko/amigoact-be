@@ -158,8 +158,20 @@ def set_pinned(
 def delete_post(
     db: Session, post: OrgPost, org: Organization, user_id: uuid.UUID
 ) -> None:
-    """The author or a manager may remove a post. Its comments go with it, hidden."""
+    """A draft is removed for good. A published post goes to the trash.
+
+    A draft was never seen by anyone but its author, so nothing needs keeping. A
+    published post keeps its comments and can be restored by a manager.
+    """
+    if post.status == POST_DRAFT:
+        if post.author_id != user_id:
+            raise _forbidden()
+        db.delete(post)
+        db.commit()
+        return
     if post.author_id != user_id and not get_access(db, org, user_id).can_manage:
         raise _forbidden()
     post.deleted_at = datetime.now(UTC)
+    post.deleted_by = user_id
+    post.pinned_at = None
     db.commit()

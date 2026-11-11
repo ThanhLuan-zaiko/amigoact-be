@@ -6,6 +6,7 @@ from datetime import datetime
 from pydantic import BaseModel
 
 from src.attendance.schemas import Reason
+from src.certificates.template_schemas import CertificateDesign
 from src.organizations.schemas import StrictRequest
 from src.validation import Uuid7
 
@@ -50,6 +51,8 @@ class MyCertificate(BaseModel):
     activity_id: uuid.UUID
     activity_title: str
     organization_name: str
+    # Null when the certificate was issued without a template.
+    design: CertificateDesign | None
 
 
 class VerifiedCertificate(BaseModel):
@@ -64,3 +67,5 @@ class VerifiedCertificate(BaseModel):
     activity_title: str
     activity_start_at: datetime | None
     organization_name: str
+    # Null when the certificate was issued without a template.
+    design: CertificateDesign | None
