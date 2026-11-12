@@ -7,6 +7,7 @@ from fastapi import APIRouter, Path, Query, status
 from src.auth.deps import CurrentPrincipal, Db, OptionalPrincipal
 from src.organizations.service import load_organization
 from src.posts import queries, service
+from src.posts.hiding import set_hidden, viewer_sees_hidden
 from src.posts.schemas import PostCreate, PostPage, PostResponse, PostUpdate
 from src.posts.views import post_page, to_responses
 from src.posts.visibility import load_live_org, load_visible_post
@@ -48,6 +49,7 @@ def org_posts(
         limit=limit,
         kind=kind,
         pinned_only=pinned_only,
+        include_hidden=viewer_sees_hidden(db, org, viewer_id),
     )
     return post_page(db, rows, limit, viewer_id)
 
@@ -103,6 +105,18 @@ def unpin_post(post_id: Uuid7, principal: CurrentPrincipal, db: Db) -> None:
     service.set_pinned(
         db, post, load_live_org(db, post.org_id), principal.user.id, False
     )
+
+
+@router.post("/posts/{post_id}/hide", status_code=status.HTTP_204_NO_CONTENT)
+def hide_post(post_id: Uuid7, principal: CurrentPrincipal, db: Db) -> None:
+    post = load_visible_post(db, post_id, principal.user.id)
+    set_hidden(db, post, load_live_org(db, post.org_id), principal.user.id, True)
+
+
+@router.post("/posts/{post_id}/unhide", status_code=status.HTTP_204_NO_CONTENT)
+def unhide_post(post_id: Uuid7, principal: CurrentPrincipal, db: Db) -> None:
+    post = load_visible_post(db, post_id, principal.user.id)
+    set_hidden(db, post, load_live_org(db, post.org_id), principal.user.id, False)
 
 
 @router.delete("/posts/{post_id}", status_code=status.HTTP_204_NO_CONTENT)

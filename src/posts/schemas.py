@@ -91,6 +91,7 @@ class PostViewer(BaseModel):
     can_edit: bool
     can_delete: bool
     can_pin: bool
+    can_hide: bool = False
     can_comment: bool
 
 
@@ -104,6 +105,7 @@ class PostResponse(BaseModel):
     tags: list[str]
     media: list[MediaItem]
     pinned: bool
+    hidden: bool = False
     comment_count: int
     org: OrgRef
     viewer: PostViewer

@@ -27,6 +27,19 @@ Người đăng có thể chọn `visibility` khác mặc định khi tạo ho�
 - **Xóa bản nháp**: chỉ tác giả. **Xóa cứng** ngay, vì bản nháp chưa từng có ai khác nhìn thấy.
 - **Xóa bài đã đăng**: tác giả hoặc quản trị viên. **Xóa mềm**: ghi `deleted_at` và `deleted_by`, bỏ ghim. Bài biến mất khỏi mọi danh sách và `GET /posts/{id}` trả 404.
 
+## Ẩn bài khỏi bảng tin
+
+| Việc | Ai làm | Điều kiện | Lỗi |
+| ---- | ---- | ---- | ---- |
+| Ẩn `POST /posts/{id}/hide` | Chủ sở hữu, quản trị viên | Bài đã đăng | 403 `post_forbidden`, 409 `post_not_published` |
+| Hiện lại `POST /posts/{id}/unhide` | Chủ sở hữu, quản trị viên | Bài đã đăng | 403 `post_forbidden`, 404 với người khác |
+
+- Ẩn không phải xóa: bài giữ nguyên nội dung, bình luận, thẻ, ảnh. Ghi `hidden_at` và `hidden_by`, đồng thời bỏ ghim.
+- Bài ẩn biến mất với mọi người trừ ban quản trị đang hoạt động của tổ chức, kể cả với tác giả nếu tác giả không phải ban quản trị. `GET /posts/{id}`, bình luận, bảng tin chung, bảng tin công khai và thẻ phổ biến đều bỏ qua bài ẩn (người khác nhận 404).
+- Ban quản trị vẫn thấy bài ẩn trong `GET /organizations/{slug}/posts`, với `hidden: true`, để bỏ ẩn được.
+- Mỗi bài trả về `hidden` và `viewer.can_hide`. Code ở [`src/posts/hiding.py`](../src/posts/hiding.py).
+- Database cũ nhận hai cột mới qua `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` trong `schema.sql`.
+
 ## Thùng rác, khôi phục và xóa vĩnh viễn
 
 | Việc | Ai làm | Điều kiện | Lỗi |

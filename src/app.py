@@ -23,6 +23,7 @@ from src.media.attach_router import router as media_attach_router
 from src.media.router import router as media_router
 from src.notifications.router import router as notifications_router
 from src.organizations.gallery import router as organization_gallery_router
+from src.organizations.picture_router import router as organization_picture_router
 from src.organizations.router import router as organizations_router
 from src.posts.comment_router import router as post_comment_router
 from src.posts.feed_router import router as feed_router
@@ -74,6 +75,7 @@ app.include_router(auth_router)
 app.include_router(account_router)
 app.include_router(organizations_router)
 app.include_router(organization_gallery_router)
+app.include_router(organization_picture_router)
 app.include_router(activities_router)
 app.include_router(attendance_router)
 app.include_router(certificates_router)

@@ -84,6 +84,17 @@ Khi tạo tổ chức, có thể gửi `gallery_asset_ids` là danh sách tối 
 
 Database đã có sẵn cần tạo bảng này bằng câu `CREATE TABLE IF NOT EXISTS organization_media` trong `schema.sql`. Không cần reset.
 
+## Chọn logo và ảnh bìa
+
+`PUT /organizations/{slug}/pictures` đặt logo, ảnh bìa hoặc cả hai trong một giao dịch. Chỉ ban quản trị gọi được (401 khi chưa đăng nhập, 403 với thành viên thường).
+
+- Body nhận `logo_asset_id` và `cover_asset_id`, trường nào không gửi thì giữ nguyên, gửi `null` thì gỡ. Trường lạ bị từ chối (422).
+- Ảnh tổ chức đang dùng (logo, ảnh bìa, ảnh trong bộ sưu tập) thì quản trị viên nào cũng chọn được, kể cả ảnh người khác tải lên. Ảnh mới vẫn theo quy tắc chỉ người tải lên mới gắn được (404 `media_not_found`).
+- Video trong bộ sưu tập không làm logo hay ảnh bìa được (415 `unsupported_media_type`).
+- Vì hai vai trò đổi cùng lúc, hoán đổi logo và ảnh bìa chỉ cần một yêu cầu.
+- Logo hoặc ảnh bìa bị thay mà không còn dùng sẽ tự vào bộ sưu tập nếu còn chỗ, để đổi lại được bằng một cú bấm. Bộ sưu tập đầy thì ảnh cũ không được thêm, nhưng việc đổi vẫn thành công.
+- Code ở [`src/organizations/picture_router.py`](../src/organizations/picture_router.py).
+
 ## Trường bắt buộc
 
 Khi tạo phải có `name`, `description`, `email`, `phone`, `city`. Khi sửa, không gửi trường nào thì trường đó giữ nguyên, nhưng gửi `null` cho các trường này bị từ chối bằng `required`. Tổ chức tạo trước đây có thể thiếu các trường này cho đến lần sửa tiếp theo.

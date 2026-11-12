@@ -40,8 +40,11 @@ def org_timeline(
     limit: int,
     kind: str | None,
     pinned_only: bool,
+    include_hidden: bool = False,
 ) -> list[OrgPost]:
-    query = published_posts(viewer_id).where(OrgPost.org_id == org_id)
+    query = published_posts(viewer_id, include_hidden=include_hidden).where(
+        OrgPost.org_id == org_id
+    )
     if kind is not None:
         query = query.where(OrgPost.kind == kind)
     if pinned_only:
@@ -94,6 +97,7 @@ def popular_tags(db: Session, viewer_id: uuid.UUID | None) -> list[tuple[str, in
             Tag.deleted_at.is_(None),
             OrgPost.status == POST_ACTIVE,
             OrgPost.deleted_at.is_(None),
+            OrgPost.hidden_at.is_(None),
             OrgPost.published_at >= since,
             *live_organization(),
             visible_to(viewer_id),

@@ -27,6 +27,7 @@ def test_manager_announcement_is_public_by_default(
         "can_edit": True,
         "can_delete": True,
         "can_pin": True,
+        "can_hide": True,
         "can_comment": True,
     }
     assert uuid.UUID(body["id"]).version == 7

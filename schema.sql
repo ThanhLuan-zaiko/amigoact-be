@@ -1184,6 +1184,9 @@ CREATE INDEX IF NOT EXISTS org_posts_revision_idx ON org_posts (revision_of) WHE
 CREATE INDEX IF NOT EXISTS org_posts_author_idx   ON org_posts (author_id);
 -- Who moved a post to the trash. Databases created before it existed get it here.
 ALTER TABLE org_posts ADD COLUMN IF NOT EXISTS deleted_by uuid REFERENCES users(id) ON DELETE SET NULL;
+-- A manager hid the post from the feed. Only managers still see it; it can be shown again.
+ALTER TABLE org_posts ADD COLUMN IF NOT EXISTS hidden_at timestamptz;
+ALTER TABLE org_posts ADD COLUMN IF NOT EXISTS hidden_by uuid REFERENCES users(id) ON DELETE SET NULL;
 
 -- Tag của bài viết (dùng chung danh mục tags theo org), tối đa 3 tag / bài.
 CREATE TABLE IF NOT EXISTS post_tags (

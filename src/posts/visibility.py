@@ -12,6 +12,7 @@ from src.models.organizations import Organization, OrganizationMember
 from src.models.posts import OrgPost
 from src.organizations.access import ACTIVE, get_access
 from src.organizations.service import live_organization
+from src.posts.hiding import viewer_sees_hidden
 from src.posts.rules import MEMBERS, POST_ACTIVE, POST_DRAFT, PUBLIC
 
 
@@ -30,9 +31,14 @@ def visible_to(viewer_id: uuid.UUID | None) -> ColumnElement[bool]:
     return or_(public, OrgPost.org_id.in_(member_org_ids(viewer_id)))
 
 
-def published_posts(viewer_id: uuid.UUID | None) -> Select:
-    """Live, published, not deleted, in a live organization, and visible to the viewer."""
-    return (
+def published_posts(
+    viewer_id: uuid.UUID | None, *, include_hidden: bool = False
+) -> Select:
+    """Live, published, not deleted, in a live organization, and visible to the viewer.
+
+    Hidden posts are left out unless the caller checked the viewer manages the org.
+    """
+    query = (
         select(OrgPost)
         .join(Organization, Organization.id == OrgPost.org_id)
         .where(
@@ -42,6 +48,7 @@ def published_posts(viewer_id: uuid.UUID | None) -> Select:
             visible_to(viewer_id),
         )
     )
+    return query if include_hidden else query.where(OrgPost.hidden_at.is_(None))
 
 
 def load_live_org(db: Session, org_id: uuid.UUID) -> Organization:
@@ -65,6 +72,8 @@ def load_visible_post(
         if viewer_id is None or post.author_id != viewer_id:
             raise api_error(status.HTTP_404_NOT_FOUND, "post_not_found")
         return post
+    if post.hidden_at is not None and not viewer_sees_hidden(db, org, viewer_id):
+        raise api_error(status.HTTP_404_NOT_FOUND, "post_not_found")
     if post.visibility == MEMBERS and (
         viewer_id is None or get_access(db, org, viewer_id).status != ACTIVE
     ):

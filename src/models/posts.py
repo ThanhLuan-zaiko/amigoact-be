@@ -31,6 +31,10 @@ class OrgPost(Base):
     deleted_by: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL")
     )
+    hidden_at: Mapped[datetime | None]
+    hidden_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
 

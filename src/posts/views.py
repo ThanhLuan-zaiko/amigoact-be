@@ -12,6 +12,7 @@ from src.models.organizations import Organization
 from src.models.posts import OrgPost, PostComment, PostMedia, PostTag
 from src.models.tags import Tag
 from src.organizations.access import ACTIVE, Access, get_access
+from src.posts.hiding import sees_hidden
 from src.posts.queries import next_page_cursor
 from src.posts.rules import POST_ACTIVE, comment_editable
 from src.posts.schemas import (
@@ -48,6 +49,7 @@ def _viewer_flags(
         can_edit=is_author,
         can_delete=is_author or access.can_manage,
         can_pin=access.can_manage and is_live,
+        can_hide=sees_hidden(access) and is_live,
         can_comment=access.status == ACTIVE and is_live,
     )
 
@@ -105,6 +107,7 @@ def to_responses(
             tags=tags[post.post_id],
             media=media[post.post_id],
             pinned=post.pinned_at is not None,
+            hidden=post.hidden_at is not None,
             comment_count=comments.get(post.post_id, 0),
             org=OrgRef(slug=orgs[post.org_id].slug, name=orgs[post.org_id].name),
             viewer=_viewer_flags(post, access.get(post.org_id), viewer_id),

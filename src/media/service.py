@@ -110,7 +110,7 @@ def load_visible(
     return asset
 
 
-def _reject_video(asset: MediaAsset) -> None:
+def reject_video(asset: MediaAsset) -> None:
     """Logos, avatars, and covers must be pictures. Only galleries and posts take video."""
     if is_video(asset.mime):
         raise api_error(
@@ -130,7 +130,7 @@ def check_attachable(
     if asset is None or asset.upload_status != ACTIVE or asset.uploader_id != user_id:
         raise api_error(status.HTTP_404_NOT_FOUND, "media_not_found")
     if not allow_video:
-        _reject_video(asset)
+        reject_video(asset)
     asset.visibility = PUBLIC
     return asset
 
@@ -155,7 +155,7 @@ def owned_asset(
     if asset is None or asset.upload_status != ACTIVE or asset.uploader_id != user_id:
         raise api_error(status.HTTP_404_NOT_FOUND, "media_not_found")
     if not allow_video:
-        _reject_video(asset)
+        reject_video(asset)
     return asset
 
 
