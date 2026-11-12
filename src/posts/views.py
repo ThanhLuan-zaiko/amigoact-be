@@ -12,6 +12,7 @@ from src.models.organizations import Organization
 from src.models.posts import OrgPost, PostComment, PostMedia, PostTag
 from src.models.tags import Tag
 from src.organizations.access import ACTIVE, Access, get_access
+from src.posts.activity_link import activity_summaries
 from src.posts.hiding import sees_hidden
 from src.posts.queries import next_page_cursor
 from src.posts.rules import POST_ACTIVE, comment_editable
@@ -96,6 +97,9 @@ def to_responses(
         ).all()
     )
     access = _viewer_access(db, posts, viewer_id)
+    activities = activity_summaries(
+        db, {p.activity_id for p in posts if p.activity_id is not None}
+    )
     return [
         PostResponse(
             id=post.post_id,
@@ -110,6 +114,7 @@ def to_responses(
             hidden=post.hidden_at is not None,
             comment_count=comments.get(post.post_id, 0),
             org=OrgRef(slug=orgs[post.org_id].slug, name=orgs[post.org_id].name),
+            activity=(activities.get(post.activity_id) if post.activity_id else None),
             viewer=_viewer_flags(post, access.get(post.org_id), viewer_id),
             created_at=post.created_at,
             published_at=post.published_at,

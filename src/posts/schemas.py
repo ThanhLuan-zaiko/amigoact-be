@@ -6,6 +6,7 @@ from typing import Annotated, Literal
 
 from pydantic import AfterValidator, BaseModel, Field, StringConstraints
 
+from src.activities.schemas import ActivitySummary
 from src.organizations.schemas import StrictRequest
 from src.posts.rules import MEDIA_LIMIT, TAG_LIMIT, TAG_NAME_MAX
 from src.validation import StrictBool, Uuid7, has_letter, multi_line, single_line
@@ -44,17 +45,23 @@ class PostCreate(StrictRequest):
     body: PostBody
     tags: list[TagName] = Field(default_factory=list, max_length=TAG_LIMIT)
     media_ids: list[Uuid7] = Field(default_factory=list, max_length=MEDIA_LIMIT)
+    # A published or completed activity of the same organization.
+    activity_id: Uuid7 | None = None
     draft: StrictBool = False
 
 
 class PostUpdate(StrictRequest):
-    """Only the fields that are sent change. Sent tags or media replace the old list."""
+    """Only the fields that are sent change. Sent tags or media replace the old list.
+
+    Sending activity_id as null removes the link.
+    """
 
     title: PostTitle | None = None
     body: PostBody | None = None
     visibility: Visibility | None = None
     tags: list[TagName] | None = Field(default=None, max_length=TAG_LIMIT)
     media_ids: list[Uuid7] | None = Field(default=None, max_length=MEDIA_LIMIT)
+    activity_id: Uuid7 | None = None
 
 
 class CommentCreate(StrictRequest):
@@ -72,6 +79,16 @@ class TagCount(BaseModel):
 
 class TagList(BaseModel):
     items: list[TagCount]
+
+
+class TagSuggestion(BaseModel):
+    name: str
+    slug: str
+    count: int
+
+
+class TagSuggestionList(BaseModel):
+    items: list[TagSuggestion]
 
 
 class MediaItem(BaseModel):
@@ -108,6 +125,8 @@ class PostResponse(BaseModel):
     hidden: bool = False
     comment_count: int
     org: OrgRef
+    # None when the post points at no activity, or the activity was deleted.
+    activity: ActivitySummary | None = None
     viewer: PostViewer
     created_at: datetime
     published_at: datetime | None

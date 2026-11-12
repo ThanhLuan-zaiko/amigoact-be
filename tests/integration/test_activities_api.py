@@ -32,7 +32,10 @@ def test_manager_creates_a_draft_hidden_from_others(
     assert public["items"] == []
     org_list = f"/organizations/{slug}/activities"
     assert api.client.get(org_list).json()["items"] == []
-    assert len(api.client.get(org_list, headers=owner).json()["items"]) == 1
+    # Drafts have their own list, like post drafts, so the main list leaves them out.
+    assert api.client.get(org_list, headers=owner).json()["items"] == []
+    drafts = api.client.get(org_list, headers=owner, params={"status": "draft"})
+    assert len(drafts.json()["items"]) == 1
 
 
 def test_non_manager_cannot_create(api: ApiContext, bearer: Bearer) -> None:

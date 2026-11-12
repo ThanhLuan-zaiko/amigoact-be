@@ -14,6 +14,7 @@ from src.models.media import MediaAsset
 from src.models.organizations import Organization
 from src.models.posts import OrgPost, PostMedia, PostTag
 from src.organizations.access import get_access
+from src.posts.activity_link import check_linkable
 from src.posts.rules import (
     MEMBERS,
     POST_ACTIVE,
@@ -89,6 +90,11 @@ def create_post(
         status=POST_DRAFT if payload.draft else POST_ACTIVE,
         visibility=visibility,
         published_at=None if payload.draft else now,
+        activity_id=(
+            check_linkable(db, org.id, payload.activity_id)
+            if payload.activity_id is not None
+            else None
+        ),
     )
     db.add(post)
     db.flush()
@@ -116,6 +122,17 @@ def update_post(
         post.title = payload.title
     if payload.body is not None:
         post.body = payload.body
+    # Keeping the same activity is always allowed, even after it was cancelled, so
+    # a post about a cancelled activity can still be edited.
+    if (
+        "activity_id" in payload.model_fields_set
+        and payload.activity_id != post.activity_id
+    ):
+        post.activity_id = (
+            check_linkable(db, post.org_id, payload.activity_id)
+            if payload.activity_id is not None
+            else None
+        )
     post.visibility = visibility
     post.edited_at = datetime.now(UTC)
     if payload.tags is not None:

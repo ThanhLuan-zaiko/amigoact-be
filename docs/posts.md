@@ -67,9 +67,19 @@ Người đăng có thể chọn `visibility` khác mặc định khi tạo ho�
 
 ## Thẻ
 
-- Mỗi bài có tối đa 3 thẻ. Thẻ thuộc một tổ chức, được tạo khi có người dùng lần đầu.
+- Mỗi bài có tối đa 5 thẻ. Thẻ thuộc một tổ chức, được tạo khi có người dùng lần đầu. Hoạt động dùng chung danh mục thẻ này (xem [`activities.md`](activities.md)).
 - Thẻ được chuẩn hóa thành slug không dấu, chữ thường, nối bằng dấu gạch ngang. `Môi trường` và `moi truong` là cùng một thẻ. Tên không có chữ hoặc số nào thì bị từ chối (`tag_invalid`).
 - `GET /feed/popular-tags` đếm số bài đã đăng, nhìn thấy được với người xem, trong 30 ngày gần nhất. Trả về tối đa 10 thẻ.
+- `GET /organizations/{slug}/post-tags?q=&limit=` gợi ý thẻ cho form viết bài. Chỉ thành viên đang hoạt động của tổ chức được gọi (người ngoài nhận 403 `post_forbidden`). Trả về `name`, `slug`, `count`, xếp theo số bài dùng nhiều nhất, mặc định 8, tối đa 20.
+- Gợi ý chỉ đếm bài đã đăng, chưa xóa, không bị ẩn, nên thẻ chỉ nằm trên bản nháp hay bài trong thùng rác không lộ ra. `q` được chuẩn hóa như slug rồi khớp với đầu bất kỳ từ nào của slug: `tru` tìm ra `moi-truong`, còn `uong` thì không. `q` trống trả về các thẻ dùng nhiều nhất; `q` không có chữ hay số trả về danh sách rỗng. `q` dài hơn 40 ký tự bị từ chối (422).
+- `GET /organizations/{slug}/posts`, `GET /feed` và `GET /feed/public` nhận `?tag=` để chỉ trả bài có thẻ đó. `tag` có thể là slug hoặc tên như người dùng gõ, vì nó được chuẩn hóa như slug (`with_tag` trong `queries.py`). Bộ lọc chỉ thu hẹp danh sách: mọi quy tắc xem bài, bài ẩn, bản nháp và thùng rác giữ nguyên, và có thể kết hợp với `kind`, `pinned_only`, `before`. Ở `/feed/public` một thẻ gom bài của mọi tổ chức có cùng slug. `tag` không có chữ hay số trả về danh sách rỗng chứ không trả mọi bài; `tag` trống hoặc dài hơn 40 ký tự bị từ chối (422).
+
+## Gắn bài với hoạt động
+
+- Bài có thể trỏ tới một hoạt động của chính tổ chức đó qua `activity_id` (cột `org_posts.activity_id`, `ON DELETE SET NULL`). Code ở `src/posts/activity_link.py`.
+- Chỉ gắn được hoạt động `published` hoặc `completed`. Hoạt động nháp (chỉ ban quản trị thấy), đã hủy, đã xóa, không tồn tại hoặc thuộc tổ chức khác bị từ chối bằng 422 `activity_not_linkable`. Ai viết được bài thì gắn được, vì hoạt động đã đăng vốn công khai.
+- `PATCH /posts/{id}`: không gửi `activity_id` thì giữ nguyên, gửi `null` thì bỏ gắn. Gửi lại đúng hoạt động đang gắn thì luôn được, kể cả khi hoạt động đã bị hủy sau đó, để form sửa vẫn lưu được.
+- Mỗi bài trả về `activity`: tóm tắt giống `ActivitySummary` của phần hoạt động (tên, trạng thái, giờ, địa điểm, `capacity`, `seats_taken`). Hoạt động bị hủy sau khi gắn vẫn hiện, kèm trạng thái `cancelled`. Hoạt động bị xóa thì `activity` là `null`. Danh sách bài lấy mọi tóm tắt trong một truy vấn.
 
 ## Ảnh và video trong bài
 
@@ -110,6 +120,7 @@ Người đăng có thể chọn `visibility` khác mặc định khi tạo ho�
 | GET | `/feed` | Đã đăng nhập |
 | GET | `/feed/public` | Ai cũng xem |
 | GET | `/feed/popular-tags` | Ai cũng xem, theo quyền xem |
+| GET | `/organizations/{slug}/post-tags` | Thành viên đang hoạt động |
 
 Mỗi bài trả về `viewer` với bốn cờ: `can_edit`, `can_delete`, `can_pin`, `can_comment`. Khách chưa đăng nhập nhận bốn cờ đều `false`.
 

@@ -58,9 +58,11 @@ def test_post_needs_a_title_and_a_kind() -> None:
         PostCreate.model_validate({"kind": "gossip", "title": "x", "body": "x"})
 
 
-def test_post_refuses_more_than_three_tags() -> None:
+def test_post_refuses_more_than_five_tags() -> None:
     with pytest.raises(ValidationError):
-        PostCreate(kind="discussion", title="x", body="y", tags=["a", "b", "c", "d"])
+        PostCreate(
+            kind="discussion", title="x", body="y", tags=["a", "b", "c", "d", "e", "f"]
+        )
 
 
 def test_post_title_refuses_line_breaks_and_nul() -> None:

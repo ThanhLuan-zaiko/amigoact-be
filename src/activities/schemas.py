@@ -16,6 +16,7 @@ from pydantic_core import PydanticCustomError
 
 from src.auth.schemas import Address, field_errors
 from src.organizations.schemas import City, StrictRequest
+from src.posts.rules import TAG_LIMIT, TAG_NAME_MAX
 from src.validation import (
     StrictBool,
     StrictDecimal,
@@ -25,6 +26,13 @@ from src.validation import (
     multi_line,
     single_line,
 )
+
+# The same tag rules as posts: they share one catalog per organization.
+TagName = Annotated[
+    str,
+    StringConstraints(strip_whitespace=True, min_length=1, max_length=TAG_NAME_MAX),
+    AfterValidator(single_line),
+]
 
 MAX_CAPACITY = 100_000
 MAX_HOURS = 1000
@@ -87,6 +95,7 @@ class ActivityCreateRequest(StrictRequest):
     max_participants: Capacity | None = None
     hours_awarded: Hours
     requires_approval: StrictBool = False
+    tags: list[TagName] = Field(default_factory=list, max_length=TAG_LIMIT)
 
     @model_validator(mode="after")
     def need_a_place_unless_remote(self) -> Self:
@@ -113,6 +122,8 @@ class ActivityUpdateRequest(StrictRequest):
     max_participants: Capacity | None = None
     hours_awarded: Hours | None = None
     requires_approval: StrictBool | None = None
+    # Sent tags replace the old list. Leaving them out keeps it.
+    tags: list[TagName] | None = Field(default=None, max_length=TAG_LIMIT)
 
     @model_validator(mode="after")
     def reject_null_required_fields(self) -> Self:
@@ -160,12 +171,29 @@ class ActivitySummary(BaseModel):
     seats_taken: int
     organization_name: str
     organization_slug: str
+    tags: list[str] = []
 
 
 class ActivityPage(BaseModel):
     items: list[ActivitySummary]
     next_offset: int | None
     total: int
+
+
+class ActivityTrashItem(BaseModel):
+    """A deleted draft. Only drafts can be deleted, so every item is one."""
+
+    id: uuid.UUID
+    title: str
+    start_at: datetime | None
+    deleted_at: datetime
+    purge_at: datetime
+    can_purge: bool
+
+
+class ActivityTrashPage(BaseModel):
+    items: list[ActivityTrashItem]
+    next_before: uuid.UUID | None
 
 
 class ShiftResponse(BaseModel):

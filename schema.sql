@@ -1187,8 +1187,11 @@ ALTER TABLE org_posts ADD COLUMN IF NOT EXISTS deleted_by uuid REFERENCES users(
 -- A manager hid the post from the feed. Only managers still see it; it can be shown again.
 ALTER TABLE org_posts ADD COLUMN IF NOT EXISTS hidden_at timestamptz;
 ALTER TABLE org_posts ADD COLUMN IF NOT EXISTS hidden_by uuid REFERENCES users(id) ON DELETE SET NULL;
+-- The activity a post is about. Deleting the activity keeps the post.
+ALTER TABLE org_posts ADD COLUMN IF NOT EXISTS activity_id uuid REFERENCES activities(id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS org_posts_activity_idx ON org_posts (activity_id) WHERE activity_id IS NOT NULL;
 
--- Tag của bài viết (dùng chung danh mục tags theo org), tối đa 3 tag / bài.
+-- Tag của bài viết (dùng chung danh mục tags theo org), tối đa 5 tag / bài.
 CREATE TABLE IF NOT EXISTS post_tags (
     post_id  uuid NOT NULL REFERENCES org_posts(post_id) ON DELETE CASCADE,
     tag_id   uuid NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
@@ -1200,8 +1203,8 @@ CREATE OR REPLACE FUNCTION enforce_post_tag_limit() RETURNS trigger AS $$
 BEGIN
     -- Khóa dòng bài viết để hai lần chèn đồng thời không cùng vượt giới hạn.
     PERFORM 1 FROM org_posts WHERE post_id = NEW.post_id FOR UPDATE;
-    IF (SELECT count(*) FROM post_tags WHERE post_id = NEW.post_id) >= 3 THEN
-        RAISE EXCEPTION 'post % already has 3 tags', NEW.post_id
+    IF (SELECT count(*) FROM post_tags WHERE post_id = NEW.post_id) >= 5 THEN
+        RAISE EXCEPTION 'post % already has 5 tags', NEW.post_id
             USING ERRCODE = 'check_violation';
     END IF;
     RETURN NEW;

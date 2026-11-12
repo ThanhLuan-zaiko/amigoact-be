@@ -51,12 +51,32 @@ Mỗi lần đổi trạng thái đều thêm một dòng `registration_status_h
 
 `checkin_token` dùng UUIDv4 thay vì UUIDv7. Đây là mã bí mật cho QR ở giai đoạn sau, không phải khóa chính, nên cần hoàn toàn ngẫu nhiên và không lộ thời gian tạo. API chưa trả mã này. Mọi khóa chính vẫn là UUIDv7.
 
+## Danh sách của tổ chức, bản nháp và thùng rác
+
+- `GET /organizations/{slug}/activities` không trả bản nháp, kể cả cho ban quản trị, giống bảng tin bài viết. Code ở `src/activities/listing.py`.
+- `status` chọn một tab: `upcoming` (đã đăng và chưa bắt đầu, sớm nhất trước), `completed`, `cancelled`, `draft`. Không gửi `status` thì trả mọi hoạt động không phải nháp, mới nhất trước. `draft` chỉ cho ban quản trị (người khác nhận 403 `organization_forbidden`). Giá trị khác bị từ chối (422).
+- Xóa một bản nháp chỉ ghi `deleted_at`, nên nó vào thùng rác. Thùng rác giữ 30 ngày (`src/activities/trash_rules.py`). Hoạt động quá hạn bị xóa hẳn khi thùng rác được đọc. Code ở `src/activities/trash.py`.
+- Chủ sở hữu và quản trị viên xem thùng rác và khôi phục. Hoạt động khôi phục quay lại là bản nháp. Chỉ chủ sở hữu xóa vĩnh viễn. Bản nháp chưa từng có đăng ký, nên xóa hẳn chỉ mất các ca của nó (theo `ON DELETE CASCADE`). Bài viết đang gắn với hoạt động đó giữ nguyên, chỉ mất liên kết.
+- Người ngoài tổ chức gọi khôi phục hoặc xóa vĩnh viễn nhận 404, để không biết bản nháp đã xóa có tồn tại. Thành viên thường nhận 403. Hoạt động không nằm trong thùng rác trả 409 `activity_not_in_trash`. Hoạt động quá 30 ngày coi như đã mất (404).
+
+## Thẻ
+
+- Hoạt động có tối đa 5 thẻ, gửi qua `tags` khi tạo hoặc sửa. Khi sửa, gửi `tags` thì thay cả danh sách, không gửi thì giữ nguyên. Code ở `src/activities/tags.py`, bảng `activity_tags`.
+- Thẻ dùng chung danh mục `tags` của tổ chức với bài viết, cùng quy tắc slug và mã lỗi (`tag_invalid`, `too_many_tags`). Nhờ vậy `#moi-truong` gom cả bài lẫn hoạt động. Tên hiện là tên được dùng lần đầu trong tổ chức, dù lần đầu đó là bài hay hoạt động.
+- Mỗi hoạt động trả về `tags` (tên, xếp theo chữ cái). Danh sách lấy thẻ của cả trang trong một truy vấn.
+- `GET /activities` và `GET /organizations/{slug}/activities` nhận `?tag=` (slug hoặc tên như gõ). Bộ lọc chỉ thu hẹp danh sách, không bao giờ lộ bản nháp. `tag` không có chữ hay số trả về danh sách rỗng; `tag` trống hoặc dài hơn 40 ký tự bị từ chối (422).
+- `GET /organizations/{slug}/activity-tags?q=&limit=` gợi ý thẻ cho form hoạt động, xếp theo số hoạt động dùng nhiều nhất. Chỉ ban quản trị gọi được (403 với người khác). Mọi hoạt động chưa xóa đều được đếm, kể cả bản nháp, vì chỉ ban quản trị thấy gợi ý này.
+
 ## API
 
 | Method | Đường dẫn | Quyền |
 | ---- | ---- | ---- |
-| GET | `/activities?q=&city=&limit=&offset=` | Công khai: hoạt động sắp diễn ra, sớm nhất trước |
-| GET | `/organizations/{slug}/activities` | Công khai. Ban quản trị thấy thêm bản nháp |
+| GET | `/activities?q=&city=&tag=&limit=&offset=` | Công khai: hoạt động sắp diễn ra, sớm nhất trước |
+| GET | `/organizations/{slug}/activities?status=&tag=` | Công khai, không gồm bản nháp. `status=draft` chỉ ban quản trị |
+| GET | `/organizations/{slug}/activity-tags?q=` | Ban quản trị |
+| GET | `/organizations/{slug}/activity-trash?before=&limit=` | Chủ sở hữu, quản trị viên |
+| POST | `/activities/{id}/restore` | Chủ sở hữu, quản trị viên |
+| DELETE | `/activities/{id}/purge` | Chủ sở hữu |
 | POST | `/organizations/{slug}/activities` | Ban quản trị |
 | GET | `/activities/{id}` | Công khai. Bản nháp chỉ ban quản trị thấy |
 | PATCH | `/activities/{id}` | Ban quản trị |
@@ -109,4 +129,4 @@ Lỗi trả về HTTP 422, mỗi lỗi có `loc` là tên trường và `type` l
 
 ## Chưa có
 
-Danh mục và thẻ hoạt động, câu hỏi khi đăng ký, ảnh bìa, thông báo cho người đăng ký, và tọa độ bản đồ chưa làm. Khóa `RESTRICT` của `registrations.slot_id` có thể chặn việc xóa cứng hoạt động có đăng ký theo ca, nên hệ thống chỉ xóa mềm.
+Danh mục hoạt động, câu hỏi khi đăng ký, ảnh bìa, thông báo cho người đăng ký, và tọa độ bản đồ chưa làm. Khóa `RESTRICT` của `registrations.slot_id` có thể chặn việc xóa cứng hoạt động có đăng ký theo ca, nên hệ thống chỉ xóa mềm.

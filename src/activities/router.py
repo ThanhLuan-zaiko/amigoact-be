@@ -5,6 +5,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Path, Query, status
 
 from src.activities import (
+    listing,
     publishing,
     registration_lists,
     registrations,
@@ -25,12 +26,15 @@ from src.activities.schemas import (
     ShiftRequest,
     ShiftResponse,
 )
+from src.activities.tags import suggest_activity_tags
 from src.attendance import hours
 from src.attendance.sessions import close_all_sessions
 from src.auth.deps import CurrentPrincipal, Db, OptionalPrincipal
 from src.notifications.delivery import deliver_emails
 from src.organizations.access import require_manager
 from src.organizations.service import load_organization
+from src.posts.rules import TAG_NAME_MAX, TAG_SUGGEST_LIMIT, TAG_SUGGEST_MAX
+from src.posts.schemas import TagSuggestion, TagSuggestionList
 from src.validation import Uuid7
 
 router = APIRouter(tags=["activities"], dependencies=[Depends(deliver_emails)])
@@ -42,6 +46,7 @@ Offset = Annotated[int, Query(ge=0, le=100_000)]
 SearchText = Annotated[
     str | None, Query(max_length=100, pattern=r"^[^\x00-\x1f\x7f]*$")
 ]
+TagFilter = Annotated[str | None, Query(min_length=1, max_length=TAG_NAME_MAX)]
 
 
 @router.get("/activities")
@@ -51,8 +56,9 @@ def list_activities(
     city: SearchText = None,
     limit: Limit = 20,
     offset: Offset = 0,
+    tag: TagFilter = None,
 ) -> ActivityPage:
-    return service.list_public_activities(db, q, city, limit, offset)
+    return listing.list_public_activities(db, q, city, limit, offset, tag)
 
 
 @router.get("/organizations/{slug}/activities")
@@ -62,10 +68,29 @@ def list_organization_activities(
     principal: OptionalPrincipal,
     limit: Limit = 20,
     offset: Offset = 0,
+    view: Annotated[listing.OrgFilter | None, Query(alias="status")] = None,
+    tag: TagFilter = None,
 ) -> ActivityPage:
     org = load_organization(db, slug)
     user_id = principal.user.id if principal else None
-    return service.list_organization_activities(db, org, user_id, limit, offset)
+    return listing.list_organization_activities(
+        db, org, user_id, limit, offset, view, tag
+    )
+
+
+@router.get("/organizations/{slug}/activity-tags")
+def activity_tag_suggestions(
+    slug: Slug,
+    principal: CurrentPrincipal,
+    db: Db,
+    q: Annotated[str, Query(max_length=TAG_NAME_MAX)] = "",
+    limit: Annotated[int, Query(ge=1, le=TAG_SUGGEST_MAX)] = TAG_SUGGEST_LIMIT,
+) -> TagSuggestionList:
+    org = load_organization(db, slug)
+    rows = suggest_activity_tags(db, org, principal.user.id, q, limit)
+    return TagSuggestionList(
+        items=[TagSuggestion(name=n, slug=s, count=c) for n, s, c in rows]
+    )
 
 
 @router.post("/organizations/{slug}/activities", status_code=status.HTTP_201_CREATED)

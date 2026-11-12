@@ -6,7 +6,13 @@ from datetime import datetime
 from sqlalchemy import ForeignKey, func
 from sqlalchemy.orm import Mapped, mapped_column
 
-from src.models import auth, media, organizations, tags  # noqa: F401  registers the foreign key targets
+from src.models import (  # noqa: F401  registers the foreign key targets
+    activities,
+    auth,
+    media,
+    organizations,
+    tags,
+)
 from src.models.base import Base
 
 
@@ -36,6 +42,10 @@ class OrgPost(Base):
         ForeignKey("users.id", ondelete="SET NULL")
     )
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    # The activity this post is about, if any. Readers sign up from the post.
+    activity_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("activities.id", ondelete="SET NULL")
+    )
 
 
 class PostTag(Base):

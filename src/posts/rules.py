@@ -12,8 +12,10 @@ PUBLIC = "public"
 MEMBERS = "members"
 POST_ACTIVE = "active"
 POST_DRAFT = "draft"
-TAG_LIMIT = 3
+TAG_LIMIT = 5
 TAG_NAME_MAX = 40
+TAG_SUGGEST_LIMIT = 8
+TAG_SUGGEST_MAX = 20
 MEDIA_LIMIT = 10
 POST_CREATE_LIMIT = 30
 POST_WINDOW = 60 * 60
@@ -47,6 +49,15 @@ def tag_slug(name: str) -> str | None:
     ascii_name = decomposed.encode("ascii", "ignore").decode().lower()
     slug = _NOT_SLUG.sub("-", ascii_name).strip("-")[:TAG_NAME_MAX].strip("-")
     return slug or None
+
+
+def tag_word_patterns(prefix: str) -> tuple[str, str]:
+    """LIKE patterns for slugs that have a word starting with a slug prefix.
+
+    The prefix comes from tag_slug, so it holds only letters, digits and hyphens
+    and needs no escaping.
+    """
+    return f"{prefix}%", f"%-{prefix}%"
 
 
 def purge_at(deleted_at: datetime) -> datetime:

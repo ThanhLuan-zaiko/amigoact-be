@@ -3,7 +3,7 @@
 import uuid
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import func, select
+from sqlalchemy import false, func, select
 from sqlalchemy.orm import Session
 from sqlalchemy.sql import Select
 
@@ -11,7 +11,13 @@ from src.models.organizations import Organization
 from src.models.posts import OrgPost, PostTag
 from src.models.tags import Tag
 from src.organizations.service import live_organization
-from src.posts.rules import POST_ACTIVE, POST_DRAFT, TRENDING_DAYS, TRENDING_LIMIT
+from src.posts.rules import (
+    POST_ACTIVE,
+    POST_DRAFT,
+    TRENDING_DAYS,
+    TRENDING_LIMIT,
+    tag_slug,
+)
 from src.posts.visibility import member_org_ids, published_posts, visible_to
 
 
@@ -20,6 +26,24 @@ def next_page_cursor(rows: list[OrgPost], limit: int) -> uuid.UUID | None:
     if len(rows) <= limit:
         return None
     return rows[limit - 1].post_id
+
+
+def with_tag(query: Select, tag: str | None) -> Select:
+    """Only posts carrying a tag. The tag may be a slug or a name as typed.
+
+    A tag without letters or digits matches no post.
+    """
+    if tag is None:
+        return query
+    slug = tag_slug(tag)
+    if slug is None:
+        return query.where(false())
+    tagged = (
+        select(PostTag.post_id)
+        .join(Tag, Tag.id == PostTag.tag_id)
+        .where(Tag.slug == slug, Tag.deleted_at.is_(None))
+    )
+    return query.where(OrgPost.post_id.in_(tagged))
 
 
 def _page(
@@ -41,6 +65,7 @@ def org_timeline(
     kind: str | None,
     pinned_only: bool,
     include_hidden: bool = False,
+    tag: str | None = None,
 ) -> list[OrgPost]:
     query = published_posts(viewer_id, include_hidden=include_hidden).where(
         OrgPost.org_id == org_id
@@ -49,22 +74,29 @@ def org_timeline(
         query = query.where(OrgPost.kind == kind)
     if pinned_only:
         query = query.where(OrgPost.pinned_at.is_not(None))
-    return _page(db, query, before, limit)
+    return _page(db, with_tag(query, tag), before, limit)
 
 
 def member_feed(
-    db: Session, viewer_id: uuid.UUID, *, before: uuid.UUID | None, limit: int
+    db: Session,
+    viewer_id: uuid.UUID,
+    *,
+    before: uuid.UUID | None,
+    limit: int,
+    tag: str | None = None,
 ) -> list[OrgPost]:
     """Posts from every organization the viewer belongs to."""
     query = published_posts(viewer_id).where(
         OrgPost.org_id.in_(member_org_ids(viewer_id))
     )
-    return _page(db, query, before, limit)
+    return _page(db, with_tag(query, tag), before, limit)
 
 
-def public_feed(db: Session, *, before: uuid.UUID | None, limit: int) -> list[OrgPost]:
+def public_feed(
+    db: Session, *, before: uuid.UUID | None, limit: int, tag: str | None = None
+) -> list[OrgPost]:
     """Public posts from every organization, the same for visitors and members."""
-    return _page(db, published_posts(None), before, limit)
+    return _page(db, with_tag(published_posts(None), tag), before, limit)
 
 
 def my_drafts(

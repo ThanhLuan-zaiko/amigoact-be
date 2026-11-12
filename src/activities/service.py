@@ -2,10 +2,9 @@
 
 import uuid
 from datetime import UTC, datetime
-from typing import Any
 
 from fastapi import status
-from sqlalchemy import Select, func, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from src.activities.queries import (
@@ -31,10 +30,10 @@ from src.activities.rules import (
 from src.activities.schemas import (
     ActivityCreateRequest,
     ActivityDetail,
-    ActivityPage,
     ActivityUpdateRequest,
     ActivityViewer,
 )
+from src.activities.tags import set_activity_tags, tags_by_activity
 from src.auth.errors import api_error
 from src.auth.rate_limit import enforce_rate_limit
 from src.models.activities import (
@@ -47,7 +46,6 @@ from src.models.activities import (
 from src.models.organizations import Organization
 from src.notifications.events import activity_data, notify
 from src.organizations.access import get_access
-from src.pagination import count_rows
 from src.validation import validation_failure
 
 CREATE_LIMIT = 30
@@ -105,6 +103,7 @@ def activity_detail(
     summary = to_summary(
         db.execute(summary_query().where(Activity.id == activity.id)).one()
     )
+    summary.tags = tags_by_activity(db, [activity.id])[activity.id]
 
     return ActivityDetail(
         **summary.model_dump(),
@@ -151,9 +150,11 @@ def create_activity(
         created_by=user_id,
         status=DRAFT,
         requirements_json={"requires_approval": payload.requires_approval},
-        **payload.model_dump(exclude={"requires_approval"}),
+        **payload.model_dump(exclude={"requires_approval", "tags"}),
     )
     db.add(activity)
+    db.flush()
+    set_activity_tags(db, activity.id, org_id, payload.tags)
     db.commit()
     return activity
 
@@ -174,7 +175,7 @@ def _check_shifts_still_fit(db: Session, activity: Activity) -> None:
 
 
 def _apply_update(activity: Activity, payload: ActivityUpdateRequest) -> None:
-    for field in payload.model_fields_set - {"requires_approval"}:
+    for field in payload.model_fields_set - {"requires_approval", "tags"}:
         setattr(activity, field, getattr(payload, field))
 
     if "requires_approval" in payload.model_fields_set:
@@ -223,6 +224,8 @@ def update_activity(
         _check_shifts_still_fit(db, activity)
         if "max_participants" in payload.model_fields_set:
             _check_capacity_covers_seats(db, activity)
+    if payload.tags is not None:
+        set_activity_tags(db, activity.id, activity.org_id, payload.tags)
 
 
 def _check_capacity_covers_seats(db: Session, activity: Activity) -> None:
@@ -296,50 +299,3 @@ def delete_draft(db: Session, activity: Activity) -> None:
         raise api_error(status.HTTP_409_CONFLICT, "activity_not_draft")
     activity.deleted_at = datetime.now(UTC)
     db.commit()
-
-
-def _page(db: Session, query: Select[Any], limit: int, offset: int) -> ActivityPage:
-    rows = db.execute(query.limit(limit + 1).offset(offset)).all()
-    return ActivityPage(
-        items=[to_summary(row) for row in rows[:limit]],
-        next_offset=offset + limit if len(rows) > limit else None,
-        total=count_rows(db, query),
-    )
-
-
-def list_public_activities(
-    db: Session,
-    search: str | None,
-    city: str | None,
-    limit: int,
-    offset: int,
-) -> ActivityPage:
-    """Published activities that have not started, soonest first."""
-
-    query = summary_query().where(
-        Activity.status == PUBLISHED, Activity.start_at > func.now()
-    )
-
-    if search:
-        query = query.where(Activity.title.icontains(search, autoescape=True))
-
-    if city:
-        query = query.where(Activity.city.icontains(city, autoescape=True))
-    query = query.order_by(Activity.start_at, Activity.id)
-    return _page(db, query, limit, offset)
-
-
-def list_organization_activities(
-    db: Session,
-    org: Organization,
-    user_id: uuid.UUID | None,
-    limit: int,
-    offset: int,
-) -> ActivityPage:
-    """Managers also see drafts here. Everyone else sees what was published."""
-    can_manage = user_id is not None and get_access(db, org, user_id).can_manage
-    query = summary_query().where(Activity.org_id == org.id)
-    if not can_manage:
-        query = query.where(Activity.status != DRAFT)
-    query = query.order_by(Activity.start_at.desc().nulls_first(), Activity.id.desc())
-    return _page(db, query, limit, offset)

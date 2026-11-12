@@ -266,18 +266,21 @@ def test_public_post_with_pictures_cannot_become_members_only(
     assert "members_post_has_no_media" in response.text
 
 
-def test_tags_must_have_letters_and_stay_within_three(
+def test_tags_must_have_letters_and_stay_within_five(
     api: ApiContext, bearer: Bearer
 ) -> None:
     owner, _ = user(api, bearer, "tagger")
     slug = open_org(api, owner)
 
     symbols = post(api, owner, slug, tags=["!!!"])
-    too_many = post(api, owner, slug, tags=["a1", "b2", "c3", "d4"])
+    too_many = post(api, owner, slug, tags=["a1", "b2", "c3", "d4", "e5", "f6"])
+    five = post(api, owner, slug, tags=["a1", "b2", "c3", "d4", "e5"])
 
     assert symbols.status_code == 422
     assert "tag_invalid" in symbols.text
     assert too_many.status_code == 422
+    assert five.status_code == 201, five.text
+    assert len(five.json()["tags"]) == 5
 
 
 def test_post_bodies_refuse_unknown_fields_and_path_ids_must_be_uuid7(

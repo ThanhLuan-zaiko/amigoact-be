@@ -2,13 +2,17 @@
 
 import uuid
 
-from sqlalchemy import delete, select
+from fastapi import status
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
-from src.models.posts import PostTag
+from src.auth.errors import api_error
+from src.models.organizations import Organization
+from src.models.posts import OrgPost, PostTag
 from src.models.tags import Tag
-from src.posts.rules import TAG_LIMIT, tag_slug
+from src.organizations.access import ACTIVE, get_access
+from src.posts.rules import POST_ACTIVE, TAG_LIMIT, tag_slug, tag_word_patterns
 from src.validation import validation_failure
 
 
@@ -44,3 +48,40 @@ def replace_post_tags(
     for tag_id in resolve_tags(db, org_id, names):
         db.add(PostTag(post_id=post_id, tag_id=tag_id))
     db.flush()
+
+
+def suggest_tags(
+    db: Session, org: Organization, user_id: uuid.UUID, query: str, limit: int
+) -> list[tuple[str, str, int]]:
+    """Tags of the organization for its members to pick, most used first.
+
+    Only tags on live published posts count, so a tag that sits only on a draft
+    or a deleted or hidden post is not shown. A query matches the start of any
+    word of the slug, so "truong" finds "Moi truong".
+    """
+    if get_access(db, org, user_id).status != ACTIVE:
+        raise api_error(status.HTTP_403_FORBIDDEN, "post_forbidden")
+    count = func.count(OrgPost.post_id)
+    statement = (
+        select(Tag.name, Tag.slug, count)
+        .join(PostTag, PostTag.tag_id == Tag.id)
+        .join(OrgPost, OrgPost.post_id == PostTag.post_id)
+        .where(
+            Tag.org_id == org.id,
+            Tag.deleted_at.is_(None),
+            OrgPost.org_id == org.id,
+            OrgPost.status == POST_ACTIVE,
+            OrgPost.deleted_at.is_(None),
+            OrgPost.hidden_at.is_(None),
+        )
+    )
+    if query.strip():
+        prefix = tag_slug(query)
+        if prefix is None:
+            return []
+        starts, inner = tag_word_patterns(prefix)
+        statement = statement.where(or_(Tag.slug.like(starts), Tag.slug.like(inner)))
+    rows = db.execute(
+        statement.group_by(Tag.id).order_by(count.desc(), Tag.slug).limit(limit)
+    ).all()
+    return [(name, slug, total) for name, slug, total in rows]

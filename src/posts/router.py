@@ -8,7 +8,16 @@ from src.auth.deps import CurrentPrincipal, Db, OptionalPrincipal
 from src.organizations.service import load_organization
 from src.posts import queries, service
 from src.posts.hiding import set_hidden, viewer_sees_hidden
-from src.posts.schemas import PostCreate, PostPage, PostResponse, PostUpdate
+from src.posts.rules import TAG_NAME_MAX, TAG_SUGGEST_LIMIT, TAG_SUGGEST_MAX
+from src.posts.schemas import (
+    PostCreate,
+    PostPage,
+    PostResponse,
+    PostUpdate,
+    TagSuggestion,
+    TagSuggestionList,
+)
+from src.posts.tags import suggest_tags
 from src.posts.views import post_page, to_responses
 from src.posts.visibility import load_live_org, load_visible_post
 from src.validation import Uuid7
@@ -18,6 +27,7 @@ router = APIRouter(tags=["posts"])
 Slug = Annotated[str, Path(pattern=r"^[A-Za-z0-9-]{1,80}$")]
 Limit = Annotated[int, Query(ge=1, le=50)]
 Before = Annotated[Uuid7 | None, Query()]
+TagFilter = Annotated[str | None, Query(min_length=1, max_length=TAG_NAME_MAX)]
 
 
 @router.post("/organizations/{slug}/posts", status_code=status.HTTP_201_CREATED)
@@ -38,6 +48,7 @@ def org_posts(
     limit: Limit = 20,
     kind: Annotated[str | None, Query(pattern="^(announcement|discussion)$")] = None,
     pinned_only: bool = False,
+    tag: TagFilter = None,
 ) -> PostPage:
     org = load_organization(db, slug)
     viewer_id = principal.user.id if principal else None
@@ -50,6 +61,7 @@ def org_posts(
         kind=kind,
         pinned_only=pinned_only,
         include_hidden=viewer_sees_hidden(db, org, viewer_id),
+        tag=tag,
     )
     return post_page(db, rows, limit, viewer_id)
 
@@ -65,6 +77,21 @@ def my_drafts(
     org = load_organization(db, slug)
     rows = queries.my_drafts(db, org.id, principal.user.id, before=before, limit=limit)
     return post_page(db, rows, limit, principal.user.id)
+
+
+@router.get("/organizations/{slug}/post-tags")
+def post_tag_suggestions(
+    slug: Slug,
+    principal: CurrentPrincipal,
+    db: Db,
+    q: Annotated[str, Query(max_length=TAG_NAME_MAX)] = "",
+    limit: Annotated[int, Query(ge=1, le=TAG_SUGGEST_MAX)] = TAG_SUGGEST_LIMIT,
+) -> TagSuggestionList:
+    org = load_organization(db, slug)
+    rows = suggest_tags(db, org, principal.user.id, q, limit)
+    return TagSuggestionList(
+        items=[TagSuggestion(name=n, slug=s, count=c) for n, s, c in rows]
+    )
 
 
 @router.get("/posts/{post_id}")
