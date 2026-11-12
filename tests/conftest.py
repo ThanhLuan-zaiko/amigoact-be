@@ -14,6 +14,7 @@ from sqlalchemy import delete, func, or_, select, update
 
 from src.app import app
 from src.auth.mailer import get_mailer
+from src.internal_key import HEADER, get_internal_key_settings
 from src.media.storage import get_media_root
 from src.models.activities import Activity, Registration
 from src.models.attendance import QrScanLog
@@ -31,6 +32,10 @@ ORG_FIELDS: dict[str, Any] = {
     "phone": "0912345678",
     "city": "Ha Noi",
 }
+
+
+def internal_headers() -> dict[str, str]:
+    return {HEADER: get_internal_key_settings().internal_api_key}
 
 
 @dataclass
@@ -89,7 +94,8 @@ def api() -> Iterator[ApiContext]:
     )
     mailer = FakeMailer()
     app.dependency_overrides[get_mailer] = lambda: mailer
-    with TestClient(app, client=(ip, 50000)) as client:
+    # Every request carries the internal key, like the Next.js server does.
+    with TestClient(app, client=(ip, 50000), headers=internal_headers()) as client:
         yield ApiContext(client, mailer, tag)
         # Remove only the rows this test created. CASCADE clears tokens and sessions.
         # Organizations go first, because owner_id does not cascade.

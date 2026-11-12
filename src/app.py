@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, Response
 from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from src.activities.router import router as activities_router
@@ -19,7 +20,9 @@ from src.chat.message_router import router as chat_message_router
 from src.chat.router import router as chat_router
 from src.chat.ws_router import router as chat_ws_router
 from src.config import get_auth_settings, get_chat_settings, get_settings
+from src.cors import get_cors_settings
 from src.database import check_connection, create_database_engine
+from src.internal_key import InternalKeyMiddleware, get_internal_key_settings
 from src.media.attach_router import router as media_attach_router
 from src.media.router import router as media_router
 from src.notifications.router import router as notifications_router
@@ -43,6 +46,7 @@ logger = logging.getLogger("src")
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     get_auth_settings()  # a missing or short JWT_SECRET stops the startup
     get_chat_settings()  # a missing or malformed CHAT_ENCRYPTION_KEY stops the startup
+    get_internal_key_settings()  # a missing or short INTERNAL_API_KEY stops the startup
     engine = create_database_engine(get_settings().database_url)
     try:
         check_connection(engine)
@@ -61,6 +65,16 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(title="AmigoACT", lifespan=lifespan)
+# Every HTTP request needs the internal key before routing or validation run.
+app.add_middleware(InternalKeyMiddleware)
+# Added last, so it is the outermost layer and its headers reach refused responses too.
+# CORS_ORIGINS empty means no browser origin is allowed.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=get_cors_settings().origins,
+    allow_methods=["GET", "POST", "PATCH", "PUT", "DELETE"],
+    allow_headers=["Authorization", "Content-Type"],
+)
 
 
 @app.exception_handler(RequestValidationError)

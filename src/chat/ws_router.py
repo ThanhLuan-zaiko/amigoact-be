@@ -15,11 +15,13 @@ from src.chat.rooms import readable_by
 from src.chat.rules import SOCKET_LIFETIME_SECONDS
 from src.chat.schemas import TicketResponse
 from src.chat.tickets import consume_ticket, issue_ticket
+from src.cors import get_cors_settings, origin_allowed
 
 router = APIRouter(tags=["chat"])
 
 UNAUTHORIZED_CLOSE = 4401
 EXPIRED_CLOSE = 4408
+FORBIDDEN_ORIGIN_CLOSE = 4403
 
 
 @router.post("/chat/tickets", status_code=status.HTTP_201_CREATED)
@@ -69,6 +71,11 @@ async def _handle(
 
 @router.websocket("/ws/chat")
 async def chat_socket(websocket: WebSocket, ticket: str = Query(default="")) -> None:
+    # CORS does not cover sockets, so a page on another site is refused here,
+    # before its ticket is spent.
+    if not origin_allowed(websocket.headers.get("origin"), get_cors_settings().origins):
+        await websocket.close(code=FORBIDDEN_ORIGIN_CLOSE)
+        return
     engine = websocket.app.state.engine
     user_id = await run_in_threadpool(consume_ticket, engine, ticket)
     if user_id is None:

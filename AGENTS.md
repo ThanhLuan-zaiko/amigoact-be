@@ -48,6 +48,8 @@ Put scratch work in the session scratchpad directory, not in the repository. CI 
 - Refresh tokens are opaque and rotate on every use. Only their SHA-256 hash is stored. `auth_sessions.session_id` equals `auth_refresh_tokens.family_id`. Reusing a rotated token after the grace window ends the session.
 - API errors use `detail` as a stable code from `src/auth/errors.py`. The frontend translates the codes.
 - Without `SMTP_HOST`, emails with their secret links go to the application log. Always set `SMTP_HOST` in production.
+- Every HTTP request needs the `X-Internal-Key` header equal to `INTERNAL_API_KEY` from `.env` (`src/internal_key.py`). It is checked before routing and validation, so callers without it get 401 `internal_key_invalid`, never 422. Only the chat socket is exempt. Test clients send it through `internal_headers()` in `tests/conftest.py`. Details are in `docs/security.md`.
+- Allowed browser origins come from `CORS_ORIGINS` in `.env` (`src/cors.py`): exact origins only, no wildcard, empty allows none. The chat socket refuses a listed-origin mismatch with close code 4403.
 - Rate limits use the client IP. Behind a proxy, set uvicorn `--forwarded-allow-ips` to the proxy address so `X-Forwarded-For` is trusted only from there.
 
 ## Organizations and validation
