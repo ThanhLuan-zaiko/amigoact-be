@@ -7,8 +7,8 @@ from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
 from src.app import app
-from src.chat import ws_router
 from src.cors import get_cors_settings
+from src.realtime import socket as ws_router
 from tests.activity_helpers import Bearer, user
 from tests.chat_helpers import ticket
 from tests.conftest import ApiContext

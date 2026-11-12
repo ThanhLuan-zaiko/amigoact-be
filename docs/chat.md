@@ -40,17 +40,12 @@ Mỗi phòng có một mã (`room_id`). Có ba loại:
 
 ## Kết nối thời gian thực
 
-1. Gọi `POST /chat/tickets` (cần đăng nhập). Nhận một vé, hạn 5 phút, dùng được một lần.
-2. Mở `WebSocket /ws/chat?ticket=<vé>`. Vé sai, đã dùng, hoặc đã hết hạn thì kết nối bị đóng với mã 4401.
-3. Gửi các khung JSON:
-   - `{"op": "subscribe", "room_id": "..."}`: nhận `subscribed`, hoặc `error` với `room_not_found`. Quyền được kiểm tra mỗi lần đăng ký.
-   - `{"op": "unsubscribe", "room_id": "..."}`
-   - `{"op": "ping"}`: nhận `pong`.
-4. Nhận sự kiện:
-   - `message.created`, `message.updated`, `message.deleted`, với `room_id` và nội dung tin.
-   - `revoked`: người nhận không còn được nghe phòng đó, ví dụ bị xóa khỏi kênh giới hạn.
+Chat dùng khung realtime chung, xem [realtime.md](realtime.md). Mỗi phòng là topic `room:<mã phòng>`.
 
-Mỗi kết nối tồn tại tối đa 30 phút. Hết thời gian thì bị đóng với mã 4408, và cần vé mới để kết nối lại. Nhờ vậy quyền truy cập được kiểm tra lại định kỳ.
+- Sự kiện: `message.created`, `message.updated`, `message.deleted`, với `room_id` và nội dung tin.
+- Danh sách phòng đổi (tạo kênh, lưu trữ kênh, thêm người vào kênh, mở tin nhắn riêng) gửi `rooms.changed` trên `org:<id>`, hoặc trên `user:<id>` của người được thêm hay người nhận tin nhắn riêng.
+- `revoked`: người nhận không còn được nghe phòng đó, ví dụ bị xóa khỏi kênh giới hạn, rời hoặc bị xóa khỏi tổ chức.
+- Khung cũ `{"op": "subscribe", "room_id": "..."}` và đường dẫn `/ws/chat` vẫn chạy.
 
 Sự kiện không kèm cờ `mine` của từng người xem. Mọi người nhận cùng một bản.
 
@@ -58,8 +53,8 @@ Sự kiện không kèm cờ `mine` của từng người xem. Mọi người nh
 
 | Method | Đường dẫn | Quyền |
 | ---- | ---- | ---- |
-| POST | `/chat/tickets` | Đã đăng nhập |
-| WebSocket | `/ws/chat` | Vé hợp lệ |
+| POST | `/realtime/tickets`, `/chat/tickets` | Đã đăng nhập. Xem [realtime.md](realtime.md) |
+| WebSocket | `/ws`, `/ws/chat` | Vé hợp lệ |
 | GET | `/organizations/{slug}/chat/channels` | Thành viên |
 | POST | `/organizations/{slug}/chat/channels` | Quản trị viên |
 | POST | `/chat/channels/{id}/archive` | Quản trị viên |

@@ -6,6 +6,7 @@ An email waits until that transaction commits, so a failed action sends no email
 
 import uuid
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Any, Literal, get_args
 
 from sqlalchemy import event
@@ -15,14 +16,18 @@ from src.models.activities import Activity, Registration
 from src.models.auth import User
 from src.models.notifications import Notification, NotificationPreference
 from src.models.organizations import Organization
+from src.notifications.live import notification_event, queue_push
 
 NotificationType = Literal[
     "registration_approved",
     "registration_rejected",
     "registration_promoted",
     "activity_cancelled",
+    "membership_requested",
     "membership_approved",
     "membership_rejected",
+    "member_left",
+    "membership_removed",
     "hours_awarded",
     "appeal_approved",
     "appeal_rejected",
@@ -82,14 +87,16 @@ def notify(
     if preference and notification_type in preference.muted_types:
         return
     if channels.get("inapp", True):
-        db.add(
-            Notification(
-                notification_id=uuid.uuid7(),
-                user_id=user_id,
-                type=notification_type,
-                data_json=data,
-            )
+        notification = Notification(
+            notification_id=uuid.uuid7(),
+            user_id=user_id,
+            type=notification_type,
+            data_json=data,
+            created_at=datetime.now(UTC),
         )
+        db.add(notification)
+        # Leaves after the commit, so the bell rings only for a saved notification.
+        queue_push(db, user_id, notification_event(notification))
     if channels.get("email", False):
         user = db.get(User, user_id)
         # An unconfirmed address may belong to someone else.

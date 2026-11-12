@@ -57,6 +57,7 @@ Tài liệu chi tiết nằm trong thư mục [`docs/`](docs):
 - [Tải tệp](docs/media.md): tải ảnh, quyền xem, gắn ảnh vào đại diện, logo và ảnh bìa.
 - [Bảng tin](docs/posts.md): bài đăng, bình luận, thẻ, ghim và các danh sách trên trang chủ.
 - [Chat](docs/chat.md): phòng chung, kênh, tin nhắn riêng, và kết nối thời gian thực.
+- [Thời gian thực](docs/realtime.md): socket chung, topic, gửi sự kiện, nhiều worker.
 
 ## Kiểm thử
 

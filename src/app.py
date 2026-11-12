@@ -4,6 +4,7 @@ import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
+import anyio.lowlevel
 from fastapi import FastAPI, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -18,7 +19,6 @@ from src.certificates.router import router as certificates_router
 from src.certificates.template_router import router as certificate_template_router
 from src.chat.message_router import router as chat_message_router
 from src.chat.router import router as chat_router
-from src.chat.ws_router import router as chat_ws_router
 from src.config import get_auth_settings, get_chat_settings, get_settings
 from src.cors import get_cors_settings
 from src.database import check_connection, create_database_engine
@@ -33,6 +33,9 @@ from src.posts.comment_router import router as post_comment_router
 from src.posts.feed_router import router as feed_router
 from src.posts.router import router as posts_router
 from src.posts.trash_router import router as post_trash_router
+from src.realtime import bus
+from src.realtime.listener import Listener
+from src.realtime.socket import router as realtime_router
 
 logging.basicConfig(
     level=logging.INFO,
@@ -58,9 +61,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         "Database connected: %s", engine.url.render_as_string(hide_password=True)
     )
     app.state.engine = engine
+    # Live events reach this process's sockets directly and other workers through NOTIFY.
+    bus.configure(engine, anyio.lowlevel.current_token())
+    listener = Listener(engine)
+    listener.start()
     try:
         yield
     finally:
+        listener.stop()
+        bus.configure(None, None)
         engine.dispose()
 
 
@@ -105,4 +114,4 @@ app.include_router(post_comment_router)
 app.include_router(feed_router)
 app.include_router(chat_router)
 app.include_router(chat_message_router)
-app.include_router(chat_ws_router)
+app.include_router(realtime_router)

@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from src.auth.deps import CurrentPrincipal, Db
 from src.auth.errors import api_error
 from src.models.notifications import Notification, NotificationPreference
+from src.notifications.live import queue_push
 from src.notifications.schemas import (
     NotificationPage,
     NotificationResponse,
@@ -85,6 +86,8 @@ def read_all(principal: CurrentPrincipal, db: Db) -> None:
         )
         .values(status=READ, read_at=datetime.now(UTC))
     )
+    # The bell in the viewer's other tabs clears too.
+    queue_push(db, principal.user.id, {"type": "notification.read_all"})
     db.commit()
 
 
@@ -97,6 +100,11 @@ def read_one(notification_id: Uuid7, principal: CurrentPrincipal, db: Db) -> Non
     if notification.status == UNREAD:
         notification.status = READ
         notification.read_at = datetime.now(UTC)
+        queue_push(
+            db,
+            principal.user.id,
+            {"type": "notification.read", "id": str(notification_id)},
+        )
         db.commit()
 
 

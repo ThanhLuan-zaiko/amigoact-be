@@ -102,4 +102,8 @@ def test_removed_channel_member_is_cut_off_live(
             f"/chat/channels/{room['id']}/members/{member_id}", headers=owner
         )
         assert removed.status_code == 204
-        assert socket.receive_json() == {"op": "revoked", "room_id": room["id"]}
+        assert socket.receive_json() == {
+            "op": "revoked",
+            "topic": f"room:{room['id']}",
+            "room_id": room["id"],
+        }

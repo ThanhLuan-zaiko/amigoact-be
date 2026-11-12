@@ -106,11 +106,13 @@ jobs:
         env:
           CI_POSTGRES_PASSWORD: ${{ secrets.CI_POSTGRES_PASSWORD }}
         run: |
-          printf 'DATABASE_URL=postgresql+psycopg://ci:%s@localhost:5432/amigoact_test\n' "$CI_POSTGRES_PASSWORD" > .env
-          printf 'JWT_SECRET=%s\n' "$(openssl rand -hex 32)" >> .env
-          printf 'CHAT_ENCRYPTION_KEY=%s\n' "$(openssl rand -base64 32)" >> .env
-          printf 'INTERNAL_API_KEY=%s\n' "$(openssl rand -hex 32)" >> .env
-          printf 'CORS_ORIGINS=http://localhost:3000\n' >> .env
+          {
+            printf 'DATABASE_URL=postgresql+psycopg://ci:%s@localhost:5432/amigoact_test\n' "$CI_POSTGRES_PASSWORD"
+            printf 'JWT_SECRET=%s\n' "$(openssl rand -hex 32)"
+            printf 'CHAT_ENCRYPTION_KEY=%s\n' "$(openssl rand -base64 32)"
+            printf 'INTERNAL_API_KEY=%s\n' "$(openssl rand -hex 32)"
+            printf 'CORS_ORIGINS=http://localhost:3000\n'
+          } > .env
       - name: Load schema.sql into the CI database
         if: steps.detect.outputs.has_tests == 'true'
         env:

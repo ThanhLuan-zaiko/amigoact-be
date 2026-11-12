@@ -1,12 +1,12 @@
 """Routes for an organization's channels, direct messages, and unread counts."""
 
+import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Path, status
 
 from src.auth.deps import CurrentPrincipal, Db
 from src.chat import channels, dms, room_state
-from src.chat.hub import revoke
 from src.chat.rooms import load_room
 from src.chat.schemas import (
     ChannelCreate,
@@ -22,11 +22,20 @@ from src.models.chat import OrgChatChannel
 from src.organizations.access import require_member
 from src.organizations.service import load_organization
 from src.posts.visibility import load_live_org
+from src.realtime.bus import publish, revoke_committed
+from src.realtime.names import org_topic, room_topic, user_topic
 from src.validation import Uuid7
 
 router = APIRouter(tags=["chat"])
 
 Slug = Annotated[str, Path(pattern=r"^[A-Za-z0-9-]{1,80}$")]
+
+
+def _rooms_changed(org_id: uuid.UUID, topic: str | None = None) -> None:
+    """The room list of an organization changed. Pages refetch it, with access checks."""
+    publish(
+        topic or org_topic(org_id), {"type": "rooms.changed", "org_id": str(org_id)}
+    )
 
 
 def _channel(channel: OrgChatChannel) -> ChannelResponse:
@@ -57,6 +66,7 @@ def create_channel(
 ) -> ChannelResponse:
     org = load_organization(db, slug)
     channel = channels.create_channel(db, org, principal.user.id, payload)
+    _rooms_changed(org.id)
     return _channel(channel)
 
 
@@ -66,6 +76,7 @@ def create_channel(
 def archive_channel(channel_id: Uuid7, principal: CurrentPrincipal, db: Db) -> None:
     room = load_room(db, channel_id, principal.user.id)
     channels.archive_channel(db, room, principal.user.id)
+    _rooms_changed(room.org_id)
 
 
 @router.post(
@@ -77,6 +88,8 @@ def add_members(
     room = load_room(db, channel_id, principal.user.id)
     org = load_live_org(db, room.org_id)
     channels.add_members(db, room, org, payload.user_ids, principal.user.id)
+    for user_id in payload.user_ids:
+        _rooms_changed(org.id, user_topic(user_id))
 
 
 @router.delete(
@@ -89,7 +102,7 @@ def remove_member(
     room = load_room(db, channel_id, principal.user.id)
     channels.remove_member(db, room, user_id)
     # The removed person stops hearing the channel at once, not at their next reconnect.
-    revoke(channel_id, user_id)
+    revoke_committed(user_id, [room_topic(channel_id)])
 
 
 @router.get("/organizations/{slug}/chat/dms")
@@ -105,6 +118,8 @@ def open_dm(
 ) -> DmResponse:
     org = load_organization(db, slug)
     pair = dms.open_dm(db, org, principal.user.id, payload.user_id)
+    # The other person's room list gains the conversation.
+    _rooms_changed(org.id, user_topic(payload.user_id))
     return dms.dm_response(db, pair, principal.user.id)
 
 

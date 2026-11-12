@@ -297,6 +297,7 @@ def test_socket_hears_edits_reactions_and_deletes(
         "type": "message.deleted",
         "room_id": org_id,
         "message_id": message["id"],
+        "topic": f"room:{org_id}",
     }
 
 

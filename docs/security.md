@@ -1,6 +1,6 @@
 # Bảo vệ API: khóa nội bộ và CORS
 
-Backend chỉ phục vụ server Next.js. Trình duyệt không gọi API HTTP trực tiếp, trừ socket chat.
+Backend chỉ phục vụ server Next.js. Trình duyệt không gọi API HTTP trực tiếp, trừ socket realtime.
 
 ## Khóa nội bộ (`INTERNAL_API_KEY`)
 
@@ -11,7 +11,7 @@ Backend chỉ phục vụ server Next.js. Trình duyệt không gọi API HTTP t
 - Validation vẫn chạy đầy đủ cho request có khóa. Khóa chỉ đứng trước validation, không thay thế nó.
 - So sánh bằng `hmac.compare_digest`, nên thời gian phản hồi không làm lộ khóa.
 - Token đăng nhập bị lộ cũng không đủ để gọi API, vì còn thiếu khóa.
-- Ngoại lệ duy nhất là socket chat `/ws/chat`: trình duyệt mở trực tiếp bằng vé dùng một lần. Server Next.js lấy vé đó qua `POST /chat/tickets` có kèm khóa.
+- Ngoại lệ duy nhất là socket realtime `/ws` (bí danh `/ws/chat`): trình duyệt mở trực tiếp bằng vé dùng một lần. Server Next.js lấy vé đó qua `POST /realtime/tickets` có kèm khóa. Xem [realtime.md](realtime.md).
 - Đổi khóa: sửa cả hai file `.env` rồi khởi động lại cả hai server.
 
 ## CORS (`CORS_ORIGINS`)
@@ -21,7 +21,7 @@ Backend chỉ phục vụ server Next.js. Trình duyệt không gọi API HTTP t
 - Để trống nghĩa là không cho origin nào, là lựa chọn chặt nhất.
 - Danh sách điều khiển hai thứ:
   - Header CORS của HTTP (`CORSMiddleware`). Không bật `allow_credentials`, vì token đi trong header `Authorization`, không đi trong cookie.
-  - Socket chat. CORS không áp dụng cho WebSocket, nên `/ws/chat` tự kiểm tra header `Origin`: có `Origin` mà không nằm trong danh sách thì đóng với mã `4403`, trước khi vé bị dùng. Không có `Origin` (không phải trình duyệt) thì vẫn cần vé hợp lệ.
+  - Socket realtime. CORS không áp dụng cho WebSocket, nên `/ws` tự kiểm tra header `Origin`: có `Origin` mà không nằm trong danh sách thì đóng với mã `4403`, trước khi vé bị dùng. Không có `Origin` (không phải trình duyệt) thì vẫn cần vé hợp lệ.
 - `CORSMiddleware` nằm ngoài `InternalKeyMiddleware`, nên preflight được trả lời mà không cần khóa.
 - CORS chỉ là luật của trình duyệt. Nó không chặn curl hay Postman; khóa nội bộ làm việc đó.
 

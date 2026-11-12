@@ -20,12 +20,15 @@ from src.models.organizations import (
     UserRole,
 )
 from src.notifications.events import notify, organization_data
+from src.organizations import signals
 from src.organizations.access import (
     ACTIVE,
     ADMIN_ROLE_CODE,
     admin_user_ids,
     resolve_role,
 )
+from src.organizations.application_notices import tell_managers, withdraw_notices
+from src.organizations.departure import member_gone
 from src.organizations.schemas import (
     ApplicationPage,
     ApplicationResponse,
@@ -122,8 +125,12 @@ def join_organization(
     if needs_approval:
         _submit_application(db, org_id, user_id, message, now)
         _save_member(db, member, org_id, user_id, new_status=APPLIED, joined_at=None)
+        tell_managers(db, org, user_id, message)
+        signals.applications_changed(db, org_id)
     else:
         _save_member(db, member, org_id, user_id, new_status=ACTIVE, joined_at=now)
+        signals.members_changed(db, org_id)
+    signals.membership_changed(db, org_id, user_id)
     try:
         db.commit()
     except IntegrityError as exc:
@@ -147,9 +154,13 @@ def leave_organization(db: Session, org: Organization, user_id: uuid.UUID) -> No
                 MembershipApplication.user_id == user_id,
             )
         )
+        withdraw_notices(db, org, user_id)
+        signals.applications_changed(db, org.id)
+        signals.membership_changed(db, org.id, user_id)
     else:
         member.status = LEFT
         _clear_roles(db, org.id, user_id)
+        member_gone(db, org, user_id, removed=False)
     db.commit()
 
 
@@ -243,6 +254,9 @@ def approve_application(db: Session, org: Organization, user_id: uuid.UUID) -> N
     member.joined_at = datetime.now(UTC)
     db.delete(application)
     notify(db, user_id, "membership_approved", organization_data(org))
+    signals.applications_changed(db, org.id)
+    signals.members_changed(db, org.id)
+    signals.membership_changed(db, org.id, user_id)
     db.commit()
 
 
@@ -253,6 +267,8 @@ def reject_application(db: Session, org: Organization, user_id: uuid.UUID) -> No
     application.answers = None
     application.rejected_at = datetime.now(UTC)
     notify(db, user_id, "membership_rejected", organization_data(org))
+    signals.applications_changed(db, org.id)
+    signals.membership_changed(db, org.id, user_id)
     db.commit()
 
 
@@ -273,6 +289,7 @@ def set_member_role(
     _active_member(db, org.id, user_id)
     if role == "member":
         _clear_roles(db, org.id, user_id)
+        signals.lose_manager_role(db, org.id, user_id)
     else:
         admin_role_id = db.scalar(
             select(Role.id).where(Role.org_id == org.id, Role.code == ADMIN_ROLE_CODE)
@@ -287,6 +304,8 @@ def set_member_role(
             )
             .on_conflict_do_nothing()
         )
+    signals.members_changed(db, org.id)
+    signals.membership_changed(db, org.id, user_id)
     db.commit()
 
 
@@ -303,4 +322,5 @@ def remove_member(
     member = _active_member(db, org.id, user_id)
     member.status = REVOKED
     _clear_roles(db, org.id, user_id)
+    member_gone(db, org, user_id, removed=True)
     db.commit()

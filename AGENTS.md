@@ -48,8 +48,8 @@ Put scratch work in the session scratchpad directory, not in the repository. CI 
 - Refresh tokens are opaque and rotate on every use. Only their SHA-256 hash is stored. `auth_sessions.session_id` equals `auth_refresh_tokens.family_id`. Reusing a rotated token after the grace window ends the session.
 - API errors use `detail` as a stable code from `src/auth/errors.py`. The frontend translates the codes.
 - Without `SMTP_HOST`, emails with their secret links go to the application log. Always set `SMTP_HOST` in production.
-- Every HTTP request needs the `X-Internal-Key` header equal to `INTERNAL_API_KEY` from `.env` (`src/internal_key.py`). It is checked before routing and validation, so callers without it get 401 `internal_key_invalid`, never 422. Only the chat socket is exempt. Test clients send it through `internal_headers()` in `tests/conftest.py`. Details are in `docs/security.md`.
-- Allowed browser origins come from `CORS_ORIGINS` in `.env` (`src/cors.py`): exact origins only, no wildcard, empty allows none. The chat socket refuses a listed-origin mismatch with close code 4403.
+- Every HTTP request needs the `X-Internal-Key` header equal to `INTERNAL_API_KEY` from `.env` (`src/internal_key.py`). It is checked before routing and validation, so callers without it get 401 `internal_key_invalid`, never 422. Only the realtime socket (`/ws`, alias `/ws/chat`) is exempt. Test clients send it through `internal_headers()` in `tests/conftest.py`. Details are in `docs/security.md`.
+- Allowed browser origins come from `CORS_ORIGINS` in `.env` (`src/cors.py`): exact origins only, no wildcard, empty allows none. The realtime socket refuses a listed-origin mismatch with close code 4403.
 - Rate limits use the client IP. Behind a proxy, set uvicorn `--forwarded-allow-ips` to the proxy address so `X-Forwarded-For` is trusted only from there.
 
 ## Organizations and validation
@@ -59,6 +59,13 @@ Put scratch work in the session scratchpad directory, not in the repository. CI 
 - Shared validators live in `src/validation.py`. Single-line and multi-line text reject control characters, because NUL crashes PostgreSQL. Path IDs use the `Uuid7` type.
 - New request bodies reject unknown fields with `extra="forbid"`. Every validation error needs a stable `type` code that the frontend can translate.
 - Numbers and flags in request bodies use `StrictInt`, `StrictFloat`, `StrictDecimal`, and `StrictBool` from `src/validation.py`, so `"5"` is not read as 5 and `"true"` is not read as true. Titles people read use `has_letter` (`text_needs_letter`).
+
+## Realtime
+
+- Details are in `docs/realtime.md`. Code lives in `src/realtime/`. Do not open other sockets or keep other hubs.
+- Send live events with `bus.emit(db, topic, body)` before the commit, or `bus.publish` after it. Events are small signals; pages refetch through the API.
+- When someone loses access, call `bus.revoke` for the topics they lost, because a socket checks access only when it subscribes.
+- Every POST, PUT, PATCH, and DELETE route must be listed in `src/realtime/coverage.py` as `emits:`, `none:`, or `pending:`. A unit test fails otherwise.
 
 ## Activities
 

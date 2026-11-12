@@ -8,7 +8,6 @@ from fastapi import APIRouter, Path, Query, status
 from src.auth.deps import CurrentPrincipal, Db
 from src.auth.errors import api_error
 from src.chat import messages, room_state
-from src.chat.hub import publish
 from src.chat.rooms import Room, load_room
 from src.chat.rules import EMOJI_MAX
 from src.chat.schemas import (
@@ -22,6 +21,8 @@ from src.chat.schemas import (
 )
 from src.chat.views import message_responses
 from src.models.chat import OrgRoomMessage
+from src.realtime.bus import publish
+from src.realtime.names import room_topic
 from src.validation import Uuid7
 
 router = APIRouter(tags=["chat"])
@@ -42,7 +43,7 @@ def _event(kind: str, response: MessageResponse) -> dict[str, object]:
 def _publish_message(db: Db, kind: str, message: OrgRoomMessage) -> None:
     """Sockets get the message without viewer-specific flags, so one copy serves them all."""
     response = message_responses(db, [message], None)[0]
-    publish(message.room_id, _event(kind, response))
+    publish(room_topic(message.room_id), _event(kind, response))
 
 
 def _load_with_room(
@@ -76,7 +77,7 @@ def send_message(
     room = load_room(db, room_id, principal.user.id)
     message = messages.send_message(db, room, principal.user.id, payload)
     response = message_responses(db, [message], principal.user.id)[0]
-    publish(room.room_id, _event("message.created", response))
+    publish(room_topic(room.room_id), _event("message.created", response))
     return response
 
 
@@ -97,7 +98,7 @@ def delete_message(message_id: Uuid7, principal: CurrentPrincipal, db: Db) -> No
     deleted_id = message.message_id
     messages.delete_message(db, room, message, principal.user.id)
     publish(
-        room_key,
+        room_topic(room_key),
         {
             "type": "message.deleted",
             "room_id": str(room_key),
