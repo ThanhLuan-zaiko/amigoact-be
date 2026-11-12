@@ -8,6 +8,7 @@ from fastapi.responses import FileResponse
 
 from src.auth.deps import CurrentPrincipal, Db, OptionalPrincipal
 from src.auth.rate_limit import enforce_rate_limit
+from src.chat.attachments import can_view
 from src.media import service
 from src.media.schemas import MediaResponse
 from src.media.sniff import MAX_VIDEO_BYTES
@@ -47,7 +48,9 @@ def get_media_file(
     root: MediaRoot,
 ) -> FileResponse:
     viewer_id = principal.user.id if principal else None
-    asset = service.load_visible(db, asset_id, viewer_id)
+    asset = service.load_visible(
+        db, asset_id, viewer_id, lambda item: can_view(db, item, viewer_id)
+    )
     path = service.stored_file(root, asset)
     cache = PUBLIC_CACHE if asset.visibility == service.PUBLIC else PRIVATE_CACHE
     return FileResponse(

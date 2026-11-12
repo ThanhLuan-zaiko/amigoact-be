@@ -3,10 +3,14 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import ForeignKey, func
+from sqlalchemy import BigInteger, ForeignKey, func
 from sqlalchemy.orm import Mapped, mapped_column
 
-from src.models import auth, organizations  # noqa: F401  registers the foreign key targets
+from src.models import (  # noqa: F401  registers the foreign key targets
+    auth,
+    media,
+    organizations,
+)
 from src.models.base import Base
 
 
@@ -117,6 +121,44 @@ class OrgRoomReaction(Base):
         ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
     )
     room_id: Mapped[uuid.UUID]
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+
+class ChatAttachmentClaim(Base):
+    """One file belongs to one message. The primary key stops a file being sent twice."""
+
+    __tablename__ = "chat_attachment_claims"
+
+    media_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("media_assets.asset_id", ondelete="CASCADE"), primary_key=True
+    )
+    room_id: Mapped[uuid.UUID]
+    message_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("org_room_messages.message_id", ondelete="CASCADE")
+    )
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+
+class OrgRoomMedia(Base):
+    """The files of a message in their order, and an index of what a room shared."""
+
+    __tablename__ = "org_room_media"
+
+    message_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("org_room_messages.message_id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    item_index: Mapped[int] = mapped_column(primary_key=True)
+    room_id: Mapped[uuid.UUID]
+    # 'image' or 'video' for uploads. The CHECK in schema.sql also allows 'file' and 'link'.
+    kind: Mapped[str]
+    author_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"))
+    media_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("media_assets.asset_id", ondelete="SET NULL")
+    )
+    mime: Mapped[str | None]
+    name: Mapped[str | None]
+    size_bytes: Mapped[int | None] = mapped_column(BigInteger)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
 

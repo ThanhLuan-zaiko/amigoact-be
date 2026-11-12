@@ -3,6 +3,7 @@
 import hashlib
 import re
 import uuid
+from collections.abc import Callable
 from pathlib import Path
 
 from fastapi import status
@@ -99,13 +100,22 @@ def store_upload(
 
 
 def load_visible(
-    db: Session, asset_id: uuid.UUID, viewer_id: uuid.UUID | None
+    db: Session,
+    asset_id: uuid.UUID,
+    viewer_id: uuid.UUID | None,
+    shared_with: Callable[[MediaAsset], bool] | None = None,
 ) -> MediaAsset:
-    """A private file that someone else asks for looks like it does not exist."""
+    """A private file that someone else asks for looks like it does not exist.
+
+    shared_with lets a feature open a private file to more people, as chat does for the
+    people in the room the file was sent to.
+    """
     asset = db.get(MediaAsset, asset_id)
     if asset is None or asset.upload_status != ACTIVE:
         raise api_error(status.HTTP_404_NOT_FOUND, "media_not_found")
-    if asset.visibility != PUBLIC and asset.uploader_id != viewer_id:
+    if asset.visibility == PUBLIC or asset.uploader_id == viewer_id:
+        return asset
+    if shared_with is None or not shared_with(asset):
         raise api_error(status.HTTP_404_NOT_FOUND, "media_not_found")
     return asset
 

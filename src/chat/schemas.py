@@ -4,9 +4,22 @@ import uuid
 from datetime import datetime
 from typing import Annotated, Literal
 
-from pydantic import AfterValidator, BaseModel, Field, StringConstraints
+from pydantic import (
+    AfterValidator,
+    BaseModel,
+    Field,
+    StringConstraints,
+    model_validator,
+)
+from pydantic_core import PydanticCustomError
 
-from src.chat.rules import CHANNEL_NAME_MAX, CHANNEL_TOPIC_MAX, EMOJI_MAX, MESSAGE_LIMIT
+from src.chat.rules import (
+    ATTACHMENT_LIMIT,
+    CHANNEL_NAME_MAX,
+    CHANNEL_TOPIC_MAX,
+    EMOJI_MAX,
+    MESSAGE_LIMIT,
+)
 from src.organizations.schemas import StrictRequest
 from src.validation import Uuid7, multi_line, single_line
 
@@ -22,9 +35,10 @@ ChannelTopic = Annotated[
     ),
     AfterValidator(single_line),
 ]
-MessageBody = Annotated[
+# May be empty when the message carries pictures or videos. The rule lives on the request.
+MessageText = Annotated[
     str,
-    StringConstraints(strip_whitespace=True, min_length=1, max_length=MESSAGE_LIMIT),
+    StringConstraints(strip_whitespace=True, max_length=MESSAGE_LIMIT),
     AfterValidator(multi_line),
 ]
 Emoji = Annotated[
@@ -49,13 +63,30 @@ class DmOpen(StrictRequest):
     user_id: Uuid7
 
 
+def _empty_message() -> PydanticCustomError:
+    return PydanticCustomError("string_too_short", "message needs text or a file")
+
+
 class MessageSend(StrictRequest):
-    body: MessageBody
+    body: MessageText = ""
     reply_to_id: Uuid7 | None = None
+    # Uploaded with POST /media first. The order here is the order in the album.
+    attachment_ids: list[Uuid7] = Field(
+        default_factory=list, max_length=ATTACHMENT_LIMIT
+    )
+
+    @model_validator(mode="after")
+    def _needs_text_or_files(self) -> MessageSend:
+        if not self.body and not self.attachment_ids:
+            raise _empty_message()
+        if len(set(self.attachment_ids)) != len(self.attachment_ids):
+            raise PydanticCustomError("attachment_duplicate", "file sent twice")
+        return self
 
 
 class MessageEdit(StrictRequest):
-    body: MessageBody
+    # Empty only for a message with files; the service checks that against the database.
+    body: MessageText
 
 
 class ReactionAdd(StrictRequest):
@@ -101,12 +132,23 @@ class ReplyPreview(BaseModel):
     body: str
 
 
+class AttachmentResponse(BaseModel):
+    id: uuid.UUID
+    # Relative to the API, like MediaResponse. Only people in the room can read it.
+    url: str
+    kind: str
+    mime: str
+    size_bytes: int
+    name: str | None
+
+
 class MessageResponse(BaseModel):
     id: uuid.UUID
     room_id: uuid.UUID
     author_id: uuid.UUID
     author_name: str
     body: str
+    attachments: list[AttachmentResponse]
     reply_to: ReplyPreview | None
     reactions: list[ReactionCount]
     pinned: bool

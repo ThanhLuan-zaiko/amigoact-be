@@ -17,6 +17,7 @@ from src.auth.account_router import router as account_router
 from src.auth.router import router as auth_router
 from src.certificates.router import router as certificates_router
 from src.certificates.template_router import router as certificate_template_router
+from src.chat.inbox_router import router as chat_inbox_router
 from src.chat.message_router import router as chat_message_router
 from src.chat.router import router as chat_router
 from src.config import get_auth_settings, get_chat_settings, get_settings
@@ -114,4 +115,5 @@ app.include_router(post_comment_router)
 app.include_router(feed_router)
 app.include_router(chat_router)
 app.include_router(chat_message_router)
+app.include_router(chat_inbox_router)
 app.include_router(realtime_router)

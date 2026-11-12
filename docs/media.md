@@ -22,6 +22,7 @@ Nhận ảnh JPEG, PNG, WEBP tối đa 20 MB và video MP4, WEBM tối đa 50 MB
 - Mỗi file được lưu đúng một lần. Ai đang dùng file, và dùng ở đâu, được ghi trong database bằng khóa ngoại trỏ tới `media_assets`, không ghi trong tên hay cấu trúc thư mục.
 - Mỗi tệp mới có quyền `private`. Chỉ người tải lên mới xem được.
 - Gắn ảnh vào đại diện, logo, ảnh bìa tổ chức hoặc ảnh bìa hoạt động thì ảnh chuyển thành `public`. Ai có đường link cũng xem được. Gỡ ảnh khỏi chỗ đó không đổi lại thành `private`.
+- Ảnh và video gửi trong chat vẫn là `private`. Người vào được phòng chứa tin đó cũng xem được (`shared_with` trong `load_visible`, kiểm tra bằng `src/chat/attachments.py`). Tin bị xóa thì chỉ còn người tải lên xem được, cho tới khi lượt dọn tệp xóa nó. Xem [`chat.md`](chat.md#ảnh-và-video).
 - Chỉ người tải lên mới được gắn tệp của mình. Gắn vào tổ chức hoặc hoạt động còn cần quyền quản lý.
 - Cùng một người tải lên cùng một nội dung hai lần thì nhận lại đúng tệp cũ. Người khác tải cùng nội dung thì được một bản riêng, không chia sẻ bản của người trước, vì quyền xem thuộc về người tải lên.
 - Mỗi người tối đa 60 lần tải lên trong một giờ.

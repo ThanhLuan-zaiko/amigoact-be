@@ -6,6 +6,7 @@ from collections import defaultdict
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from src.chat.attachments import attachments_for
 from src.chat.crypto import open_text
 from src.chat.schemas import MessageResponse, ReactionCount, ReplyPreview
 from src.models.auth import User
@@ -49,6 +50,7 @@ def message_responses(
         reactions[message_id].append(
             ReactionCount(emoji=emoji, count=count, mine=(message_id, emoji) in mine)
         )
+    files = attachments_for(db, ids)
     pinned = set(
         db.scalars(
             select(OrgRoomPin.message_id).where(OrgRoomPin.message_id.in_(ids))
@@ -61,6 +63,7 @@ def message_responses(
             author_id=message.author_id,
             author_name=authors.get(message.author_id, ""),
             body=open_text(message.body, message.message_id),
+            attachments=files.get(message.message_id, []),
             reply_to=_reply(message),
             reactions=reactions[message.message_id],
             pinned=message.message_id in pinned,

@@ -29,6 +29,7 @@ Topic không có quyền và topic không tồn tại trả cùng một lỗi `t
    - `{"op": "subscribe", "topic": "org:<id>"}` → `{"op": "subscribed", "topic": ...}` hoặc `{"op": "error", "code": "topic_not_found"}`
    - `{"op": "unsubscribe", "topic": ...}` → `{"op": "unsubscribed", "topic": ...}`
    - `{"op": "ping"}` → `{"op": "pong"}`
+   - `{"op": "typing", "topic": "room:<id>"}` → không trả lời; những người khác đang nghe phòng nhận `{"type": "typing", "room_id", "user_id", "name"}`. Chỉ nhận khi socket đã `subscribe` phòng đó (nếu không: `topic_not_found`; topic không phải phòng: `topic_invalid`). Xem [chat.md](chat.md#đang-nhập).
 4. Khung nhận về:
    - Sự kiện: `{"type": "...", "topic": "...", ...}`
    - Thu hồi: `{"op": "revoked", "topic": "..."}`. Topic phòng có thêm `room_id`.

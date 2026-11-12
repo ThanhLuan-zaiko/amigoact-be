@@ -29,6 +29,9 @@ class Hub:
     def unsubscribe(self, topic: str, socket: WebSocket) -> None:
         self._topics.get(topic, set()).discard(socket)
 
+    def is_subscribed(self, topic: str, socket: WebSocket) -> bool:
+        return socket in self._topics.get(topic, ())
+
     def has_listeners(self, topic: str) -> bool:
         return bool(self._topics.get(topic))
 
@@ -39,6 +42,15 @@ class Hub:
         body = {**event, "topic": topic}
         for socket in list(self._topics.get(topic, ())):
             await self._send(socket, body)
+
+    async def broadcast_except(
+        self, topic: str, event: dict[str, Any], user_id: uuid.UUID
+    ) -> None:
+        """Every listener except the sockets of one person, who knows what they did."""
+        body = {**event, "topic": topic}
+        for socket in list(self._topics.get(topic, ())):
+            if self._owners.get(socket) != user_id:
+                await self._send(socket, body)
 
     async def revoke(self, topics: list[str], user_id: uuid.UUID) -> None:
         """Stop one person's sockets from hearing topics they may no longer read."""

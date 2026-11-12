@@ -16,3 +16,7 @@ ROOM_ORG = "org"
 ROOM_CHANNEL = "channel"
 ROOM_DM = "dm"
 REPLY_PREVIEW = 200
+# A message carries at most this many pictures and videos, like an album.
+ATTACHMENT_LIMIT = 10
+INBOX_PREVIEW = 120
+CONTACT_LIMIT = 1000

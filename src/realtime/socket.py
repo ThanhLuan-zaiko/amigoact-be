@@ -1,5 +1,8 @@
 """The one socket: a one-time ticket in, then subscribe and unsubscribe to topics.
 
+A socket may also send {"op": "typing", "topic": "room:<id>"} on a room it
+subscribed to; see typing_signal.py.
+
 /ws/chat and POST /chat/tickets stay as aliases, and a frame with room_id still
 means the room topic, so older chat clients keep working.
 """
@@ -21,6 +24,7 @@ from src.cors import get_cors_settings, origin_allowed
 from src.realtime.access import can_listen
 from src.realtime.hub import hub
 from src.realtime.names import USER, parse_topic, room_topic
+from src.realtime.typing_signal import SocketState, signal
 
 router = APIRouter(tags=["realtime"])
 
@@ -58,14 +62,18 @@ def _reply(op: str, topic: str, legacy: bool) -> dict[str, Any]:
 
 
 async def _handle(
-    socket: WebSocket, engine: Any, user_id: uuid.UUID, frame: object
+    socket: WebSocket, engine: Any, state: SocketState, frame: object
 ) -> None:
     if not isinstance(frame, dict):
         await socket.send_json({"op": "error", "code": "bad_frame"})
         return
+    user_id = state.user_id
     op = frame.get("op")
     if op == "ping":
         await socket.send_json({"op": "pong"})
+        return
+    if op == "typing":
+        await signal(socket, engine, state, frame)
         return
     if op not in ("subscribe", "unsubscribe"):
         await socket.send_json({"op": "error", "code": "unknown_op"})
@@ -111,6 +119,7 @@ async def realtime_socket(
         return
     await websocket.accept()
     hub.register(websocket, user_id)
+    state = SocketState(user_id)
     try:
         # A session ends after its lifetime, so access is rechecked on a fresh ticket.
         with anyio.move_on_after(SOCKET_LIFETIME_SECONDS) as scope:
@@ -120,7 +129,7 @@ async def realtime_socket(
                 except ValueError:
                     await websocket.send_json({"op": "error", "code": "bad_frame"})
                     continue
-                await _handle(websocket, engine, user_id, frame)
+                await _handle(websocket, engine, state, frame)
         if scope.cancelled_caught:
             await websocket.close(code=EXPIRED_CLOSE)
     except WebSocketDisconnect:

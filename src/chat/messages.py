@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from src.auth.errors import api_error
 from src.auth.rate_limit import enforce_rate_limit
+from src.chat.attachments import has_attachments, link_attachments
 from src.chat.crypto import open_text, seal
 from src.chat.rooms import Room, can_delete, require_writable
 from src.chat.rules import REPLY_PREVIEW, SEND_LIMIT, SEND_WINDOW
@@ -58,6 +59,7 @@ def send_message(
         reply_to_body=reply_body,
     )
     db.add(message)
+    link_attachments(db, room, message, user_id, payload.attachment_ids)
     db.commit()
     return message
 
@@ -69,6 +71,9 @@ def edit_message(
     if message.author_id != user_id:
         raise api_error(status.HTTP_403_FORBIDDEN, "message_forbidden")
     require_writable(room)
+    # A caption may be cleared, but a message never ends up with nothing to show.
+    if not body and not has_attachments(db, message.message_id):
+        raise validation_failure({"body": "string_too_short"})
     message.body = seal(body, message.message_id)
     message.edited_at = datetime.now(UTC)
     db.commit()
@@ -78,7 +83,10 @@ def edit_message(
 def delete_message(
     db: Session, room: Room, message: OrgRoomMessage, user_id: uuid.UUID
 ) -> None:
-    """The author, or a manager outside DMs, deletes. Pins and reactions go with it."""
+    """The author, or a manager outside DMs, deletes. Pins, reactions and files go with it.
+
+    The claims cascade away, so the media cleanup removes the files once nothing uses them.
+    """
     if not can_delete(room, message.author_id, user_id):
         raise api_error(status.HTTP_403_FORBIDDEN, "message_forbidden")
     db.delete(message)
