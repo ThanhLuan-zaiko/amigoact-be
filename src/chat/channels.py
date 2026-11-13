@@ -16,6 +16,7 @@ from src.chat.schemas import ChannelCreate
 from src.models.chat import OrgChannelMember, OrgChatChannel
 from src.models.organizations import Organization
 from src.organizations.access import ACTIVE, get_access
+from src.organizations.permissions import CHANNELS_CREATE, CHANNELS_READ_RESTRICTED
 from src.validation import validation_failure
 
 
@@ -28,7 +29,7 @@ def visible_channels(
         OrgChatChannel.org_id == org.id,
         OrgChatChannel.archived_at.is_(None),
     )
-    if not access.can_manage:
+    if not access.has(CHANNELS_READ_RESTRICTED):
         entered = select(OrgChannelMember.channel_id).where(
             OrgChannelMember.user_id == viewer_id
         )
@@ -55,7 +56,7 @@ def _active_member_ids(
 def create_channel(
     db: Session, org: Organization, user_id: uuid.UUID, payload: ChannelCreate
 ) -> OrgChatChannel:
-    if not get_access(db, org, user_id).can_manage:
+    if not get_access(db, org, user_id).has(CHANNELS_CREATE):
         raise api_error(status.HTTP_403_FORBIDDEN, "organization_forbidden")
     if payload.member_ids and payload.visibility != RESTRICTED:
         raise validation_failure({"member_ids": "needs_restricted_channel"})

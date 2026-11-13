@@ -12,7 +12,8 @@ from src.certificates.template_schemas import (
     TemplateResponse,
     TemplateUpdate,
 )
-from src.organizations.access import require_manager
+from src.organizations.access import require_permission
+from src.organizations.permissions import CERTIFICATES_TEMPLATES
 from src.organizations.service import load_organization
 from src.validation import Uuid7
 
@@ -29,7 +30,7 @@ def create_template(
     slug: Slug, payload: TemplateCreate, principal: CurrentPrincipal, db: Db
 ) -> TemplateResponse:
     org = load_organization(db, slug)
-    require_manager(db, org, principal.user.id)
+    require_permission(db, org, principal.user.id, CERTIFICATES_TEMPLATES)
     template = templates.create_template(db, org, principal.user.id, payload)
     return templates.to_response(template)
 
@@ -37,7 +38,7 @@ def create_template(
 @router.get("/organizations/{slug}/certificate-templates")
 def list_templates(slug: Slug, principal: CurrentPrincipal, db: Db) -> TemplateList:
     org = load_organization(db, slug)
-    require_manager(db, org, principal.user.id)
+    require_permission(db, org, principal.user.id, CERTIFICATES_TEMPLATES)
     rows = templates.list_templates(db, org)
     return TemplateList(items=[templates.to_response(row) for row in rows])
 
@@ -48,7 +49,7 @@ def read_template(
 ) -> TemplateResponse:
     template = templates.load_template(db, template_id)
     org = templates.template_organization(db, template)
-    require_manager(db, org, principal.user.id)
+    require_permission(db, org, principal.user.id, CERTIFICATES_TEMPLATES)
     return templates.to_response(template)
 
 
@@ -61,6 +62,6 @@ def update_template(
 ) -> TemplateResponse:
     template = templates.load_template(db, template_id)
     org = templates.template_organization(db, template)
-    require_manager(db, org, principal.user.id)
+    require_permission(db, org, principal.user.id, CERTIFICATES_TEMPLATES)
     template = templates.update_template(db, template, principal.user.id, payload)
     return templates.to_response(template)

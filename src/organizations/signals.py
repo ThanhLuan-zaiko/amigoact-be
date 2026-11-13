@@ -79,3 +79,8 @@ def lose_membership(db: Session, org_id: uuid.UUID, user_id: uuid.UUID) -> None:
 
 def lose_manager_role(db: Session, org_id: uuid.UUID, user_id: uuid.UUID) -> None:
     bus.revoke(db, user_id, manager_topics(db, org_id, user_id))
+
+
+def roles_changed(db: Session, org_id: uuid.UUID) -> None:
+    """A role was created, edited, moved, or deleted, so open role pages reload."""
+    bus.emit(db, org_topic(org_id), {"type": "roles.changed", "org_id": str(org_id)})

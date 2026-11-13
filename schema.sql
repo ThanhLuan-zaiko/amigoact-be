@@ -434,6 +434,49 @@ CREATE TABLE IF NOT EXISTS user_permission_grants (
     expires_at       timestamptz,
     PRIMARY KEY (org_id, user_id, permission_code)
 );
+
+-- Permissions an organization role can hold, written "module.action". The same codes are
+-- listed in src/organizations/permissions.py, and a unit test keeps the two in step.
+-- Safe to run again.
+INSERT INTO permissions (code, module, description) VALUES
+    ('administrator',            'organization', 'Every permission, and cannot be locked out'),
+    ('organization.update',      'organization', 'Edit the profile, pictures, gallery and visibility'),
+    ('roles.create',             'roles',        'Create roles below your own'),
+    ('roles.update',             'roles',        'Edit and reorder roles below your own'),
+    ('roles.delete',             'roles',        'Delete roles below your own'),
+    ('roles.assign',             'roles',        'Give roles to members and take them away'),
+    ('members.remove',           'members',      'Remove members'),
+    ('applications.review',      'members',      'Approve or reject applications to join'),
+    ('activities.create',        'activities',   'Create activities'),
+    ('activities.update',        'activities',   'Edit, publish, complete and cancel activities and shifts'),
+    ('activities.delete',        'activities',   'Delete activities and shifts, restore from the trash'),
+    ('activities.registrations', 'activities',   'See and decide registrations'),
+    ('attendance.checkin',       'attendance',   'Open sessions and mark or verify attendance'),
+    ('attendance.hours',         'attendance',   'Adjust volunteer hours and set the hour rule'),
+    ('attendance.appeals',       'attendance',   'Decide attendance appeals'),
+    ('certificates.templates',   'certificates', 'Create and edit certificate templates'),
+    ('certificates.issue',       'certificates', 'Issue, revoke and reinstate certificates'),
+    ('posts.announce',           'posts',        'Write announcements'),
+    ('posts.pin',                'posts',        'Pin and unpin posts'),
+    ('posts.moderate',           'posts',        'Hide, remove and restore posts and comments of others'),
+    ('channels.create',          'chat',         'Create chat channels'),
+    ('channels.manage',          'chat',         'Archive channels and manage their members'),
+    ('channels.read_restricted', 'chat',         'Read restricted channels without joining')
+ON CONFLICT (code) DO NOTHING;
+
+-- Retired coarse codes (manage_*). Deleting a code removes it from every role.
+DELETE FROM permissions WHERE code LIKE 'manage\_%';
+
+-- Organizations made before roles carried permissions: their admin role keeps working
+-- (everything except administrator and roles.*, like DEFAULT_ADMIN in code).
+-- Only a role that has no permission yet is filled, so later edits are not undone.
+INSERT INTO role_permissions (role_id, permission_code)
+SELECT r.id, p.code
+FROM roles r CROSS JOIN permissions p
+WHERE r.org_id IS NOT NULL AND r.code = 'admin'
+  AND NOT EXISTS (SELECT 1 FROM role_permissions rp WHERE rp.role_id = r.id)
+  AND p.code <> 'administrator' AND p.code NOT LIKE 'roles.%'
+ON CONFLICT DO NOTHING;
 CREATE INDEX IF NOT EXISTS user_permission_grants_user_idx ON user_permission_grants (user_id);
 
 -- Gộp api_keys + api_keys_by_org.

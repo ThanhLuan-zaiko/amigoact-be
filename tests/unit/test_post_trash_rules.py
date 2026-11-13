@@ -1,6 +1,7 @@
 from datetime import UTC, datetime, timedelta
 
 from src.organizations.access import Access
+from src.organizations.permissions import ALL, DEFAULT_ADMIN
 from src.posts.rules import (
     COMMENT_EDIT_MINUTES,
     TRASH_DAYS,
@@ -31,8 +32,8 @@ def test_comment_is_editable_only_inside_the_window() -> None:
 
 
 def test_owners_and_admins_restore_but_only_owners_purge() -> None:
-    owner = Access(status="active", role="owner")
-    admin = Access(status="active", role="admin")
+    owner = Access(status="active", role="owner", permissions=ALL)
+    admin = Access(status="active", role="admin", permissions=DEFAULT_ADMIN)
     member = Access(status="active", role="member")
     outsider = Access(status=None, role=None)
     assert [may_restore(a) for a in (owner, admin, member, outsider)] == [
@@ -50,4 +51,4 @@ def test_owners_and_admins_restore_but_only_owners_purge() -> None:
 
 
 def test_a_suspended_owner_cannot_purge() -> None:
-    assert may_purge(Access(status="suspended", role="owner")) is False
+    assert may_purge(Access(status="suspended", role="owner", permissions=ALL)) is False

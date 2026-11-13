@@ -59,6 +59,7 @@ def test_member_list_never_exposes_contact_details(
         "user_id",
         "full_name",
         "role",
+        "roles",
         "joined_at",
     }
 

@@ -5,6 +5,7 @@ import unicodedata
 from datetime import datetime, timedelta
 
 from src.organizations.access import ACTIVE, Access
+from src.organizations.permissions import POSTS_ANNOUNCE, POSTS_MODERATE
 
 ANNOUNCEMENT = "announcement"
 DISCUSSION = "discussion"
@@ -40,7 +41,7 @@ def may_post(kind: str, access: Access) -> bool:
     """Any active member can start a discussion. Only managers can announce."""
     if access.status != ACTIVE:
         return False
-    return kind == DISCUSSION or access.can_manage
+    return kind == DISCUSSION or access.has(POSTS_ANNOUNCE)
 
 
 def tag_slug(name: str) -> str | None:
@@ -76,7 +77,7 @@ def comment_editable(created_at: datetime, now: datetime) -> bool:
 
 def may_restore(access: Access) -> bool:
     """Owners and admins bring posts and comments back from the trash."""
-    return access.status == ACTIVE and access.can_manage
+    return access.status == ACTIVE and access.has(POSTS_MODERATE)
 
 
 def may_purge(access: Access) -> bool:

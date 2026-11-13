@@ -8,7 +8,8 @@ from src.models.auth import User
 from src.models.organizations import Organization
 from src.notifications.events import notify, organization_data
 from src.organizations import signals
-from src.organizations.access import admin_user_ids
+from src.organizations.access import staff_user_ids
+from src.organizations.permissions import MEMBERS_REMOVE
 
 
 def member_gone(
@@ -31,6 +32,6 @@ def member_gone(
         "member_id": str(user_id),
         "member_name": member.full_name if member else None,
     }
-    managers = {org.owner_id, *admin_user_ids(db, org.id)} - {user_id}
+    managers = {org.owner_id, *staff_user_ids(db, org.id, MEMBERS_REMOVE)} - {user_id}
     for manager_id in sorted(managers):
         notify(db, manager_id, "member_left", data)

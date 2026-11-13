@@ -29,6 +29,10 @@ LEAVE = (
     "emits: members.changed or applications.changed, membership.changed,"
     " notification.created/deleted; revokes the person's org and room topics"
 )
+ROLES = (
+    "emits: roles.changed and members.changed on org:<id>, membership.changed on"
+    " user:<id> for each holder; a holder who is no longer staff loses org-managers:<id>"
+)
 ROLE = (
     "emits: members.changed on org:<id>, membership.changed on user:<id>;"
     " a demotion revokes org-managers:<id> and restricted rooms"
@@ -76,6 +80,11 @@ ROUTES: dict[tuple[str, str], str] = {
     ("POST", "/organizations/{slug}/applications/{user_id}/approve"): DECIDE,
     ("POST", "/organizations/{slug}/applications/{user_id}/reject"): DECIDE,
     ("PATCH", "/organizations/{slug}/members/{user_id}"): ROLE,
+    ("PUT", "/organizations/{slug}/members/{user_id}/roles"): ROLE,
+    ("POST", "/organizations/{slug}/roles"): ROLES,
+    ("PUT", "/organizations/{slug}/roles/order"): ROLES,
+    ("PATCH", "/organizations/{slug}/roles/{role_id}"): ROLES,
+    ("DELETE", "/organizations/{slug}/roles/{role_id}"): ROLES,
     ("DELETE", "/organizations/{slug}/members/{user_id}"): LEAVE,
     ("POST", "/organizations"): "none: a new organization has nobody watching yet",
     # Later phases

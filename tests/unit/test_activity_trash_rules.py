@@ -14,6 +14,7 @@ from src.activities.trash_rules import (
 )
 from src.models.activities import Activity
 from src.organizations.access import Access
+from src.organizations.permissions import ALL, DEFAULT_ADMIN
 
 DELETED = datetime(2026, 11, 1, tzinfo=UTC)
 
@@ -26,8 +27,8 @@ def test_trash_keeps_an_activity_for_thirty_days() -> None:
 
 
 def test_owners_and_admins_restore_only_the_owner_purges() -> None:
-    owner = Access(status="active", role="owner")
-    admin = Access(status="active", role="admin")
+    owner = Access(status="active", role="owner", permissions=ALL)
+    admin = Access(status="active", role="admin", permissions=DEFAULT_ADMIN)
     member = Access(status="active", role="member")
     outsider = Access(status=None, role=None)
     assert [may_restore(a) for a in (owner, admin, member, outsider)] == [

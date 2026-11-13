@@ -18,6 +18,7 @@ from pydantic_core import PydanticCustomError
 
 from src.auth.schemas import Address, Phone, ShortText, TaxCode, field_errors
 from src.organizations.gallery_items import MAX_GALLERY_ITEMS
+from src.organizations.role_schemas import MemberRoleBadge
 from src.validation import StrictBool, Uuid7, multi_line, single_line
 
 OrgRole = Literal["owner", "admin", "member"]
@@ -188,6 +189,8 @@ class ViewerMembership(BaseModel):
     status: str | None = None
     role: OrgRole | None = None
     can_manage: bool = False
+    # Permission codes held. The owner holds all of them.
+    permissions: list[str] = Field(default_factory=list)
     # Set while a rejected applicant has to wait before applying again.
     reapply_after: datetime | None = None
 
@@ -224,6 +227,7 @@ class MemberResponse(BaseModel):
     user_id: uuid.UUID
     full_name: str
     role: OrgRole
+    roles: list[MemberRoleBadge] = Field(default_factory=list)
     joined_at: datetime | None
 
 

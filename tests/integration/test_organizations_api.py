@@ -33,12 +33,14 @@ def test_any_user_can_create_and_becomes_the_owner(
     assert body["slug"] == f"clb-{api.tag}"
     assert body["member_count"] == 1
     assert body["owner_name"] == "Test User"
-    assert body["viewer"] == {
+    viewer = body["viewer"]
+    assert {k: v for k, v in viewer.items() if k != "permissions"} == {
         "status": "active",
         "role": "owner",
         "can_manage": True,
         "reapply_after": None,
     }
+    assert "administrator" in viewer["permissions"]
     with app.state.engine.connect() as connection:
         org_id = connection.scalar(
             select(Organization.id).where(Organization.slug == body["slug"])

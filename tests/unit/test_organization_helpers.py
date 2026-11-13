@@ -6,6 +6,7 @@ from pydantic import ValidationError
 from src.models import organizations  # noqa: F401  registers the tables
 from src.models.base import Base
 from src.organizations.access import Access, resolve_role
+from src.organizations.permissions import ALL, DEFAULT_ADMIN
 from src.organizations.schemas import (
     JoinRequest,
     OrganizationCreateRequest,
@@ -73,8 +74,8 @@ def test_only_active_members_have_a_role(status: str | None) -> None:
 
 
 def test_only_owner_and_admin_can_manage() -> None:
-    assert Access(status="active", role="owner").can_manage
-    assert Access(status="active", role="admin").can_manage
+    assert Access(status="active", role="owner", permissions=ALL).can_manage
+    assert Access(status="active", role="admin", permissions=DEFAULT_ADMIN).can_manage
     assert not Access(status="active", role="member").can_manage
     assert not Access(status=None, role=None).can_manage
 

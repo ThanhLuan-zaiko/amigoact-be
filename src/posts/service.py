@@ -14,6 +14,7 @@ from src.models.media import MediaAsset
 from src.models.organizations import Organization
 from src.models.posts import OrgPost, PostMedia, PostTag
 from src.organizations.access import get_access
+from src.organizations.permissions import POSTS_MODERATE, POSTS_PIN
 from src.posts.activity_link import check_linkable
 from src.posts.rules import (
     MEMBERS,
@@ -164,7 +165,7 @@ def publish_post(
 def set_pinned(
     db: Session, post: OrgPost, org: Organization, user_id: uuid.UUID, pinned: bool
 ) -> None:
-    if not get_access(db, org, user_id).can_manage:
+    if not get_access(db, org, user_id).has(POSTS_PIN):
         raise _forbidden()
     if post.status != POST_ACTIVE:
         raise api_error(status.HTTP_409_CONFLICT, "post_not_published")
@@ -186,7 +187,9 @@ def delete_post(
         db.delete(post)
         db.commit()
         return
-    if post.author_id != user_id and not get_access(db, org, user_id).can_manage:
+    if post.author_id != user_id and not get_access(db, org, user_id).has(
+        POSTS_MODERATE
+    ):
         raise _forbidden()
     post.deleted_at = datetime.now(UTC)
     post.deleted_by = user_id

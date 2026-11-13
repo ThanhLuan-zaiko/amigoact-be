@@ -12,6 +12,7 @@ from src.chat.rules import RESTRICTED, ROOM_CHANNEL, ROOM_DM, ROOM_ORG
 from src.models.chat import OrgChannelMember, OrgChatChannel, OrgDmPair
 from src.models.organizations import Organization
 from src.organizations.access import ACTIVE, get_access
+from src.organizations.permissions import CHANNELS_MANAGE, CHANNELS_READ_RESTRICTED
 from src.organizations.service import live_organization
 from src.posts.visibility import load_live_org
 
@@ -45,7 +46,7 @@ def load_room(db: Session, room_id: uuid.UUID, viewer_id: uuid.UUID) -> Room:
         access = get_access(db, org, viewer_id)
         if access.status != ACTIVE:
             raise _not_found()
-        return Room(room_id, org.id, ROOM_ORG, None, access.can_manage)
+        return Room(room_id, org.id, ROOM_ORG, None, access.has(CHANNELS_MANAGE))
 
     channel = db.get(OrgChatChannel, room_id)
     if channel is not None:
@@ -53,10 +54,12 @@ def load_room(db: Session, room_id: uuid.UUID, viewer_id: uuid.UUID) -> Room:
         access = get_access(db, org, viewer_id)
         if access.status != ACTIVE:
             raise _not_found()
-        hidden = channel.visibility == RESTRICTED and not access.can_manage
+        hidden = channel.visibility == RESTRICTED and not access.has(
+            CHANNELS_READ_RESTRICTED
+        )
         if hidden and not is_channel_member(db, channel.channel_id, viewer_id):
             raise _not_found()
-        return Room(room_id, org.id, ROOM_CHANNEL, channel, access.can_manage)
+        return Room(room_id, org.id, ROOM_CHANNEL, channel, access.has(CHANNELS_MANAGE))
 
     pair = db.scalar(select(OrgDmPair).where(OrgDmPair.room_id == room_id))
     if pair is not None and viewer_id in (pair.user_lo, pair.user_hi):

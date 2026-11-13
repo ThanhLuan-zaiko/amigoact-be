@@ -11,7 +11,8 @@ from src.activities import service as activity_service
 from src.auth.deps import CurrentPrincipal, Db
 from src.media import service
 from src.media.schemas import AttachRequest
-from src.organizations.access import require_manager
+from src.organizations.access import require_permission
+from src.organizations.permissions import ACTIVITIES_UPDATE, ORGANIZATION_UPDATE
 from src.organizations.service import load_organization
 from src.validation import Uuid7
 
@@ -34,7 +35,7 @@ def set_logo(
     db: Db,
 ) -> None:
     org = load_organization(db, slug)
-    require_manager(db, org, principal.user.id)
+    require_permission(db, org, principal.user.id, ORGANIZATION_UPDATE)
     org.logo_media_id = _attach(db, payload, principal.user.id)
     db.commit()
 
@@ -47,7 +48,7 @@ def set_org_cover(
     db: Db,
 ) -> None:
     org = load_organization(db, slug)
-    require_manager(db, org, principal.user.id)
+    require_permission(db, org, principal.user.id, ORGANIZATION_UPDATE)
     org.cover_media_id = _attach(db, payload, principal.user.id)
     db.commit()
 
@@ -60,7 +61,9 @@ def set_activity_cover(
     db: Db,
 ) -> None:
     activity = activity_service.load_activity(db, activity_id)
-    activity_service.require_activity_manager(db, activity, principal.user.id)
+    activity_service.require_activity_manager(
+        db, activity, principal.user.id, ACTIVITIES_UPDATE
+    )
     activity.cover_media_id = _attach(db, payload, principal.user.id)
     db.commit()
 

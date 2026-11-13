@@ -13,11 +13,11 @@ Tài liệu này mô tả phần tổ chức của backend. Code nằm trong [`s
 
 | Vai trò | Xác định bằng | Được làm |
 | ---- | ---- | ---- |
-| Chủ sở hữu | `organizations.owner_id` | Mọi việc của quản trị viên, thêm việc cấp và bỏ quyền quản trị, xóa quản trị viên |
-| Quản trị viên | Role `admin` của tổ chức trong `user_roles` | Sửa hồ sơ, duyệt yêu cầu, xóa thành viên thường |
+| Chủ sở hữu | `organizations.owner_id` | Mọi quyền, và đứng trên mọi vai trò |
+| Quản trị viên | Giữ ít nhất một quyền qua vai trò trong `user_roles` | Theo quyền của các vai trò đã giữ, xem [`roles.md`](roles.md) |
 | Thành viên | `organization_members.status = 'active'` | Xem danh sách thành viên |
 
-Role `admin` được tạo cùng tổ chức, nên không cần dữ liệu khởi tạo trong `schema.sql`. Chỉ thành viên đang `active` mới có vai trò, kể cả khi còn dòng cũ trong `user_roles`.
+Vai trò mẫu `admin` được tạo cùng tổ chức. Chỉ thành viên đang `active` mới có vai trò, kể cả khi còn dòng cũ trong `user_roles`. Vai trò tùy chỉnh và quyền chi tiết nằm trong [`roles.md`](roles.md).
 
 ### Tham gia
 
@@ -50,18 +50,18 @@ Chủ sở hữu không rời được tổ chức và không bị gỡ khỏi t
 | GET | `/organizations?q=&limit=&offset=&exclude_owned=` | Công khai. Chỉ liệt kê tổ chức có `listed_publicly = true`. `exclude_owned=true` bỏ tổ chức người đang đăng nhập sở hữu ngay trong truy vấn, nên mỗi trang vẫn đủ số dòng. Khách không đăng nhập thì tham số này không có tác dụng |
 | GET | `/organizations/mine` | Đã đăng nhập |
 | GET | `/organizations/{slug}` | Công khai |
-| PATCH | `/organizations/{slug}` | Quản trị viên |
+| PATCH | `/organizations/{slug}` | `organization.update` |
 | DELETE | `/organizations/{slug}` | Chủ sở hữu: xóa mềm, trả về 204 |
 | GET | `/organizations/mine/deleted` | Đã đăng nhập: thùng rác của chính mình |
 | POST | `/organizations/mine/deleted/{org_id}/restore` | Chủ sở hữu: khôi phục từ thùng rác |
 | POST | `/organizations/{slug}/join` | Đã đăng nhập |
 | DELETE | `/organizations/{slug}/membership` | Đã đăng nhập: rời hoặc rút yêu cầu |
 | GET | `/organizations/{slug}/members` | Thành viên |
-| PATCH | `/organizations/{slug}/members/{user_id}` | Chủ sở hữu |
-| DELETE | `/organizations/{slug}/members/{user_id}` | Quản trị viên |
-| GET | `/organizations/{slug}/applications` | Quản trị viên |
-| POST | `/organizations/{slug}/applications/{user_id}/approve` | Quản trị viên |
-| POST | `/organizations/{slug}/applications/{user_id}/reject` | Quản trị viên |
+| PATCH | `/organizations/{slug}/members/{user_id}` | Chủ sở hữu: lối tắt gán hoặc gỡ vai trò `admin` |
+| DELETE | `/organizations/{slug}/members/{user_id}` | `members.remove`, và chỉ với người có vai trò thấp hơn |
+| GET | `/organizations/{slug}/applications` | `applications.review` |
+| POST | `/organizations/{slug}/applications/{user_id}/approve` | `applications.review` |
+| POST | `/organizations/{slug}/applications/{user_id}/reject` | `applications.review` |
 
 `GET /organizations/mine` trả thêm `logo_url` và `cover_url`, cùng dạng với chi tiết tổ chức, để thẻ "Tổ chức của tôi" hiện ảnh. Hai trường này lấy từ dòng tổ chức, không tốn truy vấn thêm.
 
@@ -223,5 +223,8 @@ Giờ tình nguyện đã duyệt không bị xóa. `volunteer_hour_ledger` là 
 | `application_cooldown` | 409 |
 | `membership_suspended` | 403 |
 | `owner_cannot_leave`, `owner_role_locked`, `owner_cannot_be_removed`, `cannot_remove_self` | 409 |
+| `role_hierarchy`, `permission_not_held` | 403 |
+| `role_not_found` | 404 |
+| `role_limit_reached`, `role_name_taken` | 409 |
 | `not_a_member`, `member_not_found`, `application_not_found` | 404 |
 | `organization_has_open_activities`, `slug_taken` | 409 |

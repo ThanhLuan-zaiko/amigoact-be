@@ -87,7 +87,7 @@ def list_organization_activities(
 ) -> ActivityPage:
     """Activities people can see. Drafts are a separate list for managers."""
     if view == "draft" and (
-        user_id is None or not get_access(db, org, user_id).can_manage
+        user_id is None or not get_access(db, org, user_id).has_any("activities")
     ):
         raise api_error(status.HTTP_403_FORBIDDEN, "organization_forbidden")
     query = with_activity_tag(summary_query().where(Activity.org_id == org.id), tag)

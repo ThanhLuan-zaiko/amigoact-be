@@ -3,6 +3,7 @@
 from datetime import datetime, timedelta
 
 from src.organizations.access import ACTIVE, Access
+from src.organizations.permissions import ACTIVITIES_DELETE
 
 # A deleted draft stays in the trash this long, then it is removed for good.
 TRASH_DAYS = 30
@@ -19,7 +20,7 @@ def trash_expired(deleted_at: datetime, now: datetime) -> bool:
 
 def may_restore(access: Access) -> bool:
     """Owners and admins see the trash and bring activities back."""
-    return access.status == ACTIVE and access.can_manage
+    return access.status == ACTIVE and access.has(ACTIVITIES_DELETE)
 
 
 def may_purge(access: Access) -> bool:

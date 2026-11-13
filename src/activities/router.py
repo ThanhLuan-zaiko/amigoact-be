@@ -31,7 +31,13 @@ from src.attendance import hours
 from src.attendance.sessions import close_all_sessions
 from src.auth.deps import CurrentPrincipal, Db, OptionalPrincipal
 from src.notifications.delivery import deliver_emails
-from src.organizations.access import require_manager
+from src.organizations.access import require_permission
+from src.organizations.permissions import (
+    ACTIVITIES_CREATE,
+    ACTIVITIES_DELETE,
+    ACTIVITIES_REGISTRATIONS,
+    ACTIVITIES_UPDATE,
+)
 from src.organizations.service import load_organization
 from src.posts.rules import TAG_NAME_MAX, TAG_SUGGEST_LIMIT, TAG_SUGGEST_MAX
 from src.posts.schemas import TagSuggestion, TagSuggestionList
@@ -102,7 +108,7 @@ def create_activity(
 ) -> ActivityDetail:
     user_id = principal.user.id
     org = load_organization(db, slug)
-    require_manager(db, org, user_id)
+    require_permission(db, org, user_id, ACTIVITIES_CREATE)
     activity = service.create_activity(db, org.id, user_id, payload)
     return service.activity_detail(db, activity, user_id)
 
@@ -126,7 +132,7 @@ def update_activity(
 ) -> ActivityDetail:
     user_id = principal.user.id
     activity = service.load_activity(db, activity_id, lock=True)
-    service.require_activity_manager(db, activity, user_id)
+    service.require_activity_manager(db, activity, user_id, ACTIVITIES_UPDATE)
     service.update_activity(db, activity, payload)
     if "max_participants" in payload.model_fields_set:
         registrations.promote_waitlist(db, activity, None, user_id)
@@ -137,7 +143,7 @@ def update_activity(
 @router.delete("/activities/{activity_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_activity(activity_id: Uuid7, principal: CurrentPrincipal, db: Db) -> None:
     activity = service.load_activity(db, activity_id, lock=True)
-    service.require_activity_manager(db, activity, principal.user.id)
+    service.require_activity_manager(db, activity, principal.user.id, ACTIVITIES_DELETE)
     service.delete_draft(db, activity)
 
 
@@ -147,7 +153,7 @@ def publish_activity(
 ) -> ActivityDetail:
     user_id = principal.user.id
     activity = service.load_activity(db, activity_id, lock=True)
-    service.require_activity_manager(db, activity, user_id)
+    service.require_activity_manager(db, activity, user_id, ACTIVITIES_UPDATE)
     publishing.publish_activity(db, activity)
     return service.activity_detail(db, activity, user_id)
 
@@ -158,7 +164,7 @@ def complete_activity(
 ) -> ActivityDetail:
     user_id = principal.user.id
     activity = service.load_activity(db, activity_id, lock=True)
-    service.require_activity_manager(db, activity, user_id)
+    service.require_activity_manager(db, activity, user_id, ACTIVITIES_UPDATE)
     service.require_completable(activity)
     hours.award_for_completion(db, activity, user_id)
     service.complete_activity(db, activity)
@@ -171,7 +177,7 @@ def cancel_activity(
 ) -> ActivityDetail:
     user_id = principal.user.id
     activity = service.load_activity(db, activity_id, lock=True)
-    service.require_activity_manager(db, activity, user_id)
+    service.require_activity_manager(db, activity, user_id, ACTIVITIES_UPDATE)
     close_all_sessions(db, activity.id)
     service.cancel_activity(db, activity, user_id)
     return service.activity_detail(db, activity, user_id)
@@ -185,7 +191,7 @@ def create_shift(
     db: Db,
 ) -> ShiftResponse:
     activity = service.load_activity(db, activity_id, lock=True)
-    service.require_activity_manager(db, activity, principal.user.id)
+    service.require_activity_manager(db, activity, principal.user.id, ACTIVITIES_UPDATE)
     return shifts.create_shift(db, activity, payload)
 
 
@@ -198,7 +204,7 @@ def update_shift(
     db: Db,
 ) -> ShiftResponse:
     activity = service.load_activity(db, activity_id, lock=True)
-    service.require_activity_manager(db, activity, principal.user.id)
+    service.require_activity_manager(db, activity, principal.user.id, ACTIVITIES_UPDATE)
     return shifts.update_shift(db, activity, shift_id, payload)
 
 
@@ -213,7 +219,7 @@ def delete_shift(
     db: Db,
 ) -> None:
     activity = service.load_activity(db, activity_id, lock=True)
-    service.require_activity_manager(db, activity, principal.user.id)
+    service.require_activity_manager(db, activity, principal.user.id, ACTIVITIES_DELETE)
     shifts.delete_shift(db, activity, shift_id)
 
 
@@ -244,7 +250,9 @@ def list_activity_registrations(
     offset: Offset = 0,
 ) -> RegistrationPage:
     activity = service.load_activity(db, activity_id)
-    service.require_activity_manager(db, activity, principal.user.id)
+    service.require_activity_manager(
+        db, activity, principal.user.id, ACTIVITIES_REGISTRATIONS
+    )
     return registration_lists.list_activity_registrations(
         db, activity.id, registration_status, limit, offset
     )
@@ -278,7 +286,9 @@ def approve_registration(
 ) -> None:
     activity_id = registrations.activity_id_of(db, registration_id)
     activity = service.load_activity(db, activity_id, lock=True)
-    service.require_activity_manager(db, activity, principal.user.id)
+    service.require_activity_manager(
+        db, activity, principal.user.id, ACTIVITIES_REGISTRATIONS
+    )
     registrations.approve_registration(
         db, registration_id, principal.user.id, payload.note
     )
@@ -296,7 +306,9 @@ def reject_registration(
 ) -> None:
     activity_id = registrations.activity_id_of(db, registration_id)
     activity = service.load_activity(db, activity_id, lock=True)
-    service.require_activity_manager(db, activity, principal.user.id)
+    service.require_activity_manager(
+        db, activity, principal.user.id, ACTIVITIES_REGISTRATIONS
+    )
     registrations.reject_registration(
         db, activity, registration_id, principal.user.id, payload.note
     )

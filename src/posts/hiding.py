@@ -14,12 +14,13 @@ from src.auth.errors import api_error
 from src.models.organizations import Organization
 from src.models.posts import OrgPost
 from src.organizations.access import ACTIVE, Access, get_access
+from src.organizations.permissions import POSTS_MODERATE
 from src.posts.rules import POST_ACTIVE
 
 
 def sees_hidden(access: Access | None) -> bool:
     """Only an active owner or admin sees hidden posts."""
-    return access is not None and access.status == ACTIVE and access.can_manage
+    return access is not None and access.status == ACTIVE and access.has(POSTS_MODERATE)
 
 
 def viewer_sees_hidden(

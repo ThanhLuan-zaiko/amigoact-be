@@ -2,6 +2,7 @@ import pytest
 from pydantic import ValidationError
 
 from src.organizations.access import Access
+from src.organizations.permissions import DEFAULT_ADMIN
 from src.posts.rules import (
     ANNOUNCEMENT,
     DISCUSSION,
@@ -26,7 +27,7 @@ def test_outsiders_and_pending_members_cannot_post() -> None:
 
 def test_any_active_member_may_discuss_but_only_managers_announce() -> None:
     member = Access(status="active", role="member")
-    manager = Access(status="active", role="admin")
+    manager = Access(status="active", role="admin", permissions=DEFAULT_ADMIN)
     assert may_post(DISCUSSION, member) is True
     assert may_post(ANNOUNCEMENT, member) is False
     assert may_post(ANNOUNCEMENT, manager) is True

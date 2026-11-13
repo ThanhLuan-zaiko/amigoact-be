@@ -17,6 +17,7 @@ from src.models.auth import User
 from src.models.organizations import Organization
 from src.models.posts import OrgPost, PostComment
 from src.organizations.access import ACTIVE, get_access
+from src.organizations.permissions import POSTS_MODERATE
 from src.posts.rules import (
     COMMENT_LIMIT,
     POST_ACTIVE,
@@ -97,7 +98,9 @@ def delete_comment(
     """The comment's author or a manager may hide it. The row stays for a restore."""
     if comment.deleted_at is not None:
         raise _not_found()
-    if comment.author_id != user_id and not get_access(db, org, user_id).can_manage:
+    if comment.author_id != user_id and not get_access(db, org, user_id).has(
+        POSTS_MODERATE
+    ):
         raise _forbidden()
     comment.deleted_at = datetime.now(UTC)
     db.commit()

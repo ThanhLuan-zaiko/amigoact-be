@@ -7,7 +7,12 @@ from fastapi import APIRouter, Depends, Path, Query, status
 from src.auth.deps import CurrentPrincipal, Db, OptionalPrincipal
 from src.notifications.delivery import deliver_emails
 from src.organizations import deletion, membership, purge, service
-from src.organizations.access import require_manager, require_member, require_owner
+from src.organizations.access import require_member, require_owner, require_permission
+from src.organizations.permissions import (
+    APPLICATIONS_REVIEW,
+    MEMBERS_REMOVE,
+    ORGANIZATION_UPDATE,
+)
 from src.organizations.schemas import (
     ApplicationPage,
     DeletedOrganization,
@@ -84,7 +89,7 @@ def update_organization(
 ) -> OrganizationDetail:
     user_id = principal.user.id
     org = service.load_organization(db, slug)
-    require_manager(db, org, user_id)
+    require_permission(db, org, user_id, ORGANIZATION_UPDATE)
     service.update_organization(db, org, payload, user_id)
     return service.organization_detail(db, org, user_id)
 
@@ -163,7 +168,7 @@ def remove_member(
     slug: Slug, user_id: Uuid7, principal: CurrentPrincipal, db: Db
 ) -> None:
     org = service.load_organization(db, slug)
-    require_manager(db, org, principal.user.id)
+    require_permission(db, org, principal.user.id, MEMBERS_REMOVE)
     membership.remove_member(db, org, principal.user.id, user_id)
 
 
@@ -176,7 +181,7 @@ def list_applications(
     offset: Offset = 0,
 ) -> ApplicationPage:
     org = service.load_organization(db, slug)
-    require_manager(db, org, principal.user.id)
+    require_permission(db, org, principal.user.id, APPLICATIONS_REVIEW)
     return membership.list_applications(db, org, limit, offset)
 
 
@@ -188,7 +193,7 @@ def approve_application(
     slug: Slug, user_id: Uuid7, principal: CurrentPrincipal, db: Db
 ) -> None:
     org = service.load_organization(db, slug)
-    require_manager(db, org, principal.user.id)
+    require_permission(db, org, principal.user.id, APPLICATIONS_REVIEW)
     membership.approve_application(db, org, user_id)
 
 
@@ -200,5 +205,5 @@ def reject_application(
     slug: Slug, user_id: Uuid7, principal: CurrentPrincipal, db: Db
 ) -> None:
     org = service.load_organization(db, slug)
-    require_manager(db, org, principal.user.id)
+    require_permission(db, org, principal.user.id, APPLICATIONS_REVIEW)
     membership.reject_application(db, org, user_id)

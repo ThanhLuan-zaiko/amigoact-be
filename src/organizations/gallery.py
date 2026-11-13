@@ -13,8 +13,9 @@ from src.auth.errors import api_error
 from src.media import service as media_service
 from src.models.media import MediaAsset
 from src.models.organizations import Organization, OrganizationMedia
-from src.organizations.access import require_manager
+from src.organizations.access import require_permission
 from src.organizations.gallery_items import MAX_GALLERY_ITEMS
+from src.organizations.permissions import ORGANIZATION_UPDATE
 from src.organizations.pictures import picture_url
 from src.organizations.service import load_organization
 from src.validation import Uuid7
@@ -92,7 +93,7 @@ def add_to_gallery(
     db: Db,
 ) -> list[GalleryItem]:
     org = load_organization(db, slug)
-    require_manager(db, org, principal.user.id)
+    require_permission(db, org, principal.user.id, ORGANIZATION_UPDATE)
     add_item(db, org, payload.asset_id, principal.user.id)
     return list_items(db, org.id)
 
@@ -102,7 +103,7 @@ def remove_from_gallery(
     slug: Slug, asset_id: Uuid7, principal: CurrentPrincipal, db: Db
 ) -> None:
     org = load_organization(db, slug)
-    require_manager(db, org, principal.user.id)
+    require_permission(db, org, principal.user.id, ORGANIZATION_UPDATE)
     item = db.get(OrganizationMedia, (org.id, asset_id))
     if item is None:
         raise api_error(status.HTTP_404_NOT_FOUND, "media_not_found")

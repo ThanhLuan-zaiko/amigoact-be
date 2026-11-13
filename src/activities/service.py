@@ -78,10 +78,13 @@ def load_activity(
 
 
 def require_activity_manager(
-    db: Session, activity: Activity, user_id: uuid.UUID
+    db: Session,
+    activity: Activity,
+    user_id: uuid.UUID,
+    permission: str,
 ) -> None:
     org = db.get(Organization, activity.org_id)
-    if org is None or not get_access(db, org, user_id).can_manage:
+    if org is None or not get_access(db, org, user_id).has(permission):
         raise api_error(status.HTTP_403_FORBIDDEN, "organization_forbidden")
 
 
@@ -89,7 +92,7 @@ def _can_manage(db: Session, activity: Activity, user_id: uuid.UUID | None) -> b
     org = db.get(Organization, activity.org_id)
     if user_id is None or org is None:
         return False
-    return get_access(db, org, user_id).can_manage
+    return get_access(db, org, user_id).has_any("activities")
 
 
 def activity_detail(

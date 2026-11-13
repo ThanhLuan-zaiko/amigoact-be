@@ -18,6 +18,7 @@ from src.certificates.schemas import (
 )
 from src.media.router import MediaRoot
 from src.notifications.delivery import deliver_emails
+from src.organizations.permissions import CERTIFICATES_ISSUE
 from src.validation import Uuid7
 
 router = APIRouter(tags=["certificates"], dependencies=[Depends(deliver_emails)])
@@ -42,7 +43,9 @@ def issue_certificates(
     payload: IssueRequest | None = None,
 ) -> IssueResult:
     activity = activity_service.load_activity(db, activity_id, lock=True)
-    activity_service.require_activity_manager(db, activity, principal.user.id)
+    activity_service.require_activity_manager(
+        db, activity, principal.user.id, CERTIFICATES_ISSUE
+    )
     template_id = None
     if payload is not None and payload.template_id is not None:
         template = templates.usable_template(db, activity.org_id, payload.template_id)
@@ -55,7 +58,9 @@ def activity_certificates(
     activity_id: Uuid7, principal: CurrentPrincipal, db: Db
 ) -> ActivityCertificates:
     activity = activity_service.load_activity(db, activity_id)
-    activity_service.require_activity_manager(db, activity, principal.user.id)
+    activity_service.require_activity_manager(
+        db, activity, principal.user.id, CERTIFICATES_ISSUE
+    )
     return service.activity_certificates(db, activity.id)
 
 
@@ -100,7 +105,9 @@ def revoke_certificate(
 ) -> None:
     certificate = service.load_certificate(db, certificate_id)
     activity = activity_service.load_activity(db, certificate.activity_id)
-    activity_service.require_activity_manager(db, activity, principal.user.id)
+    activity_service.require_activity_manager(
+        db, activity, principal.user.id, CERTIFICATES_ISSUE
+    )
     service.revoke_certificate(db, certificate, principal.user.id, payload.reason)
 
 
@@ -113,5 +120,7 @@ def reinstate_certificate(
 ) -> None:
     certificate = service.load_certificate(db, certificate_id)
     activity = activity_service.load_activity(db, certificate.activity_id)
-    activity_service.require_activity_manager(db, activity, principal.user.id)
+    activity_service.require_activity_manager(
+        db, activity, principal.user.id, CERTIFICATES_ISSUE
+    )
     service.reinstate_certificate(db, certificate)

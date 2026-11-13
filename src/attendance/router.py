@@ -26,7 +26,12 @@ from src.auth.deps import Client, CurrentPrincipal, Db
 from src.auth.errors import api_error
 from src.models.activities import Registration
 from src.notifications.delivery import deliver_emails
-from src.organizations.access import require_manager
+from src.organizations.access import require_permission
+from src.organizations.permissions import (
+    ATTENDANCE_APPEALS,
+    ATTENDANCE_CHECKIN,
+    ATTENDANCE_HOURS,
+)
 from src.organizations.service import load_organization
 from src.validation import Uuid7
 
@@ -47,7 +52,9 @@ def create_session(
     db: Db,
 ) -> SessionResponse:
     activity = activity_service.load_activity(db, activity_id, lock=True)
-    activity_service.require_activity_manager(db, activity, principal.user.id)
+    activity_service.require_activity_manager(
+        db, activity, principal.user.id, ATTENDANCE_CHECKIN
+    )
     return sessions.create_session(db, activity, principal.user.id, payload)
 
 
@@ -56,7 +63,9 @@ def list_sessions(
     activity_id: Uuid7, principal: CurrentPrincipal, db: Db
 ) -> list[SessionResponse]:
     activity = activity_service.load_activity(db, activity_id)
-    activity_service.require_activity_manager(db, activity, principal.user.id)
+    activity_service.require_activity_manager(
+        db, activity, principal.user.id, ATTENDANCE_CHECKIN
+    )
     return sessions.list_sessions(db, activity.id)
 
 
@@ -69,7 +78,9 @@ def close_session(session_id: Uuid7, principal: CurrentPrincipal, db: Db) -> Non
     activity = activity_service.load_activity(
         db, sessions.activity_id_of_session(db, session)
     )
-    activity_service.require_activity_manager(db, activity, principal.user.id)
+    activity_service.require_activity_manager(
+        db, activity, principal.user.id, ATTENDANCE_CHECKIN
+    )
     sessions.close_session(db, session)
 
 
@@ -81,7 +92,9 @@ def session_roster(
     activity = activity_service.load_activity(
         db, sessions.activity_id_of_session(db, session)
     )
-    activity_service.require_activity_manager(db, activity, principal.user.id)
+    activity_service.require_activity_manager(
+        db, activity, principal.user.id, ATTENDANCE_CHECKIN
+    )
     return records.session_roster(db, activity.id, session)
 
 
@@ -99,7 +112,9 @@ def mark_attended(
     activity = activity_service.load_activity(
         db, sessions.activity_id_of_session(db, session)
     )
-    activity_service.require_activity_manager(db, activity, principal.user.id)
+    activity_service.require_activity_manager(
+        db, activity, principal.user.id, ATTENDANCE_CHECKIN
+    )
     records.mark_attended(
         db, activity, session, payload.registration_id, principal.user.id
     )
@@ -112,7 +127,9 @@ def mark_attended(
 def verify_record(record_id: Uuid7, principal: CurrentPrincipal, db: Db) -> None:
     record = records.load_record(db, record_id)
     activity = activity_service.load_activity(db, record.activity_id)
-    activity_service.require_activity_manager(db, activity, principal.user.id)
+    activity_service.require_activity_manager(
+        db, activity, principal.user.id, ATTENDANCE_CHECKIN
+    )
     records.verify_record(db, activity, record, principal.user.id)
 
 
@@ -122,7 +139,9 @@ def verify_record(record_id: Uuid7, principal: CurrentPrincipal, db: Db) -> None
 def delete_record(record_id: Uuid7, principal: CurrentPrincipal, db: Db) -> None:
     record = records.load_record(db, record_id)
     activity = activity_service.load_activity(db, record.activity_id)
-    activity_service.require_activity_manager(db, activity, principal.user.id)
+    activity_service.require_activity_manager(
+        db, activity, principal.user.id, ATTENDANCE_CHECKIN
+    )
     records.delete_record(db, activity, record)
 
 
@@ -162,7 +181,9 @@ def list_appeals(
     appeal_status: Annotated[AppealStatus | None, Query(alias="status")] = None,
 ) -> list[AppealResponse]:
     activity = activity_service.load_activity(db, activity_id)
-    activity_service.require_activity_manager(db, activity, principal.user.id)
+    activity_service.require_activity_manager(
+        db, activity, principal.user.id, ATTENDANCE_APPEALS
+    )
     return appeals.list_appeals(db, activity.id, appeal_status)
 
 
@@ -175,7 +196,9 @@ def approve_appeal(
 ) -> None:
     appeal = appeals.load_appeal(db, appeal_id)
     activity = activity_service.load_activity(db, appeal.activity_id, lock=True)
-    activity_service.require_activity_manager(db, activity, principal.user.id)
+    activity_service.require_activity_manager(
+        db, activity, principal.user.id, ATTENDANCE_APPEALS
+    )
     appeals.approve_appeal(
         db, activity, appeal, principal.user.id, payload.registration_id
     )
@@ -185,7 +208,9 @@ def approve_appeal(
 def reject_appeal(appeal_id: Uuid7, principal: CurrentPrincipal, db: Db) -> None:
     appeal = appeals.load_appeal(db, appeal_id)
     activity = activity_service.load_activity(db, appeal.activity_id)
-    activity_service.require_activity_manager(db, activity, principal.user.id)
+    activity_service.require_activity_manager(
+        db, activity, principal.user.id, ATTENDANCE_APPEALS
+    )
     appeals.reject_appeal(db, appeal, principal.user.id)
 
 
@@ -199,7 +224,9 @@ def activity_hours(
     activity_id: Uuid7, principal: CurrentPrincipal, db: Db
 ) -> list[ActivityHoursEntry]:
     activity = activity_service.load_activity(db, activity_id)
-    activity_service.require_activity_manager(db, activity, principal.user.id)
+    activity_service.require_activity_manager(
+        db, activity, principal.user.id, ATTENDANCE_HOURS
+    )
     return hours.activity_hours(db, activity.id)
 
 
@@ -214,14 +241,16 @@ def adjust_hours(
     db: Db,
 ) -> None:
     activity = activity_service.load_activity(db, activity_id, lock=True)
-    activity_service.require_activity_manager(db, activity, principal.user.id)
+    activity_service.require_activity_manager(
+        db, activity, principal.user.id, ATTENDANCE_HOURS
+    )
     hours.adjust_hours(db, activity, principal.user.id, payload)
 
 
 @router.get("/organizations/{slug}/hour-rule")
 def get_hour_rule(slug: Slug, principal: CurrentPrincipal, db: Db) -> HourRuleResponse:
     org = load_organization(db, slug)
-    require_manager(db, org, principal.user.id)
+    require_permission(db, org, principal.user.id, ATTENDANCE_HOURS)
     return hours.get_hour_rule(db, org.id)
 
 
@@ -233,5 +262,5 @@ def set_hour_rule(
     db: Db,
 ) -> HourRuleResponse:
     org = load_organization(db, slug)
-    require_manager(db, org, principal.user.id)
+    require_permission(db, org, principal.user.id, ATTENDANCE_HOURS)
     return hours.set_hour_rule(db, org.id, payload)

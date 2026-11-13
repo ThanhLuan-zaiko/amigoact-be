@@ -28,6 +28,7 @@ from src.models.auth import User
 from src.models.chat import OrgDmPair, OrgRoomMedia, OrgRoomMessage, OrgRoomRead
 from src.models.organizations import Organization, OrganizationMember
 from src.organizations.access import ACTIVE, get_access
+from src.organizations.permissions import CHANNELS_MANAGE
 from src.organizations.service import live_organization
 
 MIXED = "mixed"
@@ -73,7 +74,7 @@ class _Room:
 
 def _rooms_of(db: Session, org: Organization, user_id: uuid.UUID) -> list[_Room]:
     summary = org_summary(org)
-    manage = get_access(db, org, user_id).can_manage
+    manage = get_access(db, org, user_id).has(CHANNELS_MANAGE)
     rooms = [
         _Room(
             org.id,

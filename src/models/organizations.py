@@ -107,7 +107,29 @@ class Role(Base):
     code: Mapped[str]
     name: Mapped[str]
     is_system: Mapped[bool] = mapped_column(server_default="false")
+    # Seniority in the organization: a bigger number outranks a smaller one.
     position: Mapped[int] = mapped_column(server_default="0")
+    # A "#rrggbb" value, or "" for the default.
+    color: Mapped[str] = mapped_column(server_default="")
+
+
+class Permission(Base):
+    __tablename__ = "permissions"
+
+    code: Mapped[str] = mapped_column(primary_key=True)
+    module: Mapped[str]
+    description: Mapped[str | None]
+
+
+class RolePermission(Base):
+    __tablename__ = "role_permissions"
+
+    role_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("roles.id", ondelete="CASCADE"), primary_key=True
+    )
+    permission_code: Mapped[str] = mapped_column(
+        ForeignKey("permissions.code", ondelete="CASCADE"), primary_key=True
+    )
 
 
 class UserRole(Base):

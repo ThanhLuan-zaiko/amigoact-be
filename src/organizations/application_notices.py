@@ -11,7 +11,8 @@ from src.models.notifications import Notification
 from src.models.organizations import Organization
 from src.notifications.events import notify, organization_data
 from src.notifications.live import deleted_event, queue_push
-from src.organizations.access import admin_user_ids
+from src.organizations.access import staff_user_ids
+from src.organizations.permissions import APPLICATIONS_REVIEW
 
 REQUESTED: Final = "membership_requested"
 
@@ -19,7 +20,7 @@ REQUESTED: Final = "membership_requested"
 def tell_managers(
     db: Session, org: Organization, user_id: uuid.UUID, message: str | None
 ) -> None:
-    """The owner and every admin hear about a new application, with its reason."""
+    """The owner and everyone who reviews applications hear about a new application, with its reason."""
     applicant = db.get(User, user_id)
     data = {
         **organization_data(org),
@@ -28,7 +29,9 @@ def tell_managers(
         "applicant_name": applicant.full_name if applicant else None,
         "message": message,
     }
-    for manager_id in sorted({org.owner_id, *admin_user_ids(db, org.id)}):
+    for manager_id in sorted(
+        {org.owner_id, *staff_user_ids(db, org.id, APPLICATIONS_REVIEW)}
+    ):
         notify(db, manager_id, REQUESTED, data)
 
 

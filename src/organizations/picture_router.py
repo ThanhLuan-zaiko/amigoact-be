@@ -18,8 +18,9 @@ from src.auth.errors import api_error
 from src.media import service as media_service
 from src.models.media import MediaAsset
 from src.models.organizations import Organization, OrganizationMedia
-from src.organizations.access import require_manager
+from src.organizations.access import require_permission
 from src.organizations.gallery_items import MAX_GALLERY_ITEMS
+from src.organizations.permissions import ORGANIZATION_UPDATE
 from src.organizations.schemas import StrictRequest
 from src.organizations.service import load_organization
 from src.validation import Uuid7
@@ -70,7 +71,7 @@ def choose_pictures(
     slug: Slug, payload: PictureChoice, principal: CurrentPrincipal, db: Db
 ) -> None:
     org = load_organization(db, slug)
-    require_manager(db, org, principal.user.id)
+    require_permission(db, org, principal.user.id, ORGANIZATION_UPDATE)
     # Locked like a gallery add, so parallel requests cannot pass the gallery limit.
     db.execute(
         select(Organization.id).where(Organization.id == org.id).with_for_update()

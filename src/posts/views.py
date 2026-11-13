@@ -12,6 +12,7 @@ from src.models.organizations import Organization
 from src.models.posts import OrgPost, PostComment, PostMedia, PostTag
 from src.models.tags import Tag
 from src.organizations.access import ACTIVE, Access, get_access
+from src.organizations.permissions import POSTS_MODERATE, POSTS_PIN
 from src.posts.activity_link import activity_summaries
 from src.posts.hiding import sees_hidden
 from src.posts.queries import next_page_cursor
@@ -48,8 +49,8 @@ def _viewer_flags(
     is_live = post.status == POST_ACTIVE and post.deleted_at is None
     return PostViewer(
         can_edit=is_author,
-        can_delete=is_author or access.can_manage,
-        can_pin=access.can_manage and is_live,
+        can_delete=is_author or access.has(POSTS_MODERATE),
+        can_pin=access.has(POSTS_PIN) and is_live,
         can_hide=sees_hidden(access) and is_live,
         can_comment=access.status == ACTIVE and is_live,
     )
@@ -133,7 +134,9 @@ def to_comment_responses(
     """A deleted comment shows no body. Only a manager may bring it back."""
     org = db.get(Organization, post.org_id)
     access = get_access(db, org, viewer_id) if (org and viewer_id) else None
-    manager = access is not None and access.status == ACTIVE and access.can_manage
+    manager = (
+        access is not None and access.status == ACTIVE and access.has(POSTS_MODERATE)
+    )
     now = datetime.now(UTC)
     items = []
     for comment, author_name in rows:

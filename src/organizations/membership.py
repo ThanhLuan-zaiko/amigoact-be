@@ -24,11 +24,13 @@ from src.organizations import signals
 from src.organizations.access import (
     ACTIVE,
     ADMIN_ROLE_CODE,
-    admin_user_ids,
+    get_access,
+    permissions_by_user,
     resolve_role,
 )
 from src.organizations.application_notices import tell_managers, withdraw_notices
 from src.organizations.departure import member_gone
+from src.organizations.roles import member_role_badges
 from src.organizations.schemas import (
     ApplicationPage,
     ApplicationResponse,
@@ -166,7 +168,9 @@ def leave_organization(db: Session, org: Organization, user_id: uuid.UUID) -> No
 
 def list_members(db: Session, org: Organization, limit: int, offset: int) -> MemberPage:
     """Contact details stay out of this list, which every member can read."""
-    admins = admin_user_ids(db, org.id)
+    staff = {
+        user_id for user_id, held in permissions_by_user(db, org.id).items() if held
+    }
     query = (
         select(OrganizationMember, User.full_name)
         .join(User, User.id == OrganizationMember.user_id)
@@ -177,11 +181,13 @@ def list_members(db: Session, org: Organization, limit: int, offset: int) -> Mem
         .limit(limit + 1)
         .offset(offset)
     ).all()
+    page = rows[:limit]
+    badges = member_role_badges(db, org.id, [member.user_id for member, _ in page])
     items = []
-    for member, full_name in rows[:limit]:
+    for member, full_name in page:
         role = resolve_role(
             is_owner=org.owner_id == member.user_id,
-            is_admin=member.user_id in admins,
+            is_admin=member.user_id in staff,
             status=member.status,
         )
         items.append(
@@ -189,6 +195,7 @@ def list_members(db: Session, org: Organization, limit: int, offset: int) -> Mem
                 user_id=member.user_id,
                 full_name=full_name,
                 role=role or "member",
+                roles=badges.get(member.user_id, []),
                 joined_at=member.joined_at,
             )
         )
@@ -294,6 +301,9 @@ def set_member_role(
         admin_role_id = db.scalar(
             select(Role.id).where(Role.org_id == org.id, Role.code == ADMIN_ROLE_CODE)
         )
+        if admin_role_id is None:
+            # The owner deleted the Admin role, so there is nothing to hand out.
+            raise api_error(status.HTTP_404_NOT_FOUND, "role_not_found")
         db.execute(
             insert(UserRole)
             .values(
@@ -312,12 +322,16 @@ def set_member_role(
 def remove_member(
     db: Session, org: Organization, actor_id: uuid.UUID, user_id: uuid.UUID
 ) -> None:
-    """Only the owner can remove an admin. Nobody can remove the owner."""
+    """Nobody removes the owner, or a member whose top role is not below their own."""
     if org.owner_id == user_id:
         raise api_error(status.HTTP_409_CONFLICT, "owner_cannot_be_removed")
     if actor_id == user_id:
         raise api_error(status.HTTP_409_CONFLICT, "cannot_remove_self")
-    if org.owner_id != actor_id and user_id in admin_user_ids(db, org.id):
+    outranked = (
+        get_access(db, org, user_id).top_position
+        >= get_access(db, org, actor_id).top_position
+    )
+    if org.owner_id != actor_id and outranked:
         raise api_error(status.HTTP_403_FORBIDDEN, "organization_forbidden")
     member = _active_member(db, org.id, user_id)
     member.status = REVOKED

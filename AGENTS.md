@@ -52,6 +52,12 @@ Put scratch work in the session scratchpad directory, not in the repository. CI 
 - Allowed browser origins come from `CORS_ORIGINS` in `.env` (`src/cors.py`): exact origins only, no wildcard, empty allows none. The realtime socket refuses a listed-origin mismatch with close code 4403.
 - Rate limits use the client IP. Behind a proxy, set uvicorn `--forwarded-allow-ips` to the proxy address so `X-Forwarded-For` is trusted only from there.
 
+## Roles and permissions
+
+- Details are in `docs/roles.md`. Code lives in `src/organizations/` (`permissions.py`, `access.py`, `roles.py`, `role_router.py`).
+- Check access with `require_permission(db, org, user_id, ACTIVITIES_CREATE)` or `access.has(...)`; codes are "module.action", so one role can create without deleting. Do not test `role == "admin"`: the coarse role only drives the interface. The owner holds every permission.
+- A person changes only roles and people below their own top role, and only hands out permissions they hold. A new permission goes into `permissions.py`, the `permissions` seed in `schema.sql`, and `PermissionCode` in `role_schemas.py`; a unit test keeps them in step.
+
 ## Organizations and validation
 
 - Details are in `docs/organizations.md`. Code lives in `src/organizations/`.

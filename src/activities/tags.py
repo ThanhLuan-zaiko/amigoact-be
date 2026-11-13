@@ -72,7 +72,7 @@ def suggest_activity_tags(
     Only managers write activities, and they see drafts too, so every live activity
     counts. Deleted activities do not.
     """
-    if not get_access(db, org, user_id).can_manage:
+    if not get_access(db, org, user_id).has_any("activities"):
         raise api_error(status.HTTP_403_FORBIDDEN, "organization_forbidden")
     count = func.count(Activity.id)
     statement = (

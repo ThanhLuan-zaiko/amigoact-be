@@ -1,7 +1,6 @@
 """Creating, finding, and editing organizations."""
 
 import uuid
-from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -20,11 +19,18 @@ from src.models.organizations import (
     Organization,
     OrganizationMember,
     Role,
-    UserRole,
+    RolePermission,
 )
-from src.organizations.access import ACTIVE, ADMIN_ROLE_CODE, get_access, resolve_role
+from src.organizations.access import (
+    ACTIVE,
+    ADMIN_ROLE_CODE,
+    get_access,
+    resolve_role,
+    staff_org_ids,
+)
 from src.organizations.gallery_items import attach_assets
 from src.organizations.open_activities import open_activity_count
+from src.organizations.permissions import DEFAULT_ADMIN
 from src.organizations.pictures import attach_picture, picture_url
 from src.organizations.schemas import (
     MyOrganization,
@@ -113,6 +119,7 @@ def viewer_membership(
         status=access.status,
         role=access.role,
         can_manage=access.can_manage,
+        permissions=sorted(access.permissions),
         reapply_after=reapply_time(rejected_at, datetime.now(UTC)),
     )
 
@@ -247,15 +254,18 @@ def create_organization(
             joined_at=datetime.now(UTC),
         )
     )
-    db.add(
-        Role(
-            id=uuid.uuid7(),
-            org_id=org.id,
-            code=ADMIN_ROLE_CODE,
-            name=ADMIN_ROLE_NAME,
-            is_system=True,
-            position=ADMIN_ROLE_POSITION,
-        )
+    admin_role = Role(
+        id=uuid.uuid7(),
+        org_id=org.id,
+        code=ADMIN_ROLE_CODE,
+        name=ADMIN_ROLE_NAME,
+        is_system=True,
+        position=ADMIN_ROLE_POSITION,
+    )
+    db.add(admin_role)
+    db.add_all(
+        RolePermission(role_id=admin_role.id, permission_code=code)
+        for code in sorted(DEFAULT_ADMIN)
     )
     db.commit()
     return org
@@ -312,18 +322,9 @@ def list_organizations(
     return _page_of_summaries(db, query, limit, offset)
 
 
-def _admin_org_ids(db: Session, user_id: uuid.UUID) -> set[uuid.UUID]:
-    rows: Sequence[uuid.UUID] = db.scalars(
-        select(UserRole.org_id)
-        .join(Role, Role.id == UserRole.role_id)
-        .where(UserRole.user_id == user_id, Role.code == ADMIN_ROLE_CODE)
-    ).all()
-    return set(rows)
-
-
 def list_my_organizations(db: Session, user_id: uuid.UUID) -> list[MyOrganization]:
     """Return the organizations the user belongs to or has applied to."""
-    admin_of = _admin_org_ids(db, user_id)
+    admin_of = staff_org_ids(db, user_id)
     rows = db.execute(
         select(Organization, _member_count(), OrganizationMember.status)
         .join(OrganizationMember, OrganizationMember.org_id == Organization.id)
