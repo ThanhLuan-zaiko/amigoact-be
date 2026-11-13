@@ -268,6 +268,8 @@ CREATE INDEX IF NOT EXISTS organizations_owner_idx ON organizations (owner_id);
 CREATE INDEX IF NOT EXISTS organizations_name_trgm_idx ON organizations USING gin (name gin_trgm_ops);
 -- Databases created before previous_slug existed get the column here. Safe to run again.
 ALTER TABLE organizations ADD COLUMN IF NOT EXISTS previous_slug text;
+-- Owners and admins can hide an organization from the public directory. Safe to run again.
+ALTER TABLE organizations ADD COLUMN IF NOT EXISTS listed_publicly boolean NOT NULL DEFAULT true;
 
 -- Bảng tra loại tổ chức (dữ liệu, không phải enum cứng).
 CREATE TABLE IF NOT EXISTS org_types (

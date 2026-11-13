@@ -94,8 +94,9 @@ Người đăng có thể chọn `visibility` khác mặc định khi tạo ho�
 - Bảng tin tổ chức: sắp theo mã bài, mới nhất trước. Lọc theo loại (`kind`) và chỉ bài ghim (`pinned_only`).
 - Trang tiếp theo dùng `before` là mã bài cuối của trang trước. Trả về `next_before` là `null` ở trang cuối.
 - Thứ tự theo thời điểm tạo, không theo thời điểm đăng. Bản nháp đăng sau có thể nằm xa vị trí tương ứng với thời điểm đăng.
-- `GET /feed`: bài của mọi tổ chức bạn là thành viên. Đây là tab "Dành cho bạn".
-- `GET /feed/public`: bài công khai của mọi tổ chức, giống nhau cho khách và thành viên.
+- `GET /feed/all`: bảng tin trang chủ. Gồm bài công khai của mọi tổ chức, cộng bài dành cho thành viên của các tổ chức bạn đang tham gia. Khách chỉ thấy bài công khai. Đây là mục "Tất cả" trên trang chủ.
+- `GET /feed`: chỉ bài của các tổ chức bạn là thành viên, cả công khai lẫn dành cho thành viên. Đây là bộ lọc "Tổ chức của tôi" trên trang chủ.
+- `GET /feed/public`: bài công khai của mọi tổ chức, giống nhau cho khách và thành viên. Trang chủ không còn dùng endpoint này.
 
 ## API
 
@@ -117,6 +118,7 @@ Người đăng có thể chọn `visibility` khác mặc định khi tạo ho�
 | PATCH | `/comments/{id}` | Người viết, trong 15 phút |
 | DELETE | `/comments/{id}` | Người viết hoặc quản trị viên (xóa mềm) |
 | POST | `/comments/{id}/restore` | Chủ sở hữu, quản trị viên |
+| GET | `/feed/all` | Ai cũng xem, theo quyền xem |
 | GET | `/feed` | Đã đăng nhập |
 | GET | `/feed/public` | Ai cũng xem |
 | GET | `/feed/popular-tags` | Ai cũng xem, theo quyền xem |

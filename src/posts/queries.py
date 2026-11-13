@@ -99,6 +99,19 @@ def public_feed(
     return _page(db, with_tag(published_posts(None), tag), before, limit)
 
 
+def all_feed(
+    db: Session,
+    viewer_id: uuid.UUID | None,
+    *,
+    before: uuid.UUID | None,
+    limit: int,
+    tag: str | None = None,
+) -> list[OrgPost]:
+    """The home feed: public posts of every organization, plus member posts of the
+    organizations the viewer belongs to. Visitors get the public posts only."""
+    return _page(db, with_tag(published_posts(viewer_id), tag), before, limit)
+
+
 def my_drafts(
     db: Session,
     org_id: uuid.UUID,

@@ -40,13 +40,14 @@ Chủ sở hữu không rời được tổ chức và không bị gỡ khỏi t
 - Gắn ảnh làm ảnh thành `public`. Gửi `null` để gỡ ảnh. Khi không gửi trường ảnh, ảnh giữ nguyên.
 - Phản hồi chi tiết trả về `logo_url` và `cover_url` dạng `/media/{id}/file`, hoặc `null`. Mọi danh sách tổ chức cũng có hai trường này. Chúng lấy từ dòng tổ chức đã được đọc sẵn, nên không tốn truy vấn thêm.
 - Thông tin pháp lý và ảnh công khai với mọi người, vì `GET /organizations/{slug}` không cần đăng nhập.
+- `listed_publicly` (mặc định `true`) do chủ sở hữu hoặc quản trị viên đặt qua `PATCH /organizations/{slug}`. Khi `false`, tổ chức không hiện trong danh sách công khai `GET /organizations`, kể cả khi tìm theo tên. Trang chi tiết vẫn mở được bằng địa chỉ của nó, và thành viên vẫn thấy trong "Tổ chức của tôi". Gửi `null` hoặc chuỗi như `"false"` bị từ chối. Cờ này không nằm trong form tạo tổ chức. Cột được thêm bằng `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` trong `schema.sql`, nên cơ sở dữ liệu cũ không cần reset.
 
 ## API
 
 | Method | Đường dẫn | Quyền |
 | ---- | ---- | ---- |
 | POST | `/organizations` | Đã đăng nhập |
-| GET | `/organizations?q=&limit=&offset=&exclude_owned=` | Công khai. `exclude_owned=true` bỏ tổ chức người đang đăng nhập sở hữu ngay trong truy vấn, nên mỗi trang vẫn đủ số dòng. Khách không đăng nhập thì tham số này không có tác dụng |
+| GET | `/organizations?q=&limit=&offset=&exclude_owned=` | Công khai. Chỉ liệt kê tổ chức có `listed_publicly = true`. `exclude_owned=true` bỏ tổ chức người đang đăng nhập sở hữu ngay trong truy vấn, nên mỗi trang vẫn đủ số dòng. Khách không đăng nhập thì tham số này không có tác dụng |
 | GET | `/organizations/mine` | Đã đăng nhập |
 | GET | `/organizations/{slug}` | Công khai |
 | PATCH | `/organizations/{slug}` | Quản trị viên |

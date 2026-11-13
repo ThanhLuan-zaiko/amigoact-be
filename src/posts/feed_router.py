@@ -45,6 +45,19 @@ def public_feed(
     return post_page(db, rows, limit, viewer_id)
 
 
+@router.get("/feed/all")
+def all_feed(
+    principal: OptionalPrincipal,
+    db: Db,
+    before: Before = None,
+    limit: Limit = 20,
+    tag: TagFilter = None,
+) -> PostPage:
+    viewer_id = principal.user.id if principal else None
+    rows = queries.all_feed(db, viewer_id, before=before, limit=limit, tag=tag)
+    return post_page(db, rows, limit, viewer_id)
+
+
 @router.get("/feed/popular-tags")
 def popular_tags(principal: OptionalPrincipal, db: Db) -> TagList:
     viewer_id = principal.user.id if principal else None

@@ -165,6 +165,7 @@ def organization_detail(
         legal_rep_name=org.legal_rep_name,
         legal_rep_position=org.legal_rep_position,
         legal_status=org.legal_status,
+        listed_publicly=org.listed_publicly,
         owner_name=owner.full_name if owner else "",
         activity_count=_activity_count(db, org.id),
         open_activity_count=open_activity_count(db, org.id),
@@ -299,7 +300,9 @@ def list_organizations(
     offset: int,
     excluded_owner_id: uuid.UUID | None = None,
 ) -> OrganizationPage:
-    query = select(Organization, _member_count()).where(*live_organization())
+    query = select(Organization, _member_count()).where(
+        *live_organization(), Organization.listed_publicly.is_(True)
+    )
     # Filter in the query, so every page stays full and next_offset stays correct.
     if excluded_owner_id is not None:
         query = query.where(Organization.owner_id != excluded_owner_id)

@@ -18,7 +18,7 @@ from pydantic_core import PydanticCustomError
 
 from src.auth.schemas import Address, Phone, ShortText, TaxCode, field_errors
 from src.organizations.gallery_items import MAX_GALLERY_ITEMS
-from src.validation import Uuid7, multi_line, single_line
+from src.validation import StrictBool, Uuid7, multi_line, single_line
 
 OrgRole = Literal["owner", "admin", "member"]
 OrgType = Literal["organization", "club", "group", "business"]
@@ -131,6 +131,7 @@ class OrganizationUpdateRequest(StrictRequest):
     legal_rep_position: ShortText | None = None
     logo_asset_id: Uuid7 | None = None
     cover_asset_id: Uuid7 | None = None
+    listed_publicly: StrictBool | None = None
 
     @model_validator(mode="after")
     def reject_null_required_fields(self) -> Self:
@@ -144,6 +145,7 @@ class OrganizationUpdateRequest(StrictRequest):
                 "email",
                 "phone",
                 "city",
+                "listed_publicly",
             )
             if field in self.model_fields_set and getattr(self, field) is None
         }
@@ -202,6 +204,8 @@ class OrganizationDetail(OrganizationSummary):
     legal_rep_name: str | None
     legal_rep_position: str | None
     legal_status: str
+    # False when the owner or an admin hid the organization from the public directory.
+    listed_publicly: bool
     owner_name: str
     # Published activities and approved hours, for the header.
     activity_count: int

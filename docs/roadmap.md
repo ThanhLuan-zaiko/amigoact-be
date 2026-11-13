@@ -30,7 +30,7 @@ Tính năng nào không nằm trên vòng này thì làm sau. Mỗi giai đoạn
 | 1 | Tổ chức và thành viên | Xong |
 | 2 | Hoạt động và đăng ký | Xong |
 | 3 | Điểm danh và giờ tình nguyện | Xong |
-| 4 | Chứng nhận và thông báo | Backend xong. Giao diện chứng nhận xong, thông báo chờ giao diện |
+| 4 | Chứng nhận và thông báo | Xong |
 | 5 | Bảng tin, tải tệp, rồi chat | Đang làm |
 | 6 | Báo cáo, đánh giá, quản trị nền tảng | Chưa làm |
 
@@ -106,7 +106,7 @@ Bảng: `notifications`, `notification_preferences`.
 
 - Backend xong: cấp, thu hồi, hoàn tác thu hồi, trang xác minh công khai, chứng nhận của tôi, thông báo trong ứng dụng, tùy chọn theo kênh và theo loại, gửi email. Chi tiết trong `docs/certificates.md` và `docs/notifications.md`.
 - Giao diện chứng nhận xong: cấp, thu hồi và hoàn tác ở trang hoạt động, chứng nhận của tôi (`/certificates`), trang xác minh công khai (`/certificates/verify/[serial]`) và nút in từ trình duyệt. Chi tiết trong `amigoact-fe/docs/certificates.md`.
-- Chưa làm: giao diện thông báo (chuông, trang thông báo, cài đặt thông báo). Mẫu chứng nhận đã làm ở bước 2 của giai đoạn 5.
+- Giao diện thông báo xong: chuông trên header, trang `/notifications` (lịch sử, lọc chưa đọc, đánh dấu đã đọc, cập nhật trực tiếp) và cài đặt tại `/account/notifications`. Chi tiết trong `amigoact-fe/docs/notifications.md`. Mẫu chứng nhận đã làm ở bước 2 của giai đoạn 5.
 
 ## Giai đoạn 5: bảng tin, tải tệp, rồi chat
 
